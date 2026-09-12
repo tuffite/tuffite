@@ -1,0 +1,33 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+source_set("policy") {
+  public = [
+    "application_policy_service.h",
+    "application_policy_service_factory.h",
+  ]
+  sources = [
+    "application_policy_service.h",
+    "application_policy_service_factory.cc",
+    "application_policy_service_factory.h",
+    "application_policy_service_impl.cc",
+    "application_policy_service_impl.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/core",
+    "//tuffite/components/explorer/browser",
+    "//tuffite/framework/app/services:factory",
+  ]
+  deps = [
+    "//content/public/browser",
+    "//tuffite/framework/browser:support",
+    "//tuffite/framework/common",
+    "//tuffite/framework/common:capability_pattern",
+    "//url",
+  ]
+}

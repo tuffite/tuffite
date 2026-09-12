@@ -1,0 +1,45 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//build/config/features.gni")
+import("//tuffite/tuffite_in_chromium.gni")
+assert(tuffite_in_chromium)
+source_set("network_context") {
+  public = [
+    "network_context_service.h",
+    "network_context_service_factory.h",
+  ]
+  sources = public + [ "network_context_service_factory.cc" ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+    "//content/public/browser",
+    "//services/network/public/mojom",
+  ]
+  deps = [
+    "//components/os_crypt/async/browser",
+    "//components/os_crypt/async/browser:key_provider_interface",
+    "//components/prefs",
+    "//services/network/public/cpp",
+    "//tuffite/framework/browser:support",
+    "//tuffite/framework/common",
+  ]
+  if (is_mac) {
+    sources += [
+      "safe_storage_key_provider_mac.h",
+      "safe_storage_key_provider_mac.mm",
+    ]
+    deps += [
+      "//components/os_crypt/async/common",
+      "//crypto",
+      "//crypto:mock_apple_keychain",
+      "//sql",
+    ]
+  } else if (is_win) {
+    deps += [ "//components/os_crypt/async/browser:dpapi_key_provider" ]
+  } else if (is_linux && use_dbus) {
+    defines = [ "TUFFITE_USE_SECRET_PORTAL" ]
+    deps += [ "//components/os_crypt/async/browser:secret_portal_key_provider" ]
+  }
+}

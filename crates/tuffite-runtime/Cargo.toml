@@ -1,0 +1,22 @@
+[package]
+name = "tuffite-runtime"
+description = "Rust control plane for the Tuffite desktop framework"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+async = []
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+tuffite-abi = { version = "2.5.0", path = "../tuffite-abi" }
+futures-executor = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2.5"
+
+[lints]
+workspace = true

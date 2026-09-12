@@ -1,0 +1,35 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+assert(tuffite_in_chromium)
+
+source_set("asset") {
+  public = [
+    "asset_service.h",
+    "asset_service_factory.h",
+  ]
+  sources = [
+    "app_url_loader_factory.cc",
+    "app_url_loader_factory.h",
+    "asset_service.h",
+    "asset_service_factory.cc",
+    "asset_service_factory.h",
+    "asset_service_impl.cc",
+    "asset_service_impl.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/core",
+    "//mojo/public/cpp/bindings",
+    "//services/network/public/mojom",
+    "//tuffite/framework/app/services:factory",
+  ]
+  deps = [
+    "//mojo/public/cpp/system",
+    "//net",
+    "//services/network/public/cpp",
+    "//tuffite/framework/common",
+    "//url",
+  ]
+}

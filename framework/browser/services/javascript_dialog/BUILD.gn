@@ -1,0 +1,23 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+import("//tuffite/tuffite_in_chromium.gni")
+assert(tuffite_in_chromium)
+source_set("javascript_dialog") {
+  public = [
+    "javascript_dialog_service.h",
+    "javascript_dialog_service_factory.h",
+  ]
+  sources = public + [ "javascript_dialog_service_factory.cc" ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+    "//content/public/browser",
+  ]
+  deps = [
+    "//ui/base",
+    "//ui/gfx",
+    "//ui/views",
+    "//url",
+  ]
+}

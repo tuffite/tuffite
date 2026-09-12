@@ -1,0 +1,20 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//build/buildflag_header.gni")
+import("//tuffite/tuffite_in_chromium.gni")
+
+buildflag_header("buildflags") {
+  header = "buildflags.h"
+  flags = [
+    "TUFFITE_IN_CHROMIUM=$tuffite_in_chromium",
+    "TUFFITE_DEV_MODE=$tuffite_dev_mode",
+    "TUFFITE_DISABLE_REMOTING=$tuffite_disable_remoting",
+  ]
+}
+
+if (tuffite_in_chromium) {
+  group("tuffite") {
+    deps = [ "//tuffite/framework:distribution" ]
+  }
+}

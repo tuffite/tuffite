@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Explorer transfer lab</title><link rel="stylesheet" href="./src/styles.css"><script type="module" src="./src/presentation.js"></script></head>
+<body>
+<main>
+  <h1>Explorer transfer lab</h1>
+  <p>The page, JavaScript state and history stay alive while ownership moves between hosts or windows.</p>
+  <nav>
+    <button id="load">Load sample</button>
+    <button id="detach">Detach</button>
+    <button id="attach">Attach to other host</button>
+    <button id="close">Close pending transfer</button>
+    <button id="popout">Open in independent window</button>
+  </nav>
+  <pre id="status" role="status" style="max-height:170px;overflow:auto">Ready</pre>
+  <div id="hosts" style="display:flex;gap:12px;height:400px"></div>
+  <script type="module" src="./src/transfer.js"></script>
+</main>
+</body>
+</html>

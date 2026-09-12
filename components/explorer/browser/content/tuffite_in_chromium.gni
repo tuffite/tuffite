@@ -1,0 +1,13 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+
+# The header itself is included unconditionally so Chromium code can compile
+# both integration states. Feature implementation dependencies stay conditional.
+tuffite_content_buildflag_deps = [ "//tuffite:buildflags" ]
+
+tuffite_content_explorer_isolation_sources = [
+  "//tuffite/components/explorer/browser/content/explorer_isolation.cc",
+  "//tuffite/components/explorer/browser/content/explorer_isolation.h",
+]

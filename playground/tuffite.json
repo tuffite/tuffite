@@ -1,0 +1,231 @@
+{
+  "$schema": "../schemas/tuffite.schema.json",
+  "productName": "Tuffite Playground",
+  "app": {
+    "identifier": "org.tuffite.playground",
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*",
+      "capabilities": [
+        {
+          "identifier": "app-shell",
+          "origins": [
+            "playground://main"
+          ],
+          "explorer": {
+            "create": true,
+            "executeJavaScript": true
+          },
+          "shellApi": [
+            "playground.*",
+            "tuffite.storage.*",
+            "tuffite.log.*",
+            "tuffite.utility.*",
+            {
+              "method": "tuffite.fs.readFile",
+              "allow": [
+                {
+                  "path": "resource/*"
+                }
+              ]
+            },
+            {
+              "method": "tuffite.fs.exists",
+              "allow": [
+                {
+                  "path": "resource/*"
+                }
+              ]
+            },
+            {
+              "method": "tuffite.fs.*",
+              "allow": [
+                {
+                  "path": "data/*"
+                },
+                {
+                  "path": "cache/*"
+                },
+                {
+                  "path": "temp/*"
+                }
+              ]
+            },
+            {
+              "method": "tuffite.path.resolve",
+              "allow": [
+                {
+                  "path": "resource/*"
+                },
+                {
+                  "path": "data/*"
+                },
+                {
+                  "path": "cache/*"
+                },
+                {
+                  "path": "temp/*"
+                }
+              ]
+            },
+            {
+              "method": "tuffite.net.request",
+              "allow": [
+                {
+                  "url": "http://example.com/*"
+                },
+                {
+                  "url": "https://example.com/*"
+                },
+                {
+                  "url": "http://127.0.0.1/*"
+                },
+                {
+                  "url": "https://127.0.0.1/*"
+                }
+              ]
+            },
+            "tuffite.path.directories",
+            "tuffite.dialog.openFile",
+            "tuffite.dialog.openDirectory",
+            {
+              "method": "tuffite.window.*",
+              "allow": [
+                {
+                  "window": "*"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "identifier": "artifact-and-preview",
+          "origins": [
+            "playground://*.artifact",
+            "playground://*.preview"
+          ],
+          "shellApi": [
+            "tuffite.path.directories",
+            "tuffite.storage.get",
+            {
+              "method": "tuffite.fs.readFile",
+              "allow": [
+                {
+                  "path": "resource/ui/dist/**"
+                }
+              ],
+              "deny": [
+                {
+                  "path": "resource/ui/dist/index.html"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "identifier": "artifact-app-command",
+          "origins": [
+            "playground://demo.artifact"
+          ],
+          "shellApi": [
+            "playground.commands.doSomething"
+          ]
+        },
+        {
+          "identifier": "business-only",
+          "origins": [
+            "playground://business"
+          ],
+          "shellApi": [
+            "playground.*"
+          ]
+        }
+      ]
+    },
+    "windows": [
+      {
+        "label": "main",
+        "url": "playground://main/ui/dist/index.html",
+        "title": "Tuffite Playground",
+        "width": 1100,
+        "height": 1000,
+        "minWidth": 320,
+        "minHeight": 240,
+        "maxWidth": 1920,
+        "maxHeight": 1200
+      },
+      {
+        "label": "secondary",
+        "url": "playground://main/ui/dist/window.html",
+        "title": "Tuffite Secondary Window",
+        "width": 560,
+        "height": 420,
+        "focused": false,
+        "minWidth": 320,
+        "minHeight": 240,
+        "maxWidth": 1920,
+        "maxHeight": 1200
+      }
+    ],
+    "network": {
+      "maxResponseBytes": 1048576,
+      "timeoutSeconds": 30
+    },
+    "assets": [
+      {
+        "origins": [
+          "playground://main",
+          "playground://*.artifact",
+          "playground://*.preview",
+          "playground://public",
+          "playground://business"
+        ],
+        "paths": [
+          "/ui/dist/*"
+        ],
+        "directory": "ui/dist"
+      },
+      {
+        "origins": [
+          "playground://parser.utility"
+        ],
+        "paths": [
+          "/*"
+        ],
+        "directory": "src/v8_utility"
+      }
+    ],
+    "utilities": {
+      "echo": {
+        "configuration": {
+          "service": "echo",
+          "fixtureId": "io.tuffite.playground"
+        }
+      },
+      "parser": {
+        "configuration": {
+          "fixtureId": "io.tuffite.playground"
+        }
+      }
+    }
+  },
+  "build": {
+    "devPackage": "../dist/playground-dev",
+    "devUrl": "http://127.0.0.1:5189/",
+    "beforeDevCommand": {
+      "script": "mise exec -- bun run dev",
+      "cwd": "ui"
+    },
+    "shellApi": {
+      "namespace": "playground",
+      "definitions": [
+        "shell_api.d.ts"
+      ]
+    }
+  },
+  "bundle": {
+    "resources": [
+      "ui/dist",
+      "src/v8_utility"
+    ]
+  }
+}

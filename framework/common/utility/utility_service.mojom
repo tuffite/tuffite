@@ -1,0 +1,37 @@
+// Copyright 2026 The Tuffite Authors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+module tuffite.mojom;
+
+import "sandbox/policy/mojom/sandbox.mojom";
+
+// Generic binary bridge for an application-registered host utility service.
+// Browser policy chooses the service name before this process is launched.
+interface UtilitySessionClient {
+  // Reverse request bound to this session and its registered service.
+  ResolveModule(string url) => (int32 status, array<uint8> source);
+  OnEvent(uint64 session_id, uint64 sequence, uint32 kind,
+          array<uint8> payload);
+};
+
+// One independently owned long-lived session. Closing this pipe closes only
+// this session and does not affect unary calls or sibling sessions.
+interface UtilitySession {
+  Send(uint64 command_id, array<uint8> command)
+      => (int32 status, array<uint8> response);
+  Acknowledge(uint64 committed_sequence, uint32 credits);
+  Cancel(uint64 command_id);
+  Close(uint32 reason) => (int32 status, array<uint8> summary);
+};
+
+[ServiceSandbox=sandbox.mojom.Sandbox.kUtility]
+interface UtilityService {
+  Start(string name, array<uint8> configuration) => (int32 status);
+  Invoke(uint64 request_id, array<uint8> request)
+      => (int32 status, array<uint8> response);
+  Cancel(uint64 request_id);
+  CreateSession(uint64 session_id, array<uint8> init,
+              uint32 initial_event_credits, uint32 max_event_bytes,
+              pending_remote<UtilitySessionClient> client,
+              pending_receiver<UtilitySession> session) => (int32 status);
+};

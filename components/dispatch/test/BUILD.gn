@@ -1,0 +1,17 @@
+import("//testing/test.gni")
+test("dispatch_unittests") {
+  sources = [
+    "../browser/request_registry.cc",
+    "../browser/request_registry.h",
+    "../browser/rpc_handler.h",
+    "codec_unittest.cc",
+    "request_registry_unittest.cc",
+  ]
+  deps = [
+    "//base",
+    "//base/test:test_support",
+    "//testing/gtest",
+    "//testing/gtest:gtest_main",
+    "//tuffite/components/dispatch/common:implementation",
+  ]
+}

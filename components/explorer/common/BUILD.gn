@@ -1,0 +1,21 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE.chromium file.
+
+import("//mojo/public/tools/bindings/mojom.gni")
+import("//tuffite/components/explorer/renderer/blink/tuffite_in_chromium.gni")
+import("//tuffite/tuffite_in_chromium.gni")
+
+mojom("mojom") {
+  sources = [ "explorer.mojom" ]
+  deps = [ "//third_party/blink/public/mojom/tokens" ]
+}
+
+if (tuffite_in_chromium) {
+  copy("blink_idl_inputs") {
+    sources = tuffite_explorer_blink_idl_inputs
+    outputs = [
+      "$root_gen_dir/third_party/blink/renderer/core/html/{{source_file_part}}",
+    ]
+  }
+}

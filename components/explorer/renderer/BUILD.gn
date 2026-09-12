@@ -1,0 +1,16 @@
+source_set("renderer") {
+  sources = [
+    "explorer_surface_bindings.cc",
+    "explorer_surface_bindings.h",
+  ]
+  deps = [
+    "//base",
+    "//content/public/renderer",
+    "//gin",
+    "//third_party/blink/public:blink",
+    "//tuffite/components/dispatch/common:implementation",
+    "//tuffite/components/explorer/common:mojom",
+    "//url",
+    "//v8",
+  ]
+}

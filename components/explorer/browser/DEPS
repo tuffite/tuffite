@@ -1,0 +1,18 @@
+include_rules = [
+  "-tuffite/framework",
+  "-content",
+  "+base",
+  "+tuffite/components",
+  "+url",
+  "+mojo/public/cpp",
+  "+content/public/browser",
+  "+content/public/common",
+  "+net",
+  "+services/network/public",
+  "+ui",
+  "+third_party/blink/public/common",
+  "+third_party/blink/public/mojom",
+  "+components/services/storage/public",
+  "+components/download/public/common",
+  "+components/viz/common",
+]

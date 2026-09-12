@@ -1,0 +1,10 @@
+[package]
+name = "tuffite-abi"
+description = "Stable C ABI contract shared by Tuffite Runtime and Framework"
+version = "2.5.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true

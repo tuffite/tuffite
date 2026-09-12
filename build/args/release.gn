@@ -1,0 +1,30 @@
+# Default optimized build: one non-component Framework DLL plus the application-
+# named sandbox-capable executable. Keep line tables for crash diagnosis.
+is_component_build = false
+cc_wrapper = "sccache"
+target_cpu = "x64"
+is_debug = false
+is_official_build = false
+dcheck_always_on = false
+symbol_level = 1
+v8_symbol_level = 0
+blink_symbol_level = 0
+optimize_for_size = true
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+use_thin_lto = false
+chrome_pgo_phase = 0
+use_siso = false
+
+# Two simultaneous links improve local iteration without exposing the machine
+# to the memory spike of unconstrained Chromium link parallelism.
+concurrent_links = 2
+tuffite_in_chromium = true
+tuffite_disable_remoting = false
+root_extra_deps = [ "//tuffite" ]
+
+# Development URL overrides remain protected by the direct tuff CLI parent,
+# a per-run 256-bit nonce, and an authenticated loopback readiness probe. This
+# keeps the default release graph usable for local HMR without enabling a
+# standalone command-line override.
+tuffite_dev_mode = true

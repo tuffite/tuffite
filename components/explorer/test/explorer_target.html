@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tuffite Explorer inner WebContents</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font: 16px/1.5 system-ui, sans-serif;
+    }
+    body {
+      min-height: 700px;
+      margin: 0;
+      padding: 24px;
+      background: linear-gradient(135deg, #e8efff, #fff 45%, #e9fff2);
+      color: #17213a;
+    }
+    .card {
+      max-width: 680px;
+      padding: 20px;
+      border-radius: 12px;
+      background: rgb(255 255 255 / 88%);
+      box-shadow: 0 8px 30px rgb(20 40 90 / 15%);
+    }
+    code {
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h2>普通 inner WebContents 已渲染</h2>
+    <p>如果本卡片位于蓝色边框内，说明 child Surface 已成功嵌入。</p>
+    <p>当前地址：<code id="location"></code></p>
+    <p>读取父页面同源 localStorage：<code id="storage"></code></p>
+    <label>焦点/输入测试：<input autofocus placeholder="在这里输入文字"></label>
+    <p><a href="explorer_target.html?navigated=1">点击测试 inner 导航</a></p>
+    <p><a id="new-window" href="explorer_target.html?new-window=1" target="_blank">点击测试新窗口拦截</a></p>
+  </main>
+  <script>
+    // Capture the viewport synchronously. Explorer's initial navigation runs
+    // before the inner WebContents is attached, so this guards against a 0x0
+    // bootstrap viewport that responsive third-party applications may never
+    // recover from.
+    document.documentElement.dataset.initialViewport =
+        `${innerWidth}x${innerHeight}`;
+    const storageKey = 'playground-explorer-shared-storage-test';
+    document.querySelector('#location').textContent = location.href;
+    document.querySelector('#storage').textContent =
+        localStorage.getItem(storageKey) ?? '(未读取到)';
+  </script>
+</body>
+</html>

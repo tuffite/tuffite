@@ -1,0 +1,13 @@
+include_rules = [
+  "-tuffite/framework",
+  "-content",
+  "+base",
+  "+tuffite/components",
+  "+url",
+  "+mojo/public/cpp",
+  "+content/public/renderer",
+  "+third_party/blink/public/platform",
+  "+third_party/blink/public/web",
+  "+v8",
+  "+gin",
+]

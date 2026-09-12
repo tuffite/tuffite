@@ -1,0 +1,594 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Garey Chan <garey.chan@outlook.com>
+Date: Sat, 12 Sep 2026 16:29:37 +0800
+Subject: feat(tuffite): add tuffite <explorer> support
+
+
+diff --git a/.gitignore b/.gitignore
+index 5dced72c40f606c702be3b4ebdb4a17bf37b5784..b1938ebfc8b2acf83e97feca3f0e1e3524306426 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -310,6 +310,10 @@ vs-chromium-project.txt
+ /x86-generic_out/
+ /xcodebuild
+ 
++# TUFFITE_BEGIN
++/tuffite/
++# TUFFITE_END
++
+ # Ignore any Android RenderTest goldens
+ **/render_tests/*.png
+ 
+diff --git a/content/browser/BUILD.gn b/content/browser/BUILD.gn
+index e7e168a10b7b9051b74d0964b1b51fe96b10f142..b2b9d087ebb32df35b6c9a21bbb971162b0357ca 100644
+--- a/content/browser/BUILD.gn
++++ b/content/browser/BUILD.gn
+@@ -28,6 +28,10 @@ import("//testing/libfuzzer/fuzzer_test.gni")
+ import("//third_party/blink/public/public_features.gni")
+ import("//tools/ipc_fuzzer/ipc_fuzzer.gni")
+ 
++# TUFFITE_BEGIN
++import("//tuffite/components/explorer/browser/content/tuffite_in_chromium.gni")
++# TUFFITE_END
++
+ if (is_mac) {
+   import("//content/public/app/mac_helpers.gni")
+ }
+@@ -113,6 +117,12 @@ source_set("browser") {
+     "//content/test/fuzzer:media_stream_dispatcher_host_mojolpm_fuzzer",
+   ]
+ 
++  # TUFFITE_BEGIN
++  if (tuffite_in_chromium) {
++    visibility += [ "//tuffite/framework:core" ]
++  }
++  # TUFFITE_END
++
+   if (use_fuzzing_engine && is_android) {
+     visibility += [
+       ":*",
+@@ -383,6 +393,10 @@ source_set("browser") {
+     "//v8:v8_version",
+   ]
+ 
++  # TUFFITE_BEGIN
++  deps += tuffite_content_buildflag_deps
++  # TUFFITE_END
++
+   public_deps = [
+     "//base",
+     "//components/memory_pressure",
+@@ -2369,6 +2383,12 @@ source_set("browser") {
+     "worker_host/worker_util.h",
+   ]
+ 
++  # TUFFITE_BEGIN
++  if (tuffite_in_chromium) {
++    sources += tuffite_content_explorer_isolation_sources
++  }
++  # TUFFITE_END
++
+   if (is_android) {
+     sources += [
+       "memory_pressure/user_level_memory_pressure_signal_generator.cc",
+diff --git a/content/browser/browsing_instance.cc b/content/browser/browsing_instance.cc
+index 979a35183e94d9bb3c2dae1af70d6ffa6e81e45f..6b5ab87afd22b6c944782ce986c2c527c30e4315 100644
+--- a/content/browser/browsing_instance.cc
++++ b/content/browser/browsing_instance.cc
+@@ -6,6 +6,9 @@
+ 
+ #include "base/check_op.h"
+ #include "base/command_line.h"
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++// TUFFITE_END
+ #include "content/browser/origin_agent_cluster_isolation_state.h"
+ #include "content/browser/security/cpsp/child_process_security_policy_impl.h"
+ #include "content/browser/site_info.h"
+@@ -251,6 +254,23 @@ BrowsingInstance::~BrowsingInstance() {
+ 
+ SiteInfo BrowsingInstance::ComputeSiteInfoForURL(
+     const UrlInfo& url_info) const {
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  // A fixed BrowsingInstance owns its StoragePartition. Navigation may reach
++  // this method through paths other than NavigationRequest::GetUrlInfo()
++  // (or after the current RenderFrameHost changed while attaching an inner
++  // WebContents), so an explicit config supplied by those paths must not move
++  // the instance into another partition. Explorer uses this contract for
++  // named memory/persistent partitions and nested partition inheritance.
++  if (is_fixed_storage_partition_ && storage_partition_config_.has_value()) {
++    UrlInfo url_info_with_partition = url_info;
++    url_info_with_partition.storage_partition_config =
++        storage_partition_config_;
++    url_info_with_partition.web_exposed_isolation_info =
++        url_info.web_exposed_isolation_info.value_or(
++            web_exposed_isolation_info_);
++    return SiteInfo::Create(isolation_context_, url_info_with_partition);
++  }
++#endif
+   // If a StoragePartitionConfig is specified in both `url_info` and this
+   // BrowsingInstance, make sure they match.
+   if (url_info.storage_partition_config.has_value() &&
+diff --git a/content/browser/renderer_host/navigation_request.cc b/content/browser/renderer_host/navigation_request.cc
+index cc0fa72127f88d309baeeca66d98e31828b74117..bf779141c9e9dfb52fb4a6fc52ed2c8cf310d216 100644
+--- a/content/browser/renderer_host/navigation_request.cc
++++ b/content/browser/renderer_host/navigation_request.cc
+@@ -48,6 +48,12 @@
+ #include "base/types/optional_util.h"
+ #include "base/types/pass_key.h"
+ #include "build/build_config.h"
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++#include "tuffite/components/explorer/browser/content/explorer_isolation.h"
++#endif
++// TUFFITE_END
+ #include "build/buildflag.h"
+ #include "components/viz/host/host_frame_sink_manager.h"
+ #include "content/browser/agent_cluster_key.h"
+@@ -146,6 +152,7 @@
+ #include "content/public/browser/security_principal.h"
+ #include "content/public/browser/site_isolation_policy.h"
+ #include "content/public/browser/storage_partition.h"
++#include "content/public/browser/web_contents.h"
+ #include "content/public/browser/tracing_support.h"
+ #include "content/public/browser/weak_document_ptr.h"
+ #include "content/public/common/content_client.h"
+@@ -1112,6 +1119,19 @@ EmbedderIsolationInfo ResolveEmbedderIsolationInfo(
+     return EmbedderIsolationInfo::CreateForUniqueInstance(navigation_id);
+   }
+ 
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  // A Tuffite Explorer is an ordinary inner WebContents, but its renderer is a
++  // fault-containment boundary. Use the stable id supplied at WebContents
++  // creation for every navigation, including renderer-initiated navigations
++  // and redirects, so it never falls back into the app renderer.
++  if (std::optional<int64_t> instance_id =
++          tuffite::GetExplorerIsolationId(
++              WebContents::FromRenderFrameHost(
++                  frame_tree_node->current_frame_host()))) {
++    return EmbedderIsolationInfo::CreateForUniqueInstance(*instance_id);
++  }
++#endif
++
+   // A privileged WebContents (see //chrome's PrivilegedWebContents) marks every
+   // frame it hosts as privileged, keyed on its constant feature id. Derive this
+   // from the WebContents' immutable creation-time marker (reached via the
+@@ -4631,7 +4651,14 @@ UrlInfo NavigationRequest::GetUrlInfo() {
+   // Child frames (including fenced frames) should always use the
+   // same StoragePartition as their parent.
+   RenderFrameHostImpl* parent = GetParentFrameOrOuterDocument();
+-  if (parent) {
++  if (parent
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++      // An Explorer is a normal inner WebContents whose browser-created
++      // SiteInstance may deliberately own a fixed storage partition. Keep
++      // that partition instead of inheriting the outer delegate frame's one.
++      && !current_instance->IsFixedStoragePartition()
++#endif
++  ) {
+     url_info_init.WithStoragePartitionConfig(parent->GetSiteInstance()
+                                                  ->GetSecurityPrincipal()
+                                                  .GetStoragePartitionConfig());
+diff --git a/content/browser/web_contents/web_contents_impl.cc b/content/browser/web_contents/web_contents_impl.cc
+index 69e4db4790b759935b01441095970b24b8a8d70b..aebebdb3879ace90db266e1e785c1fc031ed3139 100644
+--- a/content/browser/web_contents/web_contents_impl.cc
++++ b/content/browser/web_contents/web_contents_impl.cc
+@@ -286,6 +286,10 @@
+ #include "content/browser/ios/nfc_host.h"
+ #endif
+ 
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++// TUFFITE_END
++
+ namespace content {
+ 
+ namespace {
+@@ -1035,6 +1039,23 @@ void WebContentsImpl::WebContentsTreeNode::AttachInnerWebContents(
+   current_web_contents_->InnerWebContentsAttached(inner_web_contents_impl);
+ }
+ 
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++std::unique_ptr<WebContents>
++WebContentsImpl::WebContentsTreeNode::ReleaseExplorerOwnership(
++    WebContents* inner_web_contents) {
++  CHECK_EQ(inner_web_contents->GetOuterWebContents(), current_web_contents_);
++  auto found = std::ranges::find_if(
++      owned_inner_web_contents_, [inner_web_contents](const auto& contents) {
++        return contents.get() == inner_web_contents;
++      });
++  CHECK(found != owned_inner_web_contents_.end());
++  auto owned = std::move(*found);
++  owned_inner_web_contents_.erase(found);
++  unowned_inner_web_contents_.push_back(inner_web_contents);
++  return owned;
++}
++#endif
++
+ void WebContentsImpl::WebContentsTreeNode::DetachInnerWebContents(
+     WebContents* inner_web_contents) {
+   OPTIONAL_TRACE_EVENT0(
+@@ -3326,7 +3347,12 @@ void WebContentsImpl::AttachInnerWebContents(
+     RenderFrameHost* render_frame_host,
+     bool is_full_page) {
+   // Not reachable with MPArch based guest view.
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  CHECK(!base::FeatureList::IsEnabled(features::kGuestViewMPArch) ||
++        !static_cast<WebContentsImpl*>(inner_web_contents.get())->IsGuest());
++#else
+   CHECK(!base::FeatureList::IsEnabled(features::kGuestViewMPArch));
++#endif
+   AttachInnerWebContentsImpl(inner_web_contents.release(), render_frame_host,
+                              is_full_page,
+                              /*should_take_ownership=*/true);
+@@ -3480,9 +3506,17 @@ void WebContentsImpl::DetachUnownedInnerWebContents(
+   DetachUnownedInnerWebContents(inner_web_contents);
+ }
+ 
++// TUFFITE_BEGIN
+ void WebContentsImpl::DetachUnownedInnerWebContents(
+-    WebContents* inner_web_contents) {
++    WebContents* inner_web_contents, bool tuffite_transfer) {
++// TUFFITE_END
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  CHECK(tuffite_transfer ||
++        base::FeatureList::IsEnabled(features::kAttachUnownedInnerWebContents));
++#else
++  CHECK(!tuffite_transfer);
+   CHECK(base::FeatureList::IsEnabled(features::kAttachUnownedInnerWebContents));
++#endif
+   CHECK(node_.IsUnownedInnerWebContents(inner_web_contents));
+ 
+   WebContentsImpl* inner_web_contents_impl =
+diff --git a/content/browser/web_contents/web_contents_impl.h b/content/browser/web_contents/web_contents_impl.h
+index 87572971787229aaef046b084baf9207f0404e82..42b97781448d59e4620367c8a59264f0a36c1856 100644
+--- a/content/browser/web_contents/web_contents_impl.h
++++ b/content/browser/web_contents/web_contents_impl.h
+@@ -31,6 +31,12 @@
+ #include "base/trace_event/trace_session_observer.h"
+ #include "base/types/pass_key.h"
+ #include "build/build_config.h"
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++#include "tuffite/components/explorer/browser/content/explorer_isolation.h"
++#endif
++// TUFFITE_END
+ #include "components/download/public/common/download_url_parameters.h"
+ #include "components/input/render_widget_host_input_event_router.h"
+ #include "content/browser/media/audio_stream_monitor.h"
+@@ -1708,6 +1714,10 @@ class CONTENT_EXPORT WebContentsImpl
+       base::RepeatingCallback<void(RenderViewHostImpl*)>;
+ 
+   friend class WebContentsObserver;
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  friend std::unique_ptr<WebContents> tuffite::DetachExplorerWebContents(
++      WebContents* contents);
++#endif
+   friend class WebContents;  // To implement factory methods.
+ 
+   friend class RenderFrameHostImplBeforeUnloadBrowserTest;
+@@ -1842,6 +1852,10 @@ class CONTENT_EXPORT WebContentsImpl
+ 
+     // Detaches `inner_web_contents` from the outer WebContents.
+     void DetachInnerWebContents(WebContents* inner_web_contents);
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++    std::unique_ptr<WebContents> ReleaseExplorerOwnership(
++        WebContents* inner_web_contents);
++#endif
+ 
+     // Returns true if `inner_web_contents` is attached but not owned by this
+     // WebContentsTreeNode. This function will CHECK fail if
+@@ -2056,7 +2070,10 @@ class CONTENT_EXPORT WebContentsImpl
+ 
+   // Internal implementation of DetachUnownedInnerWebContents() that does not
+   // require a pass key. Called by ~WebContentsImpl.
+-  void DetachUnownedInnerWebContents(WebContents* inner_web_contents);
++  // TUFFITE_BEGIN
++  void DetachUnownedInnerWebContents(WebContents* inner_web_contents,
++                                   bool tuffite_transfer = false);
++  // TUFFITE_END
+ 
+   // Called just after an inner web contents is attached.
+   void InnerWebContentsAttached(WebContents* inner_web_contents);
+diff --git a/content/public/renderer/window_features_converter.cc b/content/public/renderer/window_features_converter.cc
+index 57f2cc45abcc69c035ff03beea5518dbab55cca5..b78d18209da57728bf9de0628012228dcafb6798 100644
+--- a/content/public/renderer/window_features_converter.cc
++++ b/content/public/renderer/window_features_converter.cc
+@@ -25,6 +25,9 @@ blink::mojom::WindowFeaturesPtr ConvertWebWindowFeaturesToMojoWindowFeatures(
+   result->has_height = web_window_features.height_set;
+   result->is_popup = web_window_features.is_popup;
+   result->always_on_top = web_window_features.always_on_top;
++  // TUFFITE_BEGIN
++  result->tuffite_window_open = web_window_features.tuffite_window_open;
++  // TUFFITE_END
+   return result;
+ }
+ 
+@@ -41,6 +44,9 @@ blink::WebWindowFeatures ConvertMojoWindowFeaturesToWebWindowFeatures(
+   result.height_set = window_features.has_height;
+   result.is_popup = window_features.is_popup;
+   result.always_on_top = window_features.always_on_top;
++  // TUFFITE_BEGIN
++  result.tuffite_window_open = window_features.tuffite_window_open;
++  // TUFFITE_END
+   return result;
+ }
+ 
+diff --git a/third_party/blink/public/mojom/window_features/window_features.mojom b/third_party/blink/public/mojom/window_features/window_features.mojom
+index e90f46e02ca51e6f5cf7d4922761c9e34897d847..0d17f444ce7307bd1dbd5905046a0d4e039634ab 100644
+--- a/third_party/blink/public/mojom/window_features/window_features.mojom
++++ b/third_party/blink/public/mojom/window_features/window_features.mojom
+@@ -18,4 +18,8 @@ struct WindowFeatures {
+ 
+     bool is_popup = false;
+     bool always_on_top = false;
++
++    // TUFFITE_BEGIN
++    bool tuffite_window_open = false;
++    // TUFFITE_END
+ };
+diff --git a/third_party/blink/public/web/web_window_features.h b/third_party/blink/public/web/web_window_features.h
+index 1208199428a2de729650c82e988ab67abeb0e786..a67448c30b849d071c1dc7f775f71f8b5ac26258 100644
+--- a/third_party/blink/public/web/web_window_features.h
++++ b/third_party/blink/public/web/web_window_features.h
+@@ -47,6 +47,11 @@ struct WebWindowFeatures {
+ 
+   bool is_popup = false;
+   bool always_on_top = false;
++  // TUFFITE_BEGIN
++  // Carries the DOM Window.open() source separately from disposition so the
++  // Explorer framework does not have to guess from tab/window policy.
++  bool tuffite_window_open = false;
++  // TUFFITE_END
+ 
+   // The members above this line are transferred through mojo
+   // in the form of |struct WindowFeatures| defined in window_features.mojom,
+diff --git a/third_party/blink/renderer/bindings/BUILD.gn b/third_party/blink/renderer/bindings/BUILD.gn
+index 91b34f022ba515026415dcc4f86526a420f01bfa..f39d41fb14867cffcba5c11562f34fb88d687e95 100644
+--- a/third_party/blink/renderer/bindings/BUILD.gn
++++ b/third_party/blink/renderer/bindings/BUILD.gn
+@@ -14,6 +14,10 @@ import("//third_party/blink/renderer/bindings/idl_in_extensions_webview.gni")
+ import("//third_party/blink/renderer/bindings/idl_in_modules.gni")
+ import("//third_party/blink/renderer/bindings/scripts/web_idl/web_idl.gni")
+ 
++# TUFFITE_BEGIN
++import("//tuffite/components/explorer/renderer/blink/tuffite_in_chromium.gni")
++# TUFFITE_END
++
+ visibility = [ "//third_party/blink/renderer/*" ]
+ 
+ bindings_gen_dir = get_path_info(".", "gen_dir")
+@@ -49,6 +53,9 @@ collect_idl_files("web_idl_in_core") {
+   component = "core"
+ 
+   inputs = static_idl_files_in_core
++  if (tuffite_in_chromium) {
++    deps = tuffite_explorer_web_idl_deps
++  }
+ 
+   output = "${bindings_gen_dir}/web_idl_in_core.pickle"
+ }
+diff --git a/third_party/blink/renderer/bindings/generated_in_core.gni b/third_party/blink/renderer/bindings/generated_in_core.gni
+index ae0db0d7e3a428ad8170e541c5e1bb07132d1824..370780e409786abac9fdd9841ad217028c81fa5d 100644
+--- a/third_party/blink/renderer/bindings/generated_in_core.gni
++++ b/third_party/blink/renderer/bindings/generated_in_core.gni
+@@ -3,6 +3,9 @@
+ # found in the LICENSE file.
+ 
+ # Generated sources for production
++# TUFFITE_BEGIN
++import("//tuffite/components/explorer/renderer/blink/tuffite_in_chromium.gni")
++# TUFFITE_END
+ 
+ generated_async_iterator_sources_in_core = [
+   "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_async_iterator_readable_stream.cc",
+@@ -1936,6 +1939,13 @@ generated_interface_sources_in_core = [
+   "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_xslt_processor.h",
+ ]
+ 
++if (tuffite_in_chromium) {
++  generated_interface_sources_in_core +=
++      tuffite_explorer_generated_interface_sources
++  generated_dictionary_sources_in_core +=
++      tuffite_explorer_generated_dictionary_sources
++}
++
+ generated_namespace_sources_in_core = [
+   "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_css.cc",
+   "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_css.h",
+diff --git a/third_party/blink/renderer/bindings/idl_in_core.gni b/third_party/blink/renderer/bindings/idl_in_core.gni
+index 38652618bb879b74f2bb16b498fde552f93ec062..2d8667ca014cb83835685a4eab2ccdb66ba50c33 100644
+--- a/third_party/blink/renderer/bindings/idl_in_core.gni
++++ b/third_party/blink/renderer/bindings/idl_in_core.gni
+@@ -2,6 +2,10 @@
+ # Use of this source code is governed by a BSD-style license that can be
+ # found in the LICENSE file.
+ 
++# TUFFITE_BEGIN
++import("//tuffite/components/explorer/renderer/blink/tuffite_in_chromium.gni")
++# TUFFITE_END
++
+ # Statically-defined (not build-time-generated) IDL files in 'core' component
+ # for production.
+ static_idl_files_in_core = [
+@@ -865,6 +869,10 @@ static_idl_files_in_core = [
+   "//third_party/blink/renderer/core/xmlhttprequest/xml_http_request_upload.idl",
+ ]
+ 
++if (tuffite_in_chromium) {
++  static_idl_files_in_core += tuffite_explorer_static_idl_files
++}
++
+ # Statically-defined (not build-time-generated) IDL files in 'core' component.
+ # These IDL definitions are used only for testing.
+ static_idl_files_in_core_for_testing = [
+diff --git a/third_party/blink/renderer/core/BUILD.gn b/third_party/blink/renderer/core/BUILD.gn
+index 34225593922a60b3901847815fbc4a22ca8326e2..198be71c7c70744bda4d25553a75f43e9b99eae5 100644
+--- a/third_party/blink/renderer/core/BUILD.gn
++++ b/third_party/blink/renderer/core/BUILD.gn
+@@ -94,6 +94,10 @@ import("//third_party/blink/renderer/platform/blink_fuzzer_test.gni")
+ import("//third_party/blink/renderer/platform/platform_generated.gni")
+ import("//third_party/protobuf/proto_library.gni")
+ 
++# TUFFITE_BEGIN
++import("//tuffite/components/explorer/renderer/blink/tuffite_in_chromium.gni")
++# TUFFITE_END
++
+ if (is_ios) {
+   import("//build/config/ios/bundle_data_from_filelist.gni")
+ }
+@@ -265,6 +269,10 @@ component("core") {
+     "core_initializer.h",
+   ]
+ 
++  if (tuffite_in_chromium) {
++    sources += tuffite_explorer_sources
++  }
++
+   sources += blink_core_sources_bindings
+ 
+   # If you create a new subdirectory 'foo', make 'foo/build.gni' to define
+@@ -445,6 +453,13 @@ component("core") {
+     "//ui/gfx/geometry:geometry_skia",
+     "//ui/strings",
+   ]
++  # TUFFITE_BEGIN
++  deps += tuffite_blink_buildflag_deps
++  # TUFFITE_END
++
++  if (tuffite_in_chromium) {
++    deps += tuffite_explorer_deps
++  }
+ 
+   if (is_mac) {
+     deps += [ "//ui/base/mojom" ]
+@@ -517,6 +532,13 @@ blink_core_sources("core_hot") {
+     "//third_party/blink/renderer/core/exported",
+     "//third_party/blink/renderer/core/probe",
+   ]
++  # TUFFITE_BEGIN
++  deps += tuffite_blink_buildflag_deps
++  # TUFFITE_END
++
++  if (tuffite_in_chromium) {
++    deps += tuffite_explorer_hot_deps
++  }
+ 
+   if (enable_vectorized_html_scanning) {
+     deps += [ "//third_party/highway:libhwy" ]
+diff --git a/third_party/blink/renderer/core/dom/document.cc b/third_party/blink/renderer/core/dom/document.cc
+index e3016741d98585c2b594595939c6b2f6c1a53dd4..21106d6d4c8512f7f3e73bfae80c46f9f2b63ee3 100644
+--- a/third_party/blink/renderer/core/dom/document.cc
++++ b/third_party/blink/renderer/core/dom/document.cc
+@@ -432,6 +432,14 @@
+ #include "third_party/blink/renderer/platform/wtf/text/utf16.h"
+ #include "third_party/perfetto/include/perfetto/tracing/track_event_args.h"
+ 
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++// TUFFITE_END
++
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++#include "tuffite/components/explorer/renderer/blink/html_explorer_element.h"
++#endif
++
+ namespace blink {
+ 
+ namespace {
+@@ -1374,8 +1382,16 @@ Element* Document::CreateRawElement(const QualifiedName& qname,
+                                     CreateElementFlags flags) {
+   Element* element = nullptr;
+   if (qname.NamespaceURI() == html_names::xhtmlNamespaceURI) {
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++    if (RuntimeEnabledFeatures::TuffiteExplorerEnabled() &&
++        HTMLExplorerElement::IsEnabled(*this) &&
++        qname.LocalName() == AtomicString("explorer")) {
++      element = MakeGarbageCollected<HTMLExplorerElement>(*this);
++    }
++#endif
+     // https://html.spec.whatwg.org/C/#elements-in-the-dom:element-interface
+-    element = HTMLElementFactory::Create(qname.LocalName(), *this, flags);
++    if (!element)
++      element = HTMLElementFactory::Create(qname.LocalName(), *this, flags);
+     if (!element) {
+       // 6. If name is a valid custom element name, then return
+       // HTMLElement.
+@@ -1431,6 +1447,13 @@ Element* Document::CreateElementForBinding(const AtomicString& name,
+           QualifiedName(g_null_atom, local_name, html_names::xhtmlNamespaceURI),
+           CreateElementFlags::ByCreateElement());
+     }
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++    if (RuntimeEnabledFeatures::TuffiteExplorerEnabled() &&
++        HTMLExplorerElement::IsEnabled(*this) &&
++        local_name == AtomicString("explorer")) {
++      return MakeGarbageCollected<HTMLExplorerElement>(*this);
++    }
++#endif
+     if (auto* element = HTMLElementFactory::Create(
+             local_name, *this, CreateElementFlags::ByCreateElement())) {
+       return element;
+diff --git a/third_party/blink/renderer/core/dom/events/event_dispatcher.cc b/third_party/blink/renderer/core/dom/events/event_dispatcher.cc
+index 9984b934aaf6d2927b044b89818834edc16c4c6e..ae666cee1ad104ddf4ab6944c37713540a6e8cae 100644
+--- a/third_party/blink/renderer/core/dom/events/event_dispatcher.cc
++++ b/third_party/blink/renderer/core/dom/events/event_dispatcher.cc
+@@ -67,6 +67,13 @@
+ #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
+ #include "third_party/blink/renderer/platform/keyboard_codes.h"
+ #include "ui/events/keycodes/dom/keycode_converter.h"
++
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++#include "tuffite/components/explorer/renderer/blink/explorer_event_propagation_monitor.h"
++#endif
++// TUFFITE_END
+ namespace blink {
+ 
+ DispatchEventResult EventDispatcher::DispatchEvent(Node& node, Event& event) {
+@@ -389,6 +396,11 @@ inline void EventDispatcher::DispatchEventPostProcess(
+ 
+   // 10. Unset event's dispatch flag, stop propagation flag, and stop immediate
+   // propagation flag.
++// TUFFITE_BEGIN
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  TuffiteRecordEventPropagationState(*event_);
++#endif
++// TUFFITE_END
+   event_->SetStopPropagation(false);
+   event_->SetStopImmediatePropagation(false);
+ 
+diff --git a/third_party/blink/renderer/core/frame/local_dom_window.cc b/third_party/blink/renderer/core/frame/local_dom_window.cc
+index 74cc1c0b517dc0472b0039e1b3c37f6c1c8672c9..4d8ded2b89c5d50e016d91971836229c4b80cc02 100644
+--- a/third_party/blink/renderer/core/frame/local_dom_window.cc
++++ b/third_party/blink/renderer/core/frame/local_dom_window.cc
+@@ -2491,6 +2491,9 @@ DOMWindow* LocalDOMWindow::open(v8::Isolate* isolate,
+ 
+   WebWindowFeatures window_features =
+       GetWindowFeaturesFromString(features, entered_window);
++  // TUFFITE_BEGIN
++  window_features.tuffite_window_open = true;
++  // TUFFITE_END
+ 
+   // In fenced frames, we should always use `noopener`.
+   if (GetFrame()->IsInFencedFrameTree()) {
+diff --git a/third_party/blink/renderer/platform/runtime_enabled_features.json5 b/third_party/blink/renderer/platform/runtime_enabled_features.json5
+index 1913feb02ae8f97ca61970c713c9ac53df3edecb..5c355a105c27eaf89889968336e5a981e5da7494 100644
+--- a/third_party/blink/renderer/platform/runtime_enabled_features.json5
++++ b/third_party/blink/renderer/platform/runtime_enabled_features.json5
+@@ -958,6 +958,14 @@
+       // wait until the PEPC is validated and also to use JS-initiated clicks.
+       name: "BypassPepcSecurityForTesting",
+     },
++    // TUFFITE_BEGIN
++    {
++      // Enables Tuffite's <explorer> element when its browser-process support
++      // is also compiled with BUILDFLAG(TUFFITE_IN_CHROMIUM).
++      name: "TuffiteExplorer",
++      base_feature: "none",
++    },
++    // TUFFITE_END
+     {
+       // Enables RFC 7234-compliant Cache-Control header parsing, removing RFC
+       // 2616 separators that are not valid in RFC 7234.

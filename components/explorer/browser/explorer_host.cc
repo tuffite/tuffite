@@ -1,0 +1,1382 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE.chromium file.
+
+#include "tuffite/components/explorer/browser/explorer_host.h"
+
+#include <algorithm>
+#include <atomic>
+#include <utility>
+
+#include "base/base64.h"
+#include "base/command_line.h"
+#include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/json/json_reader.h"
+#include "base/json/json_writer.h"
+#include "base/logging.h"
+#include "base/memory/raw_ref.h"
+#include "base/no_destructor.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/task/thread_pool.h"
+#include "base/unguessable_token.h"
+#include "components/download/public/common/download_source.h"
+#include "components/viz/common/frame_sinks/copy_output_result.h"
+#include "content/public/browser/browser_context.h"
+#include "content/public/browser/child_process_security_policy.h"
+#include "content/public/browser/download_item_utils.h"
+#include "content/public/browser/download_manager.h"
+#include "content/public/browser/file_select_listener.h"
+#include "content/public/browser/global_routing_id.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
+#include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/page_navigator.h"
+#include "content/public/browser/reload_type.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/render_process_host.h"
+#include "content/public/browser/render_widget_host_view.h"
+#include "content/public/browser/security_principal.h"
+#include "content/public/browser/site_instance.h"
+#include "content/public/browser/storage_partition.h"
+#include "content/public/browser/storage_partition_config.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/common/content_switches.h"
+#include "content/public/common/isolated_world_ids.h"
+#include "content/public/common/javascript_dialog_type.h"
+#include "net/base/net_errors.h"
+#include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
+#include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
+#include "tuffite/components/explorer/browser/content/explorer_isolation.h"
+#include "tuffite/components/explorer/browser/explorer_browser_support.h"
+#include "tuffite/components/explorer/browser/explorer_partition.h"
+#include "tuffite/components/explorer/browser/explorer_partition_snapshot.h"
+#include "tuffite/components/explorer/browser/explorer_policy_provider.h"
+#include "tuffite/components/explorer/browser/explorer_router.h"
+#include "tuffite/components/explorer/browser/explorer_surface_host.h"
+#include "tuffite/components/explorer/browser/explorer_transfer.h"
+#include "ui/base/page_transition_types.h"
+#include "ui/base/window_open_disposition.h"
+#include "ui/gfx/codec/png_codec.h"
+#include "ui/gfx/geometry/rect.h"
+
+namespace tuffite {
+namespace {
+
+constexpr size_t kMaxScriptBytes = 1024 * 1024;
+constexpr size_t kMaxMessageBytes = 1024 * 1024;
+constexpr size_t kMaxPendingBubbleRequests = 256;
+constexpr int32_t kExplorerIsolatedWorldId =
+    content::ISOLATED_WORLD_ID_CONTENT_END;
+constexpr char kExplorerPartitionDomain[] = "tuffite-explorer";
+
+int64_t NextExplorerIsolationId() {
+  // Keep Explorer ids in a range navigation ids will not realistically reach
+  // while still satisfying EmbedderIsolationInfo's non-negative contract.
+  static std::atomic<int64_t> next_id{int64_t{1} << 62};
+  return next_id.fetch_add(1, std::memory_order_relaxed);
+}
+
+}  // namespace
+
+class ExplorerDialogManager final : public content::JavaScriptDialogManager {
+ public:
+  explicit ExplorerDialogManager(ExplorerHost& host) : host_(host) {}
+  ~ExplorerDialogManager() override = default;
+
+  void RunJavaScriptDialog(content::WebContents* web_contents,
+                           content::RenderFrameHost* render_frame_host,
+                           content::JavaScriptDialogType dialog_type,
+                           const std::u16string& message_text,
+                           const std::u16string& default_prompt_text,
+                           DialogClosedCallback callback,
+                           bool* did_suppress_message) override {
+    const char* kind = "alert";
+    if (dialog_type == content::JAVASCRIPT_DIALOG_TYPE_CONFIRM) {
+      kind = "confirm";
+    } else if (dialog_type == content::JAVASCRIPT_DIALOG_TYPE_PROMPT) {
+      kind = "prompt";
+    }
+    host_->RequestDialog(kind, message_text, default_prompt_text, false,
+                         std::move(callback), did_suppress_message);
+  }
+
+  void RunBeforeUnloadDialog(content::WebContents* web_contents,
+                             content::RenderFrameHost* render_frame_host,
+                             bool is_reload,
+                             DialogClosedCallback callback) override {
+    host_->RequestDialog("beforeunload", std::u16string(), std::u16string(),
+                         is_reload, std::move(callback), nullptr);
+  }
+
+  bool HandleJavaScriptDialog(content::WebContents* web_contents,
+                              bool accept,
+                              const std::u16string* prompt_override) override {
+    return Respond(state_.pending_request_id(), accept,
+                   prompt_override ? *prompt_override : std::u16string());
+  }
+
+  void CancelDialogs(content::WebContents* web_contents,
+                     bool reset_state) override {
+    const uint64_t request_id = state_.pending_request_id();
+    if (request_id) {
+      ExplorerSurfaceHost::ForgetDialog(
+          host_->render_frame_host().GetBrowserContext(), request_id);
+    }
+    state_.Cancel();
+  }
+
+  bool Respond(uint64_t request_id,
+               bool accept,
+               const std::u16string& prompt_text) {
+    if (!state_.has_pending_dialog() ||
+        request_id != state_.pending_request_id()) {
+      return false;
+    }
+    ExplorerSurfaceHost::ForgetDialog(
+        host_->render_frame_host().GetBrowserContext(), request_id);
+    return state_.Respond(request_id, accept, prompt_text);
+  }
+
+  uint64_t Begin(DialogClosedCallback callback) {
+    const uint64_t previous_request_id = state_.pending_request_id();
+    if (previous_request_id) {
+      ExplorerSurfaceHost::ForgetDialog(
+          host_->render_frame_host().GetBrowserContext(), previous_request_id);
+    }
+    // Begin dismisses an older callback before installing the new one. Its
+    // surface bookkeeping has already been removed above.
+    return state_.Begin(std::move(callback));
+  }
+
+ private:
+  raw_ref<ExplorerHost> host_;
+  ExplorerDialogState state_;
+};
+
+// static
+void ExplorerHost::Bind(content::RenderFrameHost* render_frame_host,
+                        mojo::PendingReceiver<mojom::ExplorerHost> receiver,
+                        ExplorerPolicyProvider* policy) {
+  if (!render_frame_host || !policy ||
+      !policy->IsOwnerAllowed(*render_frame_host)) {
+    return;
+  }
+  new ExplorerHost(*render_frame_host, std::move(receiver), *policy);
+}
+
+ExplorerHost::ExplorerHost(content::RenderFrameHost& render_frame_host,
+                           mojo::PendingReceiver<mojom::ExplorerHost> receiver,
+                           ExplorerPolicyProvider& policy)
+    : DocumentService(render_frame_host, std::move(receiver)),
+      policy_provider_(policy) {
+  ExplorerRouter::Get(render_frame_host.GetBrowserContext()).AddHost(*this);
+}
+
+ExplorerHost::~ExplorerHost() {
+  if (attaching_transfer_) {
+    attaching_transfer_->SetState("pending");
+  }
+  ExplorerRouter::Get(render_frame_host().GetBrowserContext())
+      .RemoveHost(*this);
+  if (dialog_manager_) {
+    dialog_manager_->CancelDialogs(nullptr, true);
+  }
+  if (content::WebContents* contents = WebContentsObserver::web_contents();
+      contents && contents->GetDelegate() == this) {
+    contents->SetDelegate(nullptr);
+  }
+}
+
+content::RenderFrameHost* ExplorerHost::ResolveDirectChild(
+    const blink::LocalFrameToken& frame_token) const {
+  auto* child = content::RenderFrameHost::FromFrameToken(
+      content::GlobalRenderFrameHostToken(
+          render_frame_host().GetProcess()->GetDeprecatedID(), frame_token));
+  return child && child->GetParent() == &render_frame_host() ? child : nullptr;
+}
+
+bool ExplorerHost::ResolvePolicy(const std::string& partition,
+                                 ExplorerPolicy* policy) const {
+  return policy_provider_->Resolve(render_frame_host(), partition, policy);
+}
+
+bool ExplorerHost::CanNavigateTo(const GURL& url) const {
+  return policy_provider_->NavigationAllowed(render_frame_host(), url) &&
+         (url.SchemeIsFile() ||
+          content::ChildProcessSecurityPolicy::GetInstance()->CanRequestURL(
+              render_frame_host().GetProcess()->GetDeprecatedID(), url));
+}
+
+void ExplorerHost::Detach(
+    mojo::PendingRemote<mojom::ExplorerTransferClient> client,
+    DetachCallback callback) {
+  auto* contents = WebContentsObserver::web_contents();
+  if (!render_frame_host().IsActive() || !contents ||
+      !contents->GetOuterWebContents() || !policy_ || preparing_attachment_ ||
+      attaching_transfer_) {
+    std::move(callback).Run("", {}, "InvalidStateError");
+    return;
+  }
+  if (dialog_manager_) {
+    dialog_manager_->CancelDialogs(nullptr, true);
+  }
+  dialog_manager_.reset();
+  pending_open_bubbles_.clear();
+  pending_dialog_bubbles_.clear();
+  Observe(nullptr);
+  contents->SetDelegate(nullptr);
+  client_.reset();
+  auto owned = DetachExplorerWebContents(contents);
+  auto& record =
+      ExplorerTransferStore::GetOrCreateForCurrentDocument(&render_frame_host())
+          ->Add(std::move(owned), *policy_, document_id_, std::move(client));
+  policy_.reset();
+  document_id_.clear();
+  std::move(callback).Run(record.token(), record.BindControl(), "");
+}
+
+void ExplorerHost::Attach(const std::string& token,
+                          mojom::ExplorerCreateParamsPtr params,
+                          mojo::PendingRemote<mojom::ExplorerClient> client,
+                          AttachCallback callback) {
+  auto& router = ExplorerRouter::Get(render_frame_host().GetBrowserContext());
+  auto* record = router.FindTransfer(token);
+  if (!render_frame_host().IsActive() || !record || !record->pending() ||
+      !params || WebContentsObserver::web_contents() || client_.is_bound() ||
+      pending_inner_web_contents_ || attaching_transfer_) {
+    std::move(callback).Run("InvalidStateError");
+    return;
+  }
+  auto* child = ResolveDirectChild(params->frame_to_replace);
+  if (!child) {
+    std::move(callback).Run("InvalidStateError");
+    return;
+  }
+  ExplorerPolicy policy;
+  if (params->partition == "shared" ||
+      !ResolvePolicy(params->partition.empty() ? "shared" : params->partition,
+                     &policy)) {
+    std::move(callback).Run("SecurityError");
+    return;
+  }
+  if (params->navigation != "emit" && params->navigation != "allow") {
+    std::move(callback).Run("SecurityError");
+    return;
+  }
+  if (params->dialogs != "emit" && params->dialogs != "suppress") {
+    std::move(callback).Run("SecurityError");
+    return;
+  }
+  policy.navigation = params->navigation == "emit"
+                          ? ExplorerNavigationPolicy::kEmit
+                          : ExplorerNavigationPolicy::kAllow;
+  policy.dialogs = params->dialogs == "emit" ? ExplorerDialogPolicy::kEmit
+                                             : ExplorerDialogPolicy::kSuppress;
+  // Exact policy equality keeps existing nested-tree grants valid.
+  // A page cannot use a transfer to elevate capabilities or change partitions.
+  if (policy != record->policy() ||
+      record->owner_origin() != render_frame_host().GetLastCommittedOrigin()) {
+    LOG(ERROR) << "Explorer transfer policy mismatch: navigation="
+               << static_cast<int>(policy.navigation) << "/"
+               << static_cast<int>(record->policy().navigation)
+               << " dialogs=" << static_cast<int>(policy.dialogs) << "/"
+               << static_cast<int>(record->policy().dialogs)
+               << " execute=" << policy.allow_execute_javascript << "/"
+               << record->policy().allow_execute_javascript
+               << " origins=" << policy.execute_javascript_origins.size() << "/"
+               << record->policy().execute_javascript_origins.size()
+               << " partition=" << policy.partition << "/"
+               << record->policy().partition << " owner="
+               << (record->owner_origin() ==
+                   render_frame_host().GetLastCommittedOrigin());
+    std::move(callback).Run("SecurityError");
+    return;
+  }
+  const auto requested = ExplorerPartition::Parse(policy.partition);
+  auto partition = render_frame_host()
+                       .GetSiteInstance()
+                       ->GetSecurityPrincipal()
+                       .GetStoragePartitionConfig();
+  if (!requested || !requested->shared()) {
+    if (!requested) {
+      std::move(callback).Run("SecurityError");
+      return;
+    }
+    partition = content::StoragePartitionConfig::Create(
+        render_frame_host().GetBrowserContext(), kExplorerPartitionDomain,
+        requested->name, requested->in_memory());
+  }
+  if (partition != record->contents()
+                       ->GetPrimaryMainFrame()
+                       ->GetSiteInstance()
+                       ->GetSecurityPrincipal()
+                       .GetStoragePartitionConfig()) {
+    std::move(callback).Run("SecurityError");
+    return;
+  }
+  auto* outer = content::WebContents::FromRenderFrameHost(&render_frame_host());
+  for (auto* ancestor = outer; ancestor;
+       ancestor = ancestor->GetOuterWebContents()) {
+    if (ancestor == record->contents()) {
+      std::move(callback).Run("SecurityError");
+      return;
+    }
+  }
+  attaching_transfer_ = record->GetWeakPtr();
+  record->SetState("attaching");
+  client_.Bind(std::move(client));
+  child->PrepareForInnerWebContentsAttach(
+      base::BindOnce(&ExplorerHost::AttachTransferred,
+                     weak_factory_.GetWeakPtr(), std::move(callback)));
+}
+
+void ExplorerHost::AttachTransferred(AttachCallback callback,
+                                     content::RenderFrameHost* frame) {
+  if (!attaching_transfer_ || !render_frame_host().IsActive() || !frame ||
+      !frame->IsActive() || frame->GetParent() != &render_frame_host()) {
+    if (attaching_transfer_) {
+      attaching_transfer_->SetState("pending");
+    }
+    attaching_transfer_.reset();
+    client_.reset();
+    std::move(callback).Run("AbortError");
+    return;
+  }
+  auto record = attaching_transfer_;
+  auto owned = record->TakeContents();
+  policy_ = record->policy();
+  document_id_ = record->document_id();
+  primary_navigation_error_.reset();
+  const auto& partition = owned->GetPrimaryMainFrame()
+                              ->GetSiteInstance()
+                              ->GetSecurityPrincipal()
+                              .GetStoragePartitionConfig();
+  created_partition_domain_ = partition.partition_domain();
+  created_partition_name_ = partition.partition_name();
+  created_partition_in_memory_ = partition.in_memory();
+  created_partition_is_default_ = partition.is_default();
+  owner_renderer_process_id_ =
+      render_frame_host().GetProcess()->GetDeprecatedID();
+  Observe(owned.get());
+  owned->SetDelegate(this);
+  dialog_manager_ = std::make_unique<ExplorerDialogManager>(*this);
+  auto* outer = content::WebContents::FromRenderFrameHost(&render_frame_host());
+  outer->AttachInnerWebContents(std::move(owned), frame, false);
+  WebContentsObserver::web_contents()->UpdateWebContentsVisibility(
+      outer->GetVisibility());
+  attaching_transfer_.reset();
+  record->SetState("transferred");
+  record->Remove();
+  std::move(callback).Run("");
+}
+
+void ExplorerHost::Create(mojom::ExplorerCreateParamsPtr params,
+                          mojo::PendingRemote<mojom::ExplorerClient> client,
+                          CreateCallback callback) {
+  if (WebContentsObserver::web_contents() || client_.is_bound() || !params) {
+    std::move(callback).Run(false);
+    return;
+  }
+  ExplorerPolicy policy;
+  const auto navigation = params->navigation == "emit"
+                              ? std::optional(ExplorerNavigationPolicy::kEmit)
+                          : params->navigation == "allow"
+                              ? std::optional(ExplorerNavigationPolicy::kAllow)
+                              : std::nullopt;
+  const auto dialogs = params->dialogs == "emit"
+                           ? std::optional(ExplorerDialogPolicy::kEmit)
+                       : params->dialogs == "suppress"
+                           ? std::optional(ExplorerDialogPolicy::kSuppress)
+                           : std::nullopt;
+  // The empty public attribute is the only spelling for sharing the exact
+  // parent partition. `shared` remains a manifest capability kind and an
+  // internal policy label, avoiding an attribute that looks like a named
+  // partition but is actually contextual inheritance.
+  if (params->partition == "shared" ||
+      !ResolvePolicy(params->partition.empty() ? "shared" : params->partition,
+                     &policy) ||
+      !navigation || !dialogs) {
+    std::move(callback).Run(false);
+    return;
+  }
+  policy.navigation = *navigation;
+  policy.dialogs = *dialogs;
+  content::RenderFrameHost* child =
+      ResolveDirectChild(params->frame_to_replace);
+  GURL url(params->initial_url.empty() ? "about:blank" : params->initial_url);
+  policy_ = std::move(policy);
+  if (!child || !CanNavigateTo(url)) {
+    policy_.reset();
+    std::move(callback).Run(false);
+    return;
+  }
+
+  content::BrowserContext* browser_context =
+      render_frame_host().GetBrowserContext();
+  const content::StoragePartitionConfig inherited_partition_config =
+      render_frame_host()
+          .GetSiteInstance()
+          ->GetSecurityPrincipal()
+          .GetStoragePartitionConfig();
+  const auto requested_partition = ExplorerPartition::Parse(policy_->partition);
+  CHECK(requested_partition);
+  content::StoragePartitionConfig partition_config = inherited_partition_config;
+  if (!requested_partition->shared()) {
+    partition_config = content::StoragePartitionConfig::Create(
+        browser_context, kExplorerPartitionDomain, requested_partition->name,
+        requested_partition->in_memory());
+  }
+  // A single renderer process cannot belong to two StoragePartitions. This
+  // mode is only intended for constrained smoke/debug environments, but a
+  // page can still request an isolated Explorer partition there. Reject that
+  // request before WebContents creation instead of reaching Chromium's
+  // InSameStoragePartition CHECK and terminating the whole application. A
+  // nested Explorer that explicitly selects its parent's partition remains
+  // valid because the effective configs compare equal.
+  if (partition_config != inherited_partition_config &&
+      base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kSingleProcess)) {
+    LOG(ERROR) << "Independent Explorer partitions are unavailable in "
+                  "single-process mode";
+    policy_.reset();
+    std::move(callback).Run(false);
+    return;
+  }
+  // about:blank does not assign SiteInfo, so a fixed SiteInstance created for
+  // it would not retain the requested StoragePartitionConfig. Seed the
+  // SiteInstance from the trusted owner URL; the actual navigation below is
+  // still to the requested URL and remains fixed to this partition.
+  const GURL site_instance_url =
+      !partition_config.is_default() && url.IsAboutBlank()
+          ? render_frame_host().GetLastCommittedURL()
+          : url;
+  const int64_t explorer_isolation_id = NextExplorerIsolationId();
+  scoped_refptr<content::SiteInstance> site_instance =
+      CreateExplorerSiteInstance(browser_context, site_instance_url,
+                                 partition_config, explorer_isolation_id);
+  content::WebContents::CreateParams create_params(browser_context,
+                                                   site_instance);
+  owner_renderer_process_id_ =
+      render_frame_host().GetProcess()->GetDeprecatedID();
+  pending_inner_web_contents_ = content::WebContents::Create(create_params);
+  pending_inner_web_contents_->GetMutableRendererPrefs()->accept_languages =
+      content::WebContents::FromRenderFrameHost(&render_frame_host())
+          ->GetMutableRendererPrefs()
+          ->accept_languages;
+  pending_inner_web_contents_->SyncRendererPrefs();
+  SetExplorerIsolationId(pending_inner_web_contents_.get(),
+                         explorer_isolation_id);
+  const content::StoragePartitionConfig& created_partition =
+      pending_inner_web_contents_->GetPrimaryMainFrame()
+          ->GetSiteInstance()
+          ->GetSecurityPrincipal()
+          .GetStoragePartitionConfig();
+  created_partition_domain_ = created_partition.partition_domain();
+  created_partition_name_ = created_partition.partition_name();
+  created_partition_in_memory_ = created_partition.in_memory();
+  created_partition_is_default_ = created_partition.is_default();
+  if (requested_partition->shared()) {
+    CHECK_EQ(created_partition, partition_config);
+  } else {
+    CHECK_EQ(created_partition.partition_domain(), kExplorerPartitionDomain);
+    CHECK_EQ(created_partition.partition_name(), requested_partition->name);
+    CHECK_EQ(created_partition.in_memory(), requested_partition->in_memory());
+    CHECK(!created_partition.is_default());
+  }
+  if (content::WebContents* outer =
+          content::WebContents::FromRenderFrameHost(&render_frame_host());
+      outer && !outer->GetSize().IsEmpty()) {
+    pending_inner_web_contents_->Resize(gfx::Rect(outer->GetSize()));
+  }
+  ExplorerSurfaceData::SetExplorerPolicy(pending_inner_web_contents_.get(),
+                                         *policy_);
+  ExplorerSurfaceData::SetExplorerContextMenuEnabled(
+      pending_inner_web_contents_.get(), params->context_menu_enabled);
+  pending_frame_token_ = params->frame_to_replace;
+  pending_create_callback_ = std::move(callback);
+  client_.Bind(std::move(client));
+  Observe(pending_inner_web_contents_.get());
+  pending_inner_web_contents_->SetDelegate(this);
+  dialog_manager_ = std::make_unique<ExplorerDialogManager>(*this);
+  if (policy_->inherit_partition_storage) {
+    partition_snapshot_pending_ = true;
+    SnapshotExplorerPartition(
+        browser_context->GetStoragePartition(inherited_partition_config),
+        browser_context->GetStoragePartition(partition_config),
+        base::BindOnce(&ExplorerHost::OnPartitionSnapshotComplete,
+                       weak_factory_.GetWeakPtr(), url));
+    return;
+  }
+  LoadURL(url);
+}
+
+void ExplorerHost::OnPartitionSnapshotComplete(GURL initial_url, bool success) {
+  partition_snapshot_pending_ = false;
+  if (!success || !pending_inner_web_contents_ || !pending_create_callback_) {
+    Observe(nullptr);
+    pending_inner_web_contents_.reset();
+    pending_frame_token_.reset();
+    client_.reset();
+    if (pending_create_callback_) {
+      std::move(pending_create_callback_).Run(false);
+    }
+    return;
+  }
+  LoadURL(initial_url);
+}
+
+void ExplorerHost::AttachPrepared(
+    std::unique_ptr<content::WebContents> inner_web_contents,
+    CreateCallback callback,
+    content::RenderFrameHost* prepared_frame) {
+  preparing_attachment_ = false;
+  if (!prepared_frame || prepared_frame->GetParent() != &render_frame_host()) {
+    Observe(nullptr);
+    client_.reset();
+    std::move(callback).Run(false);
+    return;
+  }
+  auto* outer = content::WebContents::FromRenderFrameHost(&render_frame_host());
+  outer->AttachInnerWebContents(std::move(inner_web_contents), prepared_frame,
+                                false);
+  if (content::WebContents* attached = WebContentsObserver::web_contents()) {
+    attached->UpdateWebContentsVisibility(outer->GetVisibility());
+  }
+  std::move(callback).Run(true);
+  NotifyLoadComplete();
+}
+
+void ExplorerHost::BeginAttachAfterInitialNavigation() {
+  if (!pending_inner_web_contents_ || !pending_frame_token_ ||
+      !pending_create_callback_ || preparing_attachment_) {
+    return;
+  }
+  content::RenderFrameHost* child = ResolveDirectChild(*pending_frame_token_);
+  if (!child) {
+    Observe(nullptr);
+    pending_inner_web_contents_.reset();
+    pending_frame_token_.reset();
+    client_.reset();
+    std::move(pending_create_callback_).Run(false);
+    return;
+  }
+  preparing_attachment_ = true;
+  pending_frame_token_.reset();
+  child->PrepareForInnerWebContentsAttach(
+      base::BindOnce(&ExplorerHost::AttachPrepared, weak_factory_.GetWeakPtr(),
+                     std::move(pending_inner_web_contents_),
+                     std::move(pending_create_callback_)));
+}
+
+void ExplorerHost::Navigate(const std::string& url, NavigateCallback callback) {
+  std::move(callback).Run(LoadURL(GURL(url)));
+}
+
+void ExplorerHost::Go(int32_t offset, GoCallback callback) {
+  content::WebContents* contents = WebContentsObserver::web_contents();
+  const bool accepted = contents && offset != 0 &&
+                        contents->GetController().CanGoToOffset(offset);
+  if (accepted) {
+    contents->GetController().GoToOffset(offset);
+  }
+  std::move(callback).Run(accepted);
+}
+
+void ExplorerHost::Reload(bool bypass_cache, ReloadCallback callback) {
+  content::WebContents* contents = WebContentsObserver::web_contents();
+  if (contents) {
+    contents->GetController().Reload(bypass_cache
+                                         ? content::ReloadType::BYPASSING_CACHE
+                                         : content::ReloadType::NORMAL,
+                                     true);
+  }
+  std::move(callback).Run(contents != nullptr);
+}
+
+void ExplorerHost::Stop(StopCallback callback) {
+  content::WebContents* contents = WebContentsObserver::web_contents();
+  if (contents) {
+    contents->Stop();
+  }
+  std::move(callback).Run(contents != nullptr);
+}
+
+void ExplorerHost::GetNavigationState(GetNavigationStateCallback callback) {
+  std::move(callback).Run(NavigationStateJson());
+}
+
+void ExplorerHost::ExecuteJavaScript(const std::string& source,
+                                     bool main_world,
+                                     const std::string& expected_document_id,
+                                     ExecuteJavaScriptCallback callback) {
+  content::WebContents* contents = WebContentsObserver::web_contents();
+  if (!contents || !policy_ || !policy_->allow_execute_javascript ||
+      !policy_provider_->ExecuteJavaScriptAllowed(
+          render_frame_host(),
+          contents->GetPrimaryMainFrame()->GetLastCommittedOrigin(),
+          *policy_) ||
+      source.size() > kMaxScriptBytes ||
+      (main_world && !policy_->allow_execute_javascript_main_world) ||
+      (!expected_document_id.empty() && expected_document_id != DocumentId())) {
+    std::move(callback).Run(false, std::string(),
+                            "executeJavaScript denied by Explorer policy");
+    return;
+  }
+  if (main_world) {
+    // The public main-world API intentionally CHECKs non chrome/devtools URLs.
+    // Tuffite does not use the test-only bypass, so main-world execution
+    // remains reserved until Content exposes an framework-safe API.
+    std::move(callback).Run(false, std::string(),
+                            "main-world execution is not available");
+    return;
+  }
+  contents->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
+      base::UTF8ToUTF16(source),
+      base::BindOnce(
+          [](ExecuteJavaScriptCallback callback, base::Value result) {
+            std::optional<std::string> json = base::WriteJson(result);
+            if (!json) {
+              std::move(callback).Run(false, std::string(),
+                                      "script result is not JSON serializable");
+              return;
+            }
+            std::move(callback).Run(true, std::move(*json), std::string());
+          },
+          std::move(callback)),
+      kExplorerIsolatedWorldId);
+}
+
+void ExplorerHost::RespondToDialog(uint64_t request_id,
+                                   bool accept,
+                                   const std::string& prompt_text,
+                                   RespondToDialogCallback callback) {
+  const bool accepted = RespondToDialogForTree(
+      WebContentsObserver::web_contents(), request_id, accept, prompt_text);
+  std::move(callback).Run(accepted);
+}
+
+void ExplorerHost::CompleteOpen(uint64_t request_id, bool propagate) {
+  auto pending = pending_open_bubbles_.find(request_id);
+  if (pending == pending_open_bubbles_.end()) {
+    return;
+  }
+  PendingOpenBubble bubble = std::move(pending->second);
+  pending_open_bubbles_.erase(pending);
+  if (propagate) {
+    ContinueOpenBubble(WebContentsObserver::web_contents(), bubble.event_type,
+                       bubble.request_json);
+  }
+}
+
+void ExplorerHost::CompleteDialog(uint64_t request_id, bool propagate) {
+  auto pending = pending_dialog_bubbles_.find(request_id);
+  if (pending == pending_dialog_bubbles_.end()) {
+    return;
+  }
+  PendingDialogBubble bubble = std::move(pending->second);
+  pending_dialog_bubbles_.erase(pending);
+  if (propagate) {
+    ContinueDialogBubble(WebContentsObserver::web_contents(),
+                         bubble.dialog_request_id, bubble.kind, bubble.message,
+                         bubble.default_value, bubble.is_reload, bubble.from);
+  }
+}
+
+void ExplorerHost::PostMessage(const std::string& json,
+                               PostMessageCallback callback) {
+  content::WebContents* contents = WebContentsObserver::web_contents();
+  const ExplorerPolicy* policy =
+      ExplorerSurfaceData::GetExplorerPolicy(contents);
+  const bool accepted = json.size() <= kMaxMessageBytes && policy &&
+                        policy->allow_parent_messages &&
+                        DeliverMessageToOwner(contents, json, "parent");
+  std::move(callback).Run(accepted);
+}
+
+std::string ExplorerHost::DownloadDetail(const download::DownloadItem& item) {
+  const char* state = "in-progress";
+  switch (item.GetState()) {
+    case download::DownloadItem::COMPLETE:
+      state = "complete";
+      break;
+    case download::DownloadItem::CANCELLED:
+      state = "cancelled";
+      break;
+    case download::DownloadItem::INTERRUPTED:
+      state = "interrupted";
+      break;
+    case download::DownloadItem::IN_PROGRESS:
+      break;
+    case download::DownloadItem::MAX_DOWNLOAD_STATE:
+      return "{}";
+  }
+  base::DictValue detail;
+  detail.Set("id", static_cast<int>(item.GetId()));
+  detail.Set("url", item.GetURL().spec());
+  detail.Set("filename", item.GetFileNameToReportUser().AsUTF8Unsafe());
+  detail.Set("path", item.GetTargetFilePath().AsUTF8Unsafe());
+  detail.Set("mimeType", item.GetMimeType());
+  detail.Set("state", state);
+  detail.Set("receivedBytes", static_cast<double>(item.GetReceivedBytes()));
+  detail.Set("totalBytes", static_cast<double>(item.GetTotalBytes()));
+  detail.Set("error", static_cast<int>(item.GetLastReason()));
+  const auto* contents = content::DownloadItemUtils::GetWebContents(&item);
+  detail.Set("navigation", contents && ExplorerSurfaceData::NavigationDownload(
+                                           contents) == item.GetId());
+  return base::WriteJson(detail).value_or("{}");
+}
+void ExplorerHost::NotifyDownload(const std::string& json) {
+  if (client_) {
+    client_->DidDownload(json);
+  }
+}
+void ExplorerHost::Download(const std::string& value,
+                            DownloadCallback callback) {
+  auto* contents = WebContentsObserver::web_contents();
+  const GURL url(value);
+  const bool allowed =
+      contents && url.is_valid() &&
+      (url.SchemeIsHTTPOrHTTPS() || url.SchemeIsBlob() ||
+       url.SchemeIs(url::kDataScheme)) &&
+      content::ChildProcessSecurityPolicy::GetInstance()->CanRequestURL(
+          contents->GetPrimaryMainFrame()->GetProcess()->GetDeprecatedID(),
+          url);
+  if (allowed) {
+    contents->SaveFrameWithHeaders(url, content::Referrer(), "", u"",
+                                   contents->GetPrimaryMainFrame(), true);
+  }
+  std::move(callback).Run(allowed);
+}
+void ExplorerHost::GetDownloads(GetDownloadsCallback callback) {
+  content::DownloadManager::DownloadVector items;
+  render_frame_host()
+      .GetBrowserContext()
+      ->GetDownloadManager()
+      ->GetAllDownloads(&items);
+  base::ListValue list;
+  for (const auto& item : items) {
+    if (WebContentsObserver::web_contents() &&
+        content::DownloadItemUtils::GetWebContents(item) ==
+            WebContentsObserver::web_contents()) {
+      auto detail =
+          base::JSONReader::Read(DownloadDetail(*item), base::JSON_PARSE_RFC);
+      if (detail) {
+        list.Append(std::move(*detail));
+      }
+    }
+  }
+  std::move(callback).Run(base::WriteJson(list).value_or("[]"));
+}
+void ExplorerHost::CancelDownload(uint32_t id,
+                                  CancelDownloadCallback callback) {
+  auto* contents = WebContentsObserver::web_contents();
+  auto* item = render_frame_host()
+                   .GetBrowserContext()
+                   ->GetDownloadManager()
+                   ->GetDownload(id);
+  const bool owned =
+      contents && item &&
+      content::DownloadItemUtils::GetWebContents(item) == contents;
+  if (owned) {
+    item->Cancel(true);
+  }
+  std::move(callback).Run(owned);
+}
+void ExplorerHost::ReadDownload(uint32_t id, ReadDownloadCallback callback) {
+  auto* contents = WebContentsObserver::web_contents();
+  auto* item = render_frame_host()
+                   .GetBrowserContext()
+                   ->GetDownloadManager()
+                   ->GetDownload(id);
+  if (!contents || !item ||
+      content::DownloadItemUtils::GetWebContents(item) != contents ||
+      item->GetState() != download::DownloadItem::COMPLETE) {
+    std::move(callback).Run(
+        "", "Download is not complete or owned by this Explorer");
+    return;
+  }
+  base::ThreadPool::PostTaskAndReplyWithResult(
+      FROM_HERE, {base::MayBlock()},
+      base::BindOnce(
+          [](base::FilePath path) {
+            std::string bytes;
+            if (!base::ReadFileToStringWithMaxSize(path, &bytes,
+                                                   64 * 1024 * 1024)) {
+              return std::string();
+            }
+            return base::Base64Encode(bytes);
+          },
+          item->GetFullPath()),
+      base::BindOnce(
+          [](ReadDownloadCallback callback, std::string data) {
+            const std::string error =
+                data.empty() ? "Cannot read download (64 MiB limit)" : "";
+            std::move(callback).Run(data, error);
+          },
+          std::move(callback)));
+}
+void ExplorerHost::CapturePreview(CapturePreviewCallback callback) {
+  CapturePreviewWhenReady(std::move(callback), 20);
+}
+
+void ExplorerHost::CapturePreviewWhenReady(CapturePreviewCallback callback,
+                                           int attempts) {
+  auto* contents = WebContentsObserver::web_contents();
+  auto* view = contents ? contents->GetRenderWidgetHostView() : nullptr;
+  if (contents && (!view || !view->IsSurfaceAvailableForCopy()) &&
+      attempts > 0) {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+        FROM_HERE,
+        base::BindOnce(&ExplorerHost::CapturePreviewWhenReady,
+                       weak_factory_.GetWeakPtr(), std::move(callback),
+                       attempts - 1),
+        base::Milliseconds(50));
+    return;
+  }
+  if (!view || !view->IsSurfaceAvailableForCopy()) {
+    std::move(callback).Run("");
+    return;
+  }
+  const auto bounds = view->GetViewBounds().size();
+  const double scale =
+      std::min(1.0, std::min(1280.0 / std::max(1, bounds.width()),
+                             960.0 / std::max(1, bounds.height())));
+  const gfx::Size output(
+      std::max(1, static_cast<int>(bounds.width() * scale)),
+      std::max(1, static_cast<int>(bounds.height() * scale)));
+  view->CopyFromSurface(
+      gfx::Rect(), output, base::Seconds(1),
+      base::BindOnce(
+          [](CapturePreviewCallback callback,
+             const content::CopyFromSurfaceResult& result) {
+            std::string url;
+            if (result.has_value()) {
+              auto png =
+                  gfx::PNGCodec::EncodeBGRASkBitmap(result->bitmap, false);
+              if (png) {
+                url = "data:image/png;base64," + base::Base64Encode(*png);
+              }
+            }
+            std::move(callback).Run(url);
+          },
+          std::move(callback)));
+}
+
+void ExplorerHost::SetContextMenuEnabled(bool enabled) {
+  if (content::WebContents* contents = WebContentsObserver::web_contents()) {
+    ExplorerSurfaceData::SetExplorerContextMenuEnabled(contents, enabled);
+  }
+}
+
+bool ExplorerHost::LoadURL(const GURL& url) {
+  if (!WebContentsObserver::web_contents() || !CanNavigateTo(url)) {
+    if (client_) {
+      client_->DidFailLoad(net::ERR_INVALID_URL,
+                           net::ErrorToString(net::ERR_INVALID_URL),
+                           NavigationStateJson());
+    }
+    return false;
+  }
+  content::NavigationController::LoadURLParams params(url);
+  params.transition_type = ui::PAGE_TRANSITION_LINK;
+  WebContentsObserver::web_contents()->GetController().LoadURLWithParams(
+      params);
+  return true;
+}
+
+std::string ExplorerHost::DocumentId() const {
+  return document_id_;
+}
+
+std::string ExplorerHost::NavigationStateJson() const {
+  content::WebContents* contents = WebContentsObserver::web_contents();
+  if (!contents) {
+    return "{}";
+  }
+  base::DictValue state;
+  const auto resource_id = ExplorerSurfaceData::NavigationDownload(contents);
+  auto* resource =
+      resource_id
+          ? contents->GetBrowserContext()->GetDownloadManager()->GetDownload(
+                *resource_id)
+          : nullptr;
+  state.Set("url", resource ? resource->GetURL().spec()
+                            : contents->GetLastCommittedURL().spec());
+  state.Set("title", resource
+                         ? resource->GetFileNameToReportUser().AsUTF8Unsafe()
+                         : base::UTF16ToUTF8(contents->GetTitle()));
+  state.Set("documentId", DocumentId());
+  state.Set("canGoBack", contents->GetController().CanGoBack());
+  state.Set("canGoForward", contents->GetController().CanGoForward());
+  state.Set("isLoading", contents->IsLoading());
+  const int renderer_process_id =
+      contents->GetPrimaryMainFrame()->GetProcess()->GetDeprecatedID();
+  state.Set(
+      "rendererProcess",
+      base::DictValue()
+          .Set("id", renderer_process_id)
+          .Set("ownerId", owner_renderer_process_id_)
+          .Set("isolated", renderer_process_id != owner_renderer_process_id_));
+  const content::StoragePartitionConfig& partition =
+      contents->GetPrimaryMainFrame()
+          ->GetSiteInstance()
+          ->GetSecurityPrincipal()
+          .GetStoragePartitionConfig();
+  const auto requested_partition =
+      policy_ ? ExplorerPartition::Parse(policy_->partition) : std::nullopt;
+  const bool shares_parent_partition =
+      requested_partition && requested_partition->shared();
+  const std::string partition_mode =
+      requested_partition ? std::string(requested_partition->mode_name())
+                          : "shared";
+  state.Set("storagePartition",
+            base::DictValue()
+                .Set("domain", partition.partition_domain())
+                .Set("name", partition.partition_name())
+                .Set("inMemory", partition.in_memory())
+                .Set("isDefault", partition.is_default())
+                .Set("mode", partition_mode)
+                .Set("shared", shares_parent_partition)
+                .Set("inherited", policy_ && policy_->inherit_partition_storage)
+                // The public element value is empty when the parent partition
+                // is shared. "shared" is a manifest capability kind and an
+                // internal policy label, not an element partition value.
+                .Set("requested", shares_parent_partition || !policy_
+                                      ? std::string()
+                                      : policy_->partition)
+                .Set("createdDomain", created_partition_domain_)
+                .Set("createdName", created_partition_name_)
+                .Set("createdInMemory", created_partition_in_memory_)
+                .Set("createdIsDefault", created_partition_is_default_));
+  return base::WriteJson(state).value_or("{}");
+}
+
+void ExplorerHost::NotifyRequestedOpen(const char* event_type,
+                                       const GURL& url,
+                                       WindowOpenDisposition disposition,
+                                       bool user_gesture) {
+  if (!client_ || !CanNavigateTo(url)) {
+    return;
+  }
+  base::DictValue request;
+  request.Set("url", url.spec());
+  request.Set("disposition", ExplorerDispositionName(disposition));
+  request.Set("userGesture", user_gesture);
+  request.Set("from", ExplorerSurfaceHost::RefForWebContents(
+                          WebContentsObserver::web_contents()));
+  EmitOpenBubble(event_type, base::WriteJson(request).value_or("{}"));
+}
+
+void ExplorerHost::EmitOpenBubble(const std::string& event_type,
+                                  const std::string& request_json) {
+  if (!client_) {
+    ContinueOpenBubble(WebContentsObserver::web_contents(), event_type,
+                       request_json);
+    return;
+  }
+  if (pending_open_bubbles_.size() >= kMaxPendingBubbleRequests) {
+    // Never evict an in-flight request: its renderer callback still owns the
+    // continuation. Skip this saturated boundary so the new request can keep
+    // bubbling without orphaning an older completion.
+    ContinueOpenBubble(WebContentsObserver::web_contents(), event_type,
+                       request_json);
+    return;
+  }
+  const uint64_t request_id = NextExplorerRequestId();
+  pending_open_bubbles_.insert_or_assign(
+      request_id, PendingOpenBubble{event_type, request_json});
+  client_->DidRequestOpen(request_id, event_type, request_json);
+}
+
+void ExplorerHost::EmitDialogBubble(uint64_t request_id,
+                                    const std::string& kind,
+                                    const std::string& message,
+                                    const std::string& default_value,
+                                    bool is_reload,
+                                    const std::string& from) {
+  if (!client_) {
+    ContinueDialogBubble(WebContentsObserver::web_contents(), request_id, kind,
+                         message, default_value, is_reload, from);
+    return;
+  }
+  if (pending_dialog_bubbles_.size() >= kMaxPendingBubbleRequests) {
+    // A dialog owns a native completion callback. Skipping this saturated
+    // boundary preserves both that callback and the upward fallback path.
+    ContinueDialogBubble(WebContentsObserver::web_contents(), request_id, kind,
+                         message, default_value, is_reload, from);
+    return;
+  }
+  pending_dialog_bubbles_.insert_or_assign(
+      request_id, PendingDialogBubble{request_id, kind, message, default_value,
+                                      is_reload, from});
+  client_->DidRequestDialog(request_id, kind, message, default_value, is_reload,
+                            from);
+}
+
+void ExplorerHost::NotifyLoadComplete() {
+  if (!client_) {
+    return;
+  }
+  if (primary_navigation_error_) {
+    const int error_code = *primary_navigation_error_;
+    client_->DidFailLoad(error_code, net::ErrorToString(error_code),
+                         NavigationStateJson());
+  } else {
+    client_->DidStopLoading(NavigationStateJson());
+  }
+}
+
+content::WebContents* ExplorerHost::OpenURLFromTab(
+    content::WebContents* source,
+    const content::OpenURLParams& params,
+    base::OnceCallback<void(content::NavigationHandle&)>
+        navigation_handle_callback) {
+  if (params.disposition != WindowOpenDisposition::CURRENT_TAB ||
+      (policy_ && policy_->navigation == ExplorerNavigationPolicy::kEmit)) {
+    NotifyRequestedOpen(ExplorerOpenEventType(params.disposition, false).data(),
+                        params.url, params.disposition, params.user_gesture);
+    return nullptr;
+  }
+  if (source != WebContentsObserver::web_contents() ||
+      !CanNavigateTo(params.url)) {
+    return nullptr;
+  }
+  base::WeakPtr<content::NavigationHandle> navigation_handle =
+      source->GetController().LoadURLWithParams(
+          content::NavigationController::LoadURLParams(params));
+  if (navigation_handle_callback && navigation_handle) {
+    std::move(navigation_handle_callback).Run(*navigation_handle);
+  }
+  return source;
+}
+
+bool ExplorerHost::IsWebContentsCreationOverridden(
+    content::RenderFrameHost* opener,
+    content::SiteInstance* source_site_instance,
+    content::mojom::WindowContainerType window_container_type,
+    const GURL& opener_url,
+    const std::string& frame_name,
+    const GURL& target_url) {
+  return !target_url.IsAboutBlank();
+}
+
+content::WebContents* ExplorerHost::CreateCustomWebContents(
+    content::RenderFrameHost* opener,
+    content::SiteInstance* source_site_instance,
+    bool is_new_browsing_instance,
+    const GURL& opener_url,
+    const std::string& frame_name,
+    const GURL& target_url,
+    WindowOpenDisposition disposition,
+    const blink::mojom::WindowFeatures& window_features,
+    const content::StoragePartitionConfig& partition_config,
+    content::SessionStorageNamespace* session_storage_namespace) {
+  NotifyRequestedOpen(
+      ExplorerOpenEventType(disposition, window_features.tuffite_window_open)
+          .data(),
+      target_url, disposition, true);
+  return nullptr;
+}
+
+content::WebContents* ExplorerHost::AddNewContents(
+    content::WebContents* source,
+    std::unique_ptr<content::WebContents> new_contents,
+    const GURL& target_url,
+    WindowOpenDisposition disposition,
+    const blink::mojom::WindowFeatures& window_features,
+    bool user_gesture,
+    bool* was_blocked) {
+  if (disposition == WindowOpenDisposition::NEW_PICTURE_IN_PICTURE) {
+    auto* owner =
+        content::WebContents::FromRenderFrameHost(&render_frame_host());
+    if (owner && owner->GetDelegate() && owner->GetDelegate() != this) {
+      return owner->GetDelegate()->AddNewContents(
+          source, std::move(new_contents), target_url, disposition,
+          window_features, user_gesture, was_blocked);
+    }
+  }
+  NotifyRequestedOpen(
+      ExplorerOpenEventType(disposition, window_features.tuffite_window_open)
+          .data(),
+      target_url, disposition, user_gesture);
+  if (was_blocked) {
+    *was_blocked = true;
+  }
+  return nullptr;
+}
+
+content::JavaScriptDialogManager* ExplorerHost::GetJavaScriptDialogManager(
+    content::WebContents* source) {
+  return dialog_manager_.get();
+}
+
+void ExplorerHost::RunFileChooser(
+    content::RenderFrameHost* frame,
+    scoped_refptr<content::FileSelectListener> listener,
+    const blink::mojom::FileChooserParams& params) {
+  auto* owner = content::WebContents::FromRenderFrameHost(&render_frame_host());
+  if (!owner || !owner->GetDelegate() || owner->GetDelegate() == this) {
+    listener->FileSelectionCanceled();
+    return;
+  }
+  owner->GetDelegate()->RunFileChooser(frame, std::move(listener), params);
+}
+
+void ExplorerHost::EnumerateDirectory(
+    content::WebContents* contents,
+    scoped_refptr<content::FileSelectListener> listener,
+    const base::FilePath& path) {
+  auto* owner = content::WebContents::FromRenderFrameHost(&render_frame_host());
+  if (!owner || !owner->GetDelegate() || owner->GetDelegate() == this) {
+    listener->FileSelectionCanceled();
+    return;
+  }
+  owner->GetDelegate()->EnumerateDirectory(contents, std::move(listener), path);
+}
+
+void ExplorerHost::EnterFullscreenModeForTab(
+    content::RenderFrameHost* requesting_frame,
+    const blink::mojom::FullscreenOptions& options) {
+  content::WebContents* owner =
+      content::WebContents::FromRenderFrameHost(&render_frame_host());
+  if (owner && owner->GetDelegate() && owner->GetDelegate() != this) {
+    owner->GetDelegate()->EnterFullscreenModeForTab(requesting_frame, options);
+  }
+}
+
+void ExplorerHost::ExitFullscreenModeForTab(
+    content::WebContents* web_contents) {
+  content::WebContents* owner =
+      content::WebContents::FromRenderFrameHost(&render_frame_host());
+  if (owner && owner->GetDelegate() && owner->GetDelegate() != this) {
+    owner->GetDelegate()->ExitFullscreenModeForTab(web_contents);
+  }
+}
+
+bool ExplorerHost::IsFullscreenForTabOrPending(
+    const content::WebContents* web_contents) {
+  content::WebContents* owner =
+      content::WebContents::FromRenderFrameHost(&render_frame_host());
+  return owner && owner->GetDelegate() && owner->GetDelegate() != this &&
+         owner->GetDelegate()->IsFullscreenForTabOrPending(web_contents);
+}
+
+content::PictureInPictureResult ExplorerHost::EnterPictureInPicture(
+    content::WebContents* web_contents) {
+  content::WebContents* owner =
+      content::WebContents::FromRenderFrameHost(&render_frame_host());
+  if (owner && owner->GetDelegate()) {
+    return owner->GetDelegate()->EnterPictureInPicture(web_contents);
+  }
+  return content::PictureInPictureResult::kNotSupported;
+}
+
+void ExplorerHost::ExitPictureInPicture() {
+  content::WebContents* owner =
+      content::WebContents::FromRenderFrameHost(&render_frame_host());
+  if (owner && owner->GetDelegate()) {
+    owner->GetDelegate()->ExitPictureInPicture();
+  }
+}
+
+void ExplorerHost::RequestDialog(
+    const std::string& kind,
+    const std::u16string& message,
+    const std::u16string& default_value,
+    bool is_reload,
+    content::JavaScriptDialogManager::DialogClosedCallback callback,
+    bool* did_suppress_message) {
+  if (!client_ || !policy_ || !policy_->allow_dialogs ||
+      policy_->dialogs == ExplorerDialogPolicy::kSuppress) {
+    if (did_suppress_message) {
+      *did_suppress_message = true;
+    } else {
+      std::move(callback).Run(false, std::u16string());
+    }
+    return;
+  }
+  if (did_suppress_message) {
+    *did_suppress_message = false;
+  }
+  const uint64_t request_id = dialog_manager_->Begin(std::move(callback));
+  EmitDialogBubble(request_id, kind, base::UTF16ToUTF8(message),
+                   base::UTF16ToUTF8(default_value), is_reload,
+                   ExplorerSurfaceHost::RefForWebContents(
+                       WebContentsObserver::web_contents()));
+}
+
+void ExplorerHost::DidStartLoading() {
+  primary_navigation_error_.reset();
+  if (auto* contents = WebContentsObserver::web_contents()) {
+    ExplorerSurfaceData::SetNavigationDownload(contents, std::nullopt);
+  }
+  if (client_) {
+    client_->DidStartLoading(NavigationStateJson());
+  }
+}
+
+void ExplorerHost::DidStopLoading() {
+  if (pending_inner_web_contents_) {
+    // Preparing the outer frame can synchronously abandon the inner contents.
+    // Do not destroy a WebContents from its own observer notification.
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(&ExplorerHost::BeginAttachAfterInitialNavigation,
+                       weak_factory_.GetWeakPtr()));
+    return;
+  }
+  NotifyLoadComplete();
+}
+
+void ExplorerHost::DidFinishNavigation(
+    content::NavigationHandle* navigation_handle) {
+  if (!navigation_handle || !navigation_handle->IsInPrimaryMainFrame() ||
+      !navigation_handle->HasCommitted()) {
+    return;
+  }
+  const int error_code = navigation_handle->GetNetErrorCode();
+  primary_navigation_error_ = navigation_handle->IsErrorPage() &&
+                                      error_code != net::OK &&
+                                      error_code != net::ERR_ABORTED
+                                  ? std::optional<int>(error_code)
+                                  : std::nullopt;
+  if (!navigation_handle->IsSameDocument()) {
+    document_id_ = base::UnguessableToken::Create().ToString();
+    if (dialog_manager_) {
+      dialog_manager_->CancelDialogs(nullptr, true);
+    }
+  }
+  if (policy_ && policy_->partition != "shared") {
+    const content::StoragePartitionConfig& committed_partition =
+        navigation_handle->GetRenderFrameHost()
+            ->GetSiteInstance()
+            ->GetSecurityPrincipal()
+            .GetStoragePartitionConfig();
+    CHECK_EQ(committed_partition.partition_domain(), created_partition_domain_);
+    CHECK_EQ(committed_partition.partition_name(), created_partition_name_);
+    CHECK_EQ(committed_partition.in_memory(), created_partition_in_memory_);
+    CHECK_EQ(committed_partition.is_default(), created_partition_is_default_);
+  }
+  if (client_) {
+    client_->DidCommitNavigation(NavigationStateJson());
+  }
+}
+
+void ExplorerHost::TitleWasSet(content::NavigationEntry* entry) {
+  if (client_) {
+    client_->DidCommitNavigation(NavigationStateJson());
+  }
+}
+
+// Implemented by the surface-router compilation unit. Keeping this call in the
+// host lets explorer.postMessage() share exactly the same browser-owned route.
+bool ExplorerHost::DeliverMessageToOwner(content::WebContents* inner,
+                                         const std::string& json,
+                                         const std::string& from) {
+  if (!inner) {
+    return false;
+  }
+  return ExplorerSurfaceHost::DeliverToWebContents(
+      inner, json,
+      ExplorerSurfaceHost::RefForWebContents(inner->GetOuterWebContents())
+              .empty()
+          ? from
+          : ExplorerSurfaceHost::RefForWebContents(
+                inner->GetOuterWebContents()));
+}
+
+// static
+bool ExplorerHost::MaybeEmitNavigation(content::WebContents* contents,
+                                       const GURL& url,
+                                       bool user_gesture) {
+  ExplorerHost* host =
+      ExplorerRouter::Get(contents).FindHostForContents(contents);
+  // Detached pages have no UI to handle emitted navigation requests.
+  // Preserve their emit policy instead of falling through to navigation.
+  if (!host) {
+    auto* transfer =
+        ExplorerRouter::Get(contents).FindTransferForContents(contents);
+    return transfer &&
+           transfer->policy().navigation == ExplorerNavigationPolicy::kEmit;
+  }
+  if (!host->policy_ ||
+      host->policy_->navigation != ExplorerNavigationPolicy::kEmit) {
+    return false;
+  }
+  host->NotifyRequestedOpen("navigation", url,
+                            WindowOpenDisposition::CURRENT_TAB, user_gesture);
+  return true;
+}
+
+// static
+void ExplorerHost::ContinueOpenBubble(content::WebContents* source,
+                                      const std::string& event_type,
+                                      const std::string& request_json) {
+  content::WebContents* owner =
+      source ? source->GetOuterWebContents() : nullptr;
+  if (!owner) {
+    return;
+  }
+  ExplorerHost* host = ExplorerRouter::Get(owner).FindHostForContents(owner);
+  if (host) {
+    host->EmitOpenBubble(event_type, request_json);
+    return;
+  }
+  ExplorerSurfaceHost::DeliverOpenToWebContents(owner, event_type,
+                                                request_json);
+}
+
+// static
+void ExplorerHost::ContinueDialogBubble(content::WebContents* source,
+                                        uint64_t request_id,
+                                        const std::string& kind,
+                                        const std::string& message,
+                                        const std::string& default_value,
+                                        bool is_reload,
+                                        const std::string& from) {
+  content::WebContents* owner =
+      source ? source->GetOuterWebContents() : nullptr;
+  if (!owner) {
+    RespondToDialogForTree(source, request_id, false, std::string());
+    return;
+  }
+  ExplorerHost* host = ExplorerRouter::Get(owner).FindHostForContents(owner);
+  if (host) {
+    host->EmitDialogBubble(request_id, kind, message, default_value, is_reload,
+                           from);
+    return;
+  }
+  if (!ExplorerSurfaceHost::DeliverDialogToWebContents(
+          owner, request_id, kind, message, default_value, is_reload, from)) {
+    // A missing/saturated top-surface listener must not leave the page's modal
+    // callback unresolved indefinitely. The safe browser fallback is dismiss.
+    RespondToDialogForTree(source, request_id, false, std::string());
+  }
+}
+
+// static
+bool ExplorerHost::RespondToDialogForTree(content::WebContents* requester,
+                                          uint64_t request_id,
+                                          bool accept,
+                                          const std::string& prompt_text) {
+  if (!requester) {
+    return false;
+  }
+  content::WebContents* root = requester->GetOutermostWebContents();
+  for (ExplorerHost* host : ExplorerRouter::Get(requester).hosts()) {
+    content::WebContents* contents = host->WebContentsObserver::web_contents();
+    if (contents && contents->GetOutermostWebContents() == root &&
+        host->dialog_manager_ &&
+        host->dialog_manager_->Respond(request_id, accept,
+                                       base::UTF8ToUTF16(prompt_text))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace tuffite

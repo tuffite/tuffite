@@ -1,0 +1,39 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+import("//tuffite/tuffite_in_chromium.gni")
+assert(tuffite_in_chromium)
+source_set("context_menu") {
+  public = [
+    "context_menu_service.h",
+    "context_menu_service_factory.h",
+  ]
+  sources = [
+    "context_menu_service.h",
+    "context_menu_service_factory.cc",
+    "context_menu_service_factory.h",
+    "context_menu_service_impl.cc",
+    "context_menu_service_impl.h",
+    "context_menu_session.cc",
+    "context_menu_session.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+  ]
+  deps = [
+    "//content/public/browser",
+    "//third_party/blink/public:blink",
+    "//tuffite/framework/app/services/policy",
+    "//tuffite/framework/browser:support",
+    "//tuffite/framework/browser/services/devtools",
+    "//ui/base",
+    "//ui/gfx",
+    "//ui/menus",
+    "//ui/views",
+    "//url",
+  ]
+  if (!is_mac) {
+    deps += [ "//ui/aura" ]
+  }
+}

@@ -1,0 +1,3 @@
+# Keep the standalone Rust workspace independent from Chromium's repository-wide
+# rustfmt configuration in the parent checkout.
+edition = "2024"

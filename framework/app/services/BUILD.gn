@@ -1,0 +1,44 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+# Lifecycle and registration are restricted to the infrastructure and
+# composition root. This dependency is private in app:app and :factory.
+source_set("manager") {
+  visibility = [
+    ":factory",
+    "//tuffite/framework/app",
+  ]
+  public = [ "application_dependency_manager.h" ]
+  sources = [
+    "application_dependency.cc",
+    "application_dependency.h",
+    "application_dependency_manager.cc",
+    "application_dependency_manager.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/core",
+  ]
+}
+
+source_set("factory") {
+  public = [ "application_keyed_service_factory.h" ]
+
+  # The private adapter declaration is also compiled by :manager. Keeping it in
+  # this target lets the public template inherit it without exposing the
+  # manager.
+  sources = [
+    "application_dependency.h",
+    "application_keyed_service_factory.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/core",
+    "//tuffite/framework/app:context",
+  ]
+  deps = [ ":manager" ]
+}

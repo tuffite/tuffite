@@ -1,0 +1,121 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//build/config/ui.gni")
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+assert(is_mac || toolkit_views,
+       "Tuffite desktop window management requires macOS or toolkit_views")
+
+# Shared browser context declarations and role tagging stay below services and
+# Shell API handlers so neither side depends on the browser composition root.
+source_set("support") {
+  public = [
+    "browser_context.h",
+    "web_contents_role.h",
+  ]
+  sources = [
+    "browser_context.h",
+    "web_contents_role.cc",
+    "web_contents_role.h",
+  ]
+  public_deps = [
+    "//base",
+    "//content/public/browser",
+    "//tuffite/components/explorer/browser",
+  ]
+}
+
+source_set("browser") {
+  visibility = [
+    "//tuffite/framework/app",
+    "//tuffite/framework/test:abi_host_bridge_unittests",
+  ]
+  public_deps = [
+    ":support",
+    "services/client_hints",
+    "services/context_menu",
+    "services/devtools",
+    "services/download",
+    "services/file_chooser",
+    "services/javascript_dialog",
+    "services/network_context",
+    "services/permission",
+    "services/shell_api",
+    "services/webauthn",
+    "services/window",
+    "//tuffite/framework/app:context",
+    "//tuffite/framework/app/services/asset",
+    "//tuffite/framework/app/services/policy",
+    "//tuffite/framework/app/services/remoting",
+    "//tuffite/framework/app/services/utility",
+  ]
+  public = [
+    "browser_main_parts.h",
+    "content_browser_client.h",
+    "test_support/browser_test_observers.h",
+  ]
+  sources = [
+    "browser_context.cc",
+    "browser_main_parts.cc",
+    "browser_main_parts.h",
+    "content_browser_client.cc",
+    "content_browser_client.h",
+    "test_support/browser_test_observers.cc",
+    "test_support/browser_test_observers.h",
+    "web_contents_view_delegate.cc",
+    "web_contents_view_delegate.h",
+  ]
+  deps = [
+    "//base",
+    "//cc",
+    "//components/download/public/common:public",
+    "//components/embedder_support:user_agent",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+    "//components/services/storage/public/mojom",
+    "//components/version_info",
+    "//components/viz/common",
+    "//content/public/app",
+    "//content/public/browser",
+    "//content/public/common",
+    "//crypto",
+    "//gin",
+    "//mojo/public/cpp/bindings",
+    "//mojo/public/cpp/system",
+    "//net",
+    "//sandbox",
+    "//services/media_session/public/cpp",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
+    "//skia",
+    "//third_party/blink/public:blink",
+    "//tuffite:buildflags",
+    "//tuffite/components/dispatch/browser",
+    "//tuffite/components/dispatch/common:implementation",
+    "//tuffite/components/dispatch/common:mojom",
+    "//tuffite/components/explorer/browser",
+    "//tuffite/components/explorer/common:mojom",
+    "//tuffite/framework/app:host_headers",
+    "//tuffite/framework/common",
+    "//tuffite/framework/common/utility:mojom",
+    "//tuffite/framework/common/utility:service_name",
+    "//tuffite/framework/public:abi",
+    "//ui/base",
+    "//ui/compositor",
+    "//ui/display",
+    "//ui/shell_dialogs",
+    "//ui/snapshot",
+    "//ui/views",
+    "//ui/views/controls/webview",
+    "//url",
+    "//v8",
+  ]
+  if (!is_mac) {
+    deps += [
+      "//ui/aura",
+      "//ui/wm",
+    ]
+  }
+}

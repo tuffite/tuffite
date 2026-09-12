@@ -1,0 +1,54 @@
+source_set("browser") {
+  public = [
+    "//tuffite/components/explorer/browser/content/explorer_isolation.h",
+    "explorer_browser_support.h",
+    "explorer_host.h",
+    "explorer_partition.h",
+    "explorer_policy.h",
+    "explorer_policy_provider.h",
+    "explorer_router.h",
+    "explorer_surface_data.h",
+    "explorer_surface_host.h",
+  ]
+  sources = [
+    "//tuffite/components/explorer/browser/content/explorer_isolation.h",
+    "explorer_browser_support.cc",
+    "explorer_browser_support.h",
+    "explorer_host.cc",
+    "explorer_host.h",
+    "explorer_partition.cc",
+    "explorer_partition.h",
+    "explorer_partition_snapshot.cc",
+    "explorer_partition_snapshot.h",
+    "explorer_policy.h",
+    "explorer_policy_provider.h",
+    "explorer_router.cc",
+    "explorer_router.h",
+    "explorer_surface_data.cc",
+    "explorer_surface_data.h",
+    "explorer_surface_host.cc",
+    "explorer_surface_host.h",
+    "explorer_transfer.cc",
+    "explorer_transfer.h",
+  ]
+  public_deps = [
+    "//base",
+    "//content/public/browser",
+    "//mojo/public/cpp/bindings",
+    "//tuffite/components/explorer/common:mojom",
+    "//ui/gfx",
+    "//url",
+  ]
+  deps = [
+    "//components/download/public/common:public",
+    "//components/services/storage/public/mojom",
+    "//components/viz/common",
+    "//net",
+    "//services/network/public/mojom",
+    "//skia",
+    "//third_party/blink/public:blink",
+    "//ui/base",
+    "//ui/gfx/codec",
+    "//ui/snapshot",
+  ]
+}

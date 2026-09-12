@@ -1,0 +1,31 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+import("//tuffite/tuffite_in_chromium.gni")
+assert(tuffite_in_chromium)
+source_set("devtools") {
+  public = [
+    "devtools_service.h",
+    "devtools_service_factory.h",
+  ]
+  sources = [
+    "devtools_service.h",
+    "devtools_service_factory.cc",
+    "devtools_service_factory.h",
+    "devtools_service_impl.cc",
+    "devtools_service_impl.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+    "//content/public/browser",
+  ]
+  deps = [
+    "//ipc",
+    "//net",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
+    "//tuffite/framework/browser:support",
+    "//url",
+  ]
+}

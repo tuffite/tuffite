@@ -1,0 +1,13 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//mojo/public/tools/bindings/mojom.gni")
+
+source_set("service_name") {
+  sources = [ "utility_service_name.h" ]
+}
+
+mojom("mojom") {
+  sources = [ "utility_service.mojom" ]
+  deps = [ "//sandbox/policy/mojom" ]
+}

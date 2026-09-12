@@ -1,0 +1,4 @@
+# Compiled into Chromium Content; private Content dependencies stay here.
+include_rules = [
+  "+content/browser",
+]

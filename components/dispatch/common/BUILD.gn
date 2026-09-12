@@ -1,0 +1,22 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//mojo/public/tools/bindings/mojom.gni")
+
+mojom("mojom") {
+  sources = [ "dispatcher.mojom" ]
+}
+
+source_set("implementation") {
+  sources = [
+    "codec.cc",
+    "codec.h",
+    "message.h",
+    "status.h",
+    "switches.h",
+  ]
+  deps = [
+    "//base",
+    "//url",
+  ]
+}

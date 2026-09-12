@@ -1,0 +1,32 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE.chromium file.
+
+[Exposed=Window, RuntimeEnabled=TuffiteExplorer] interface HTMLExplorerElement : HTMLElement {
+    [CEReactions, Reflect, URL] attribute USVString src;
+    [CEReactions] attribute DOMString partition;
+    [CEReactions] attribute DOMString navigation;
+    [CEReactions] attribute DOMString dialogs;
+    attribute boolean contextMenuEnabled;
+    [CEReactions] attribute boolean deferred;
+    [CallWith=ScriptState] Promise<ExplorerTransfer> detach();
+    [CallWith=ScriptState] Promise<undefined> attach(DOMString token);
+    attribute EventHandler ondetached;
+    attribute EventHandler onattached;
+    void load(USVString url);
+    [CallWith=ScriptState] Promise<boolean> cancelDownload(unsigned long id);
+    [CallWith=ScriptState] Promise<boolean> download(USVString url);
+    [CallWith=ScriptState] Promise<any> getDownloads();
+    [CallWith=ScriptState] Promise<DOMString> readDownload(unsigned long id);
+    [CallWith=ScriptState] Promise<DOMString> capturePreview();
+    [CallWith=ScriptState] Promise<boolean> back();
+    [CallWith=ScriptState] Promise<boolean> forward();
+    [CallWith=ScriptState] Promise<boolean> go(long offset);
+    [CallWith=ScriptState] Promise<boolean> reload(optional ExplorerReloadOptions options = {});
+    [CallWith=ScriptState] Promise<boolean> stop();
+    [CallWith=ScriptState] Promise<any> getNavigationState();
+    [CallWith=ScriptState] Promise<any> executeJavaScript(
+        DOMString source,
+        optional ExplorerExecuteJavaScriptOptions options = {});
+    [CallWith=ScriptState] Promise<boolean> postMessage(any data);
+};

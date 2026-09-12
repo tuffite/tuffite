@@ -1,0 +1,15 @@
+{
+  "name": "@tuffite/playground-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --bun vite --config vite.config.mjs --configLoader native",
+    "build": "bun --bun vite build --config vite.config.mjs --configLoader native",
+    "smoke:explorer": "python3 ../scripts/smoke.py --explorer-demo"
+  },
+  "devDependencies": {
+    "playwright-core": "1.63.0",
+    "vite": "8.2.2"
+  }
+}

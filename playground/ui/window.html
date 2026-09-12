@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+  <title>Demo child window</title>
+  <script type="module" src="./src/presentation.js"></script>
+  <link rel="stylesheet" href="/src/styles.css">
+</head>
+<body class="child-window">
+  <main>
+    <p class="eyebrow">TUFFITE WINDOW</p>
+    <h1>Managed child</h1>
+    <output id="window-info" class="block-output">Resolving current WindowId…</output>
+    <div class="controls">
+      <button id="child-title">Change title</button>
+      <button id="child-resize">Resize</button>
+      <button id="child-close" class="danger">Close this window</button>
+    </div>
+  </main>
+  <script type="module" src="/src/window.js"></script>
+</body>
+</html>

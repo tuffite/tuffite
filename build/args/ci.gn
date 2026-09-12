@@ -1,0 +1,26 @@
+# CI packaging: size-oriented artifacts with deterministic release settings.
+# Keep is_official_build=false until the framework is a production target;
+# official builds are not a synonym for CI and can require PGO inputs.
+is_component_build = false
+
+# CI workers need no locally installed compiler cache wrapper.
+cc_wrapper = ""
+target_cpu = "x64"
+is_debug = false
+is_official_build = false
+dcheck_always_on = false
+symbol_level = 0
+v8_symbol_level = 0
+blink_symbol_level = 0
+optimize_for_size = true
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+
+# Avoid ThinLTO's high memory cost on CI workers.
+use_thin_lto = false
+chrome_pgo_phase = 0
+use_siso = false
+concurrent_links = 1
+tuffite_in_chromium = true
+tuffite_dev_mode = false
+root_extra_deps = [ "//tuffite" ]

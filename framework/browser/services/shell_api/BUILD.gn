@@ -1,0 +1,37 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+source_set("shell_api") {
+  public = [
+    "shell_api_service.h",
+    "shell_api_service_factory.h",
+  ]
+  sources = [
+    "shell_api_service.h",
+    "shell_api_service_factory.cc",
+    "shell_api_service_factory.h",
+    "shell_api_service_impl.cc",
+    "shell_api_service_impl.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+    "//tuffite/components/dispatch/browser",
+  ]
+  deps = [
+    "//content/public/browser",
+    "//tuffite/framework/app:context",
+    "//tuffite/framework/app:host_headers",
+    "//tuffite/framework/app/services/policy",
+    "//tuffite/framework/app/services/utility",
+    "//tuffite/framework/browser:support",
+    "//tuffite/framework/browser/services/shell_api/commands",
+    "//tuffite/framework/browser/services/window",
+    "//tuffite/framework/common",
+  ]
+}

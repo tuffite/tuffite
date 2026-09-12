@@ -1,0 +1,26 @@
+[package]
+name = "playground"
+description = "Playground application for exercising the Tuffite desktop framework"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[lib]
+name = "playground"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter"] }
+tuffite = { path = "../crates/tuffite", default-features = false }
+futures-executor = "0.3"
+serde_json = "1"
+
+[build-dependencies]
+tuffite = { path = "../crates/tuffite", default-features = false, features = ["build"] }
+
+[lints]
+workspace = true
