@@ -1,0 +1,90 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE.chromium file.
+
+module tuffite.mojom;
+
+import "third_party/blink/public/mojom/tokens/tokens.mojom";
+
+struct ExplorerCreateParams {
+  blink.mojom.LocalFrameToken frame_to_replace;
+  string initial_url;
+  string partition;
+  string navigation;
+  string dialogs;
+  bool context_menu_enabled;
+};
+
+interface ExplorerClient {
+  // Event payloads are JSON objects so Blink can expose their fields as
+  // CustomEvent.detail without growing an event-specific WebIDL type graph.
+  DidDownload(string detail_json);
+  DidStartLoading(string state_json);
+  DidStopLoading(string state_json);
+  DidFailLoad(int32 error_code, string error_description,
+              string state_json);
+  DidCommitNavigation(string state_json);
+  DidRequestOpen(uint64 request_id, string event_type, string request_json);
+  DidRequestDialog(uint64 request_id, string type, string message,
+                   string default_value, bool is_reload, string from);
+  DidReceiveMessage(string json, string from);
+};
+
+// A document-scoped bridge used to replace an about:blank child frame with a
+// normal WebContents. This intentionally does not use GuestView.
+interface ExplorerTransferClient {
+  StateChanged(string state);
+};
+
+interface ExplorerTransferControl {
+  // Commit delivery before resolving detach(). Undelivered detach replies must
+  // not leave a resource that the application has no credential to release.
+  Accept();
+  Close() => (string error);
+};
+
+interface ExplorerHost {
+  Detach(pending_remote<ExplorerTransferClient> client)
+      => (string token, pending_remote<ExplorerTransferControl>? control,
+          string error);
+  Attach(string token, ExplorerCreateParams params,
+         pending_remote<ExplorerClient> client) => (string error);
+  Create(ExplorerCreateParams params,
+         pending_remote<ExplorerClient> client) => (bool accepted);
+  Navigate(string url) => (bool accepted);
+  Go(int32 offset) => (bool accepted);
+  Reload(bool bypass_cache) => (bool accepted);
+  Stop() => (bool accepted);
+  GetNavigationState() => (string state_json);
+  ExecuteJavaScript(string source, bool main_world,
+                    string expected_document_id)
+      => (bool success, string json_result, string error);
+  RespondToDialog(uint64 request_id, bool accept, string prompt_text)
+      => (bool accepted);
+  CompleteOpen(uint64 request_id, bool propagate);
+  CompleteDialog(uint64 request_id, bool propagate);
+  PostMessage(string json) => (bool accepted);
+  SetContextMenuEnabled(bool enabled);
+  Download(string url) => (bool accepted);
+  GetDownloads() => (string detail_json);
+  CancelDownload(uint32 id) => (bool accepted);
+  ReadDownload(uint32 id) => (string base64_data, string error);
+  CapturePreview() => (string data_url);
+};
+
+// Main-frame surface bus. It is available to trusted App documents and to
+// Explorer documents whose immutable policy permits the requested direction.
+// `to` is parent, top, or a browser-issued opaque SurfaceRef.
+interface ExplorerSurfaceClient {
+  DidReceiveMessage(string json, string from);
+  DidReceiveOpen(string event_type, string request_json);
+  DidReceiveDialog(uint64 request_id, string type, string message,
+                   string default_value, bool is_reload, string from);
+};
+
+interface ExplorerSurfaceHost {
+  BindClient(pending_remote<ExplorerSurfaceClient> client);
+  PostMessage(string json, string to) => (bool accepted);
+  RespondToDialog(uint64 request_id, bool accept, string prompt_text)
+      => (bool accepted);
+};

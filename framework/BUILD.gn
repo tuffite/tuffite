@@ -1,0 +1,132 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tools/grit/repack.gni")
+import("//tuffite/tuffite_in_chromium.gni")
+
+if (is_win) {
+  import("//chrome/process_version_rc_template.gni")
+}
+
+assert(tuffite_in_chromium)
+
+repack("pak") {
+  sources = [
+    "$root_gen_dir/content/browser/devtools/devtools_resources.pak",
+    "$root_gen_dir/content/content_resources.pak",
+    "$root_gen_dir/content/gpu_resources.pak",
+    "$root_gen_dir/content/process_resources.pak",
+    "$root_gen_dir/net/net_resources.pak",
+    "$root_gen_dir/third_party/blink/public/resources/blink_resources.pak",
+    "$root_gen_dir/third_party/blink/public/resources/blink_scaled_resources_100_percent.pak",
+    "$root_gen_dir/third_party/blink/public/resources/inspector_overlay_resources.pak",
+    "$root_gen_dir/third_party/blink/public/strings/blink_strings_en-US.pak",
+    "$root_gen_dir/ui/resources/ui_lottie_resources.pak",
+    "$root_gen_dir/ui/resources/ui_resources_100_percent.pak",
+    "$root_gen_dir/ui/strings/app_locale_settings_en-US.pak",
+    "$root_gen_dir/ui/strings/ax_strings_en-US.pak",
+    "$root_gen_dir/ui/strings/ui_strings_en-US.pak",
+  ]
+  deps = [
+    "//content:content_resources",
+    "//content/browser/devtools:devtools_resources",
+    "//content/browser/resources/gpu:resources_grit",
+    "//content/browser/resources/process:resources_grit",
+    "//net:net_resources",
+    "//third_party/blink/public:devtools_inspector_resources",
+    "//third_party/blink/public:resources",
+    "//third_party/blink/public:scaled_resources_100_percent",
+    "//third_party/blink/public/strings",
+    "//ui/resources",
+    "//ui/resources:ui_lottie_resources_grd",
+    "//ui/strings",
+  ]
+  output = "$root_out_dir/tuffite.pak"
+}
+
+copy("locale_pak") {
+  sources = [ "$root_out_dir/tuffite.pak" ]
+  outputs = [ "$root_out_dir/tuffite_locales/en-US.pak" ]
+  deps = [ ":pak" ]
+}
+
+# Runtime loaded by the application-named bootstrap. Explicit component builds
+# produce Chromium's DLL closure; default non-component builds produce one
+# monolithic Tuffite Framework DLL.
+shared_library("framework") {
+  output_name = "tuffite"
+  deps = [ ":core" ]
+}
+
+# Runtime files packaged into the Tuffite Framework Distribution. Keeping this
+# separate from :launcher allows Windows to build the shared runtime and the
+# thin sandbox-aware launcher with different GN configurations.
+group("distribution") {
+  deps = [ ":framework" ]
+  data_deps = [
+    ":launcher",
+    ":locale_pak",
+    ":pak",
+    "//tools/v8_context_snapshot",
+  ]
+  if (is_win) {
+    data_deps += [ "//third_party/crashpad/crashpad/handler:crashpad_handler" ]
+  }
+}
+
+# Thin process entry. Chromium implementation stays in :framework so macOS does
+# not initialize a second statically linked copy of PartitionAlloc. Windows
+# keeps only its required sandbox-info initialization in the executable.
+executable("launcher") {
+  output_name = "tuffite_launcher"
+  sources = [ "main.cc" ]
+  deps = [
+    ":framework",
+    "//tuffite/framework/public:abi",
+  ]
+  if (is_win) {
+    configs += [ "//build/config/win:windowed" ]
+    deps += [
+      ":launcher_version",
+      "//content:sandbox_helper_win",
+      "//sandbox",
+    ]
+  }
+}
+
+if (is_win) {
+  process_version_rc_template("launcher_version") {
+    template_file = "tuffite_launcher.rc.version"
+    sources = [ "tuffite_launcher.ver" ]
+    output = "$target_gen_dir/tuffite_launcher_version.rc"
+  }
+}
+
+group("unittests") {
+  testonly = true
+  deps = [
+    "//tuffite/components/dispatch/test:dispatch_unittests",
+    "//tuffite/framework/common:capability_pattern_unittests",
+    "//tuffite/framework/test:abi_host_bridge_unittests",
+    "//tuffite/framework/test:explorer_browser_support_unittests",
+    "//tuffite/framework/test:utility_service_unittests",
+  ]
+}
+
+# DLL entry; process composition is implemented by app.
+source_set("core") {
+  defines = [ "TUFFITE_FRAMEWORK_IMPLEMENTATION" ]
+  sources = [
+    "bootstrap.cc",
+    "runtime.cc",
+  ]
+  deps = [
+    "//base",
+    "//tuffite/framework/app",
+    "//tuffite/framework/app:host_headers",
+    "//tuffite/framework/public:abi",
+  ]
+  if (is_mac) {
+    deps += [ "//sandbox/mac:seatbelt" ]
+  }
+}

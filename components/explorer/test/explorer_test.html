@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tuffite &lt;explorer&gt; 本地测试</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font: 14px/1.5 system-ui, sans-serif;
+    }
+    body {
+      margin: 24px;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    input {
+      flex: 1 1 420px;
+      padding: 6px 8px;
+    }
+    button {
+      padding: 6px 12px;
+    }
+    explorer {
+      display: block;
+      width: 100%;
+      height: 480px;
+      border: 2px solid #4f7cff;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #status {
+      margin: 8px 0;
+      font-family: ui-monospace, monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>Tuffite &lt;explorer&gt; 本地测试</h1>
+  <p>父页面 localStorage：<output id="parent-storage"></output></p>
+  <div class="toolbar">
+    <input id="url" value="explorer_target.html" aria-label="导航地址">
+    <button id="navigate" type="button">load()</button>
+    <button id="reload" type="button">重载同源页</button>
+    <button id="context-menu" type="button">禁用右键菜单</button>
+    <button id="toggle" type="button">移除元素</button>
+  </div>
+  <div id="status">等待事件…</div>
+  <div id="mount">
+    <explorer id="view" src="explorer_target.html"></explorer>
+  </div>
+
+  <script>
+    const storageKey = 'playground-explorer-shared-storage-test';
+    const parentValue = `parent-${Date.now()}`;
+    localStorage.setItem(storageKey, parentValue);
+    document.querySelector('#parent-storage').value = parentValue;
+
+    const mount = document.querySelector('#mount');
+    const input = document.querySelector('#url');
+    const status = document.querySelector('#status');
+    let explorer = document.querySelector('#view');
+    explorer.contextMenuEnabled = true;
+
+    function log(message) {
+      status.textContent = `${new Date().toLocaleTimeString()} ${message}`;
+      console.log(message);
+    }
+
+    function bindEvents(element) {
+      element.addEventListener('loadstart', () => log('loadstart'));
+      element.addEventListener('loadstop', () => log('loadstop'));
+      element.addEventListener('error', () => log('error'));
+      for (const type of ['navigation', 'open', 'popup', 'newwindow']) {
+        element.addEventListener(type, ({detail}) =>
+          log(`${type} ${detail.url}`));
+      }
+    }
+
+    bindEvents(explorer);
+    document.querySelector('#navigate').addEventListener('click', () => {
+      explorer.load(input.value);
+    });
+    document.querySelector('#reload').addEventListener('click', () => {
+      explorer.load(`explorer_target.html?t=${Date.now()}`);
+    });
+    document.querySelector('#context-menu').addEventListener('click', (event) => {
+      explorer.contextMenuEnabled = !explorer.contextMenuEnabled;
+      event.currentTarget.textContent = explorer.contextMenuEnabled
+        ? '禁用右键菜单'
+        : '启用右键菜单';
+      log(`context menu ${explorer.contextMenuEnabled ? 'enabled' : 'disabled'}`);
+    });
+    document.querySelector('#toggle').addEventListener('click', (event) => {
+      if (explorer.isConnected) {
+        explorer.remove();
+        event.currentTarget.textContent = '重新创建元素';
+        log('explorer removed');
+        return;
+      }
+      explorer = document.createElement('explorer');
+      explorer.id = 'view';
+      explorer.src = 'explorer_target.html';
+      explorer.contextMenuEnabled = true;
+      bindEvents(explorer);
+      mount.append(explorer);
+      event.currentTarget.textContent = '移除元素';
+      log('explorer recreated');
+    });
+  </script>
+</body>
+</html>

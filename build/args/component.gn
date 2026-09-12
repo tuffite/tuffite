@@ -1,0 +1,19 @@
+# Explicit component build for faster native iteration and diagnostics.
+is_component_build = true
+use_sized_deallocation = true
+cc_wrapper = "sccache"
+target_cpu = "x64"
+is_debug = false
+is_official_build = false
+dcheck_always_on = false
+symbol_level = 1
+v8_symbol_level = 0
+blink_symbol_level = 0
+optimize_for_size = true
+use_thin_lto = false
+chrome_pgo_phase = 0
+use_siso = false
+concurrent_links = 1
+tuffite_in_chromium = true
+tuffite_dev_mode = true
+root_extra_deps = [ "//tuffite" ]

@@ -1,0 +1,108 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+
+# Emits the C++ ShellAPI protocol from a Tuffite manifest and packages the
+# generated sources as a `source_set` target so consumers can list it in
+# `deps` and immediately `#include` the generated header.
+#
+# Parameters:
+#   manifest (required): source-absolute path to the tuffite.json driving codegen
+#   definitions (required): source-absolute `.d.ts` inputs, in manifest order
+#   visibility, testonly: forwarded to the emitted source_set
+template("shell_api_protocol") {
+  assert(tuffite_in_chromium)
+  assert(defined(invoker.manifest),
+         "shell_api_protocol($target_name) requires `manifest`")
+  assert(defined(invoker.definitions) && invoker.definitions != [],
+         "shell_api_protocol($target_name) requires `definitions`")
+
+  _manifest = invoker.manifest
+  _definitions = invoker.definitions
+  _deps = []
+  if (defined(invoker.deps)) {
+    _deps = invoker.deps
+  }
+  _public_deps = []
+  if (defined(invoker.public_deps)) {
+    _public_deps = invoker.public_deps
+  }
+  _consumer_target = target_name
+  _generated_action = "${target_name}__action"
+  _generated_config = "${target_name}__config"
+
+  # Mirror the schema directory below root_gen_dir, so `fs.d.ts` produces
+  # `fs.{h,cc}` beside its generated peers without embedding a consumer path in
+  # this reusable template.
+  _definition_dir = get_path_info(_definitions[0], "dir")
+  _relative_definition_dir = string_replace(_definition_dir, "//", "")
+  _output_dir = "$root_gen_dir/$_relative_definition_dir"
+  _generated_plan = "$_output_dir/.tuffite-cpp-outputs.json"
+  _depfile = "$target_gen_dir/${target_name}.d"
+  _generated_sources = []
+  foreach(_definition, _definitions) {
+    assert(get_path_info(_definition, "dir") == _definition_dir,
+           "ShellAPI definitions must share one source directory")
+    _name = get_path_info(_definition, "file")
+    _stem = string_replace(_name, ".d.ts", "")
+    assert("${_stem}.d.ts" == _name,
+           "ShellAPI definition must end in .d.ts: $_definition")
+    _generated_sources += [
+      "$_output_dir/${_stem}.cc",
+      "$_output_dir/${_stem}.h",
+    ]
+  }
+
+  action(_generated_action) {
+    visibility = [ ":${_consumer_target}" ]
+    script = "//tuffite/build/shell_api_protocol.py"
+    inputs = [
+               _manifest,
+               "//tuffite/build/shell_api_protocol.py",
+             ] + _definitions
+    outputs = _generated_sources + [ _generated_plan ]
+    depfile = _depfile
+    args = [
+      "--framework-root",
+      rebase_path("//tuffite", root_build_dir),
+      "--target-dir",
+      rebase_path("$root_out_dir/tuffite_host_tools", root_build_dir),
+      "--manifest",
+      rebase_path(_manifest, root_build_dir),
+      "--output",
+      rebase_path(_output_dir, root_build_dir),
+      "--depfile",
+      rebase_path(_depfile, root_build_dir),
+      "--depfile-target",
+
+      # Ninja validates the depfile against the action's first output.
+      rebase_path(_generated_sources[0], root_build_dir),
+    ]
+    foreach(_definition, _definitions) {
+      args += [
+        "--definition",
+        rebase_path(_definition, root_build_dir),
+      ]
+    }
+  }
+
+  config(_generated_config) {
+    include_dirs = [ root_gen_dir ]
+  }
+
+  _deps += [ ":${_generated_action}" ]
+  _public_deps += [ "//base" ]
+
+  source_set(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "visibility",
+                           ])
+    sources = _generated_sources
+    deps = _deps
+    public_configs = [ ":${_generated_config}" ]
+    public_deps = _public_deps
+  }
+}

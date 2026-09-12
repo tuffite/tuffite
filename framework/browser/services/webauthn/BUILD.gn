@@ -1,0 +1,43 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+assert(tuffite_in_chromium)
+
+source_set("webauthn") {
+  public = [
+    "web_authentication_service.h",
+    "web_authentication_service_factory.h",
+  ]
+  sources = [
+    "request_delegate.cc",
+    "request_delegate.h",
+    "request_dialog.cc",
+    "request_dialog.h",
+    "web_authentication_service.h",
+    "web_authentication_service_factory.cc",
+    "web_authentication_service_factory.h",
+    "web_authentication_service_impl.cc",
+    "web_authentication_service_impl.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+    "//content/public/browser",
+  ]
+  deps = [
+    "//components/qr_code_generator:bitmap_generator",
+    "//crypto",
+    "//device/fido",
+    "//net",
+    "//services/network/public/mojom",
+    "//ui/base",
+    "//ui/gfx",
+    "//ui/views",
+  ]
+  if (is_mac) {
+    sources += [ "platform_mac.mm" ]
+    frameworks = [ "Foundation.framework" ]
+  }
+}

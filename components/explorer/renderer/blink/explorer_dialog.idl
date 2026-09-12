@@ -1,0 +1,13 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE.chromium file.
+
+[Exposed=Window, RuntimeEnabled=TuffiteExplorer] interface ExplorerDialog {
+    readonly attribute DOMString type;
+    readonly attribute DOMString message;
+    readonly attribute DOMString defaultValue;
+    readonly attribute boolean isReload;
+    readonly attribute DOMString from;
+    [CallWith=ScriptState] Promise<boolean> accept(optional DOMString promptText = "");
+    [CallWith=ScriptState] Promise<boolean> dismiss();
+};

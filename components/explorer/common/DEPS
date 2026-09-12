@@ -1,0 +1,8 @@
+include_rules = [
+  "-tuffite/framework",
+  "-content",
+  "+base",
+  "+tuffite/components",
+  "+url",
+  "+mojo/public/cpp",
+]

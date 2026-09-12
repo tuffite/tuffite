@@ -1,0 +1,71 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+import("//testing/test.gni")
+
+# Compile the service with a fake injected launcher, excluding the production
+# factory and Chromium process launcher. The API headers belong to this test's
+# selected source set as well as to the production service target.
+test("utility_service_unittests") {
+  sources = [
+    "//tuffite/framework/app/services/utility/utility_process_launcher.h",
+    "//tuffite/framework/app/services/utility/utility_service.h",
+    "//tuffite/framework/app/services/utility/utility_service_impl.cc",
+    "//tuffite/framework/app/services/utility/utility_types.h",
+    "utility_service_unittest.cc",
+    "utility_test_main.cc",
+  ]
+  deps = [
+    "//base",
+    "//base/test:test_support",
+    "//components/keyed_service/core",
+    "//mojo/core/embedder",
+    "//mojo/public/cpp/bindings",
+    "//testing/gtest",
+    "//tuffite/framework/common/utility:mojom",
+    "//tuffite/framework/common/utility:service_name",
+    "//tuffite/framework/public:abi",
+  ]
+}
+
+test("abi_host_bridge_unittests") {
+  sources = [
+    "abi_host_bridge_unittest.cc",
+    "utility_test_main.cc",
+  ]
+  deps = [
+    "//base",
+    "//base/test:test_support",
+    "//mojo/core/embedder",
+    "//testing/gtest",
+    "//tuffite/framework:core",
+    "//tuffite/framework/app",
+    "//tuffite/framework/app:host_headers",
+    "//tuffite/framework/browser",
+    "//tuffite/framework/browser:support",
+    "//tuffite/framework/browser/services/shell_api/commands",
+    "//tuffite/framework/common",
+    "//tuffite/framework/public:abi",
+    "//url",
+  ]
+}
+
+test("explorer_browser_support_unittests") {
+  testonly = true
+  sources = [
+    "//tuffite/components/explorer/test/explorer_browser_support_unittest.cc",
+    "//tuffite/components/explorer/test/explorer_partition_unittest.cc",
+  ]
+  deps = [
+    "//base",
+    "//content/public/browser",
+    "//testing/gtest",
+    "//testing/gtest:gtest_main",
+    "//tuffite/components/explorer/browser",
+    "//ui/base",
+  ]
+}

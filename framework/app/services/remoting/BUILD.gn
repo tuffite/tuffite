@@ -1,0 +1,50 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//remoting/remoting_options.gni")
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+source_set("remoting") {
+  public = [
+    "remoting_service.h",
+    "remoting_service_factory.h",
+    "remoting_types.h",
+  ]
+  sources = [
+    "remoting_service.h",
+    "remoting_service_factory.cc",
+    "remoting_service_factory.h",
+    "remoting_types.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/core",
+    "//tuffite/framework/app/services:factory",
+    "//ui/gfx",
+  ]
+  deps = [ "//tuffite:buildflags" ]
+  if (!tuffite_disable_remoting) {
+    assert(enable_remoting_host,
+           "Tuffite Remoting requires the Chromium remoting host")
+    sources += [
+      "remoting_service_impl.cc",
+      "remoting_service_impl.h",
+      "sequenced_input_dispatcher.cc",
+      "sequenced_input_dispatcher.h",
+    ]
+    deps += [
+      "//crypto",
+      "//remoting/base",
+      "//remoting/base:errors",
+      "//remoting/host",
+      "//remoting/host:platform_interfaces",
+      "//remoting/protocol",
+      "//remoting/signaling",
+      "//third_party/webrtc_overrides:webrtc_component",
+      "//ui/gfx/codec",
+      "//ui/gfx/geometry",
+    ]
+  }
+}

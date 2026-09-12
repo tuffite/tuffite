@@ -1,0 +1,18 @@
+// Copyright 2026 The Tuffite Authors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+module tuffite.mojom;
+
+interface DispatchClient {
+  DispatchChannelEvent(string channel, array<uint8> payload);
+};
+
+// Document-scoped binary bridge exposed only to an authorized App main frame.
+interface Dispatcher {
+  Dispatch(string channel, array<uint8> payload)
+      => (int32 status, array<uint8> response);
+  DispatchRequest(uint64 request_id, string channel, array<uint8> payload)
+      => (int32 status, array<uint8> response);
+  CancelRequest(uint64 request_id);
+  BindClient(pending_remote<DispatchClient> client);
+};

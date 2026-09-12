@@ -1,0 +1,13 @@
+is_component_build = false
+cc_wrapper = "sccache"
+target_cpu = "x64"
+is_debug = true
+symbol_level = 2
+v8_symbol_level = 0
+blink_symbol_level = 0
+use_thin_lto = false
+use_siso = false
+concurrent_links = 1
+tuffite_in_chromium = true
+tuffite_dev_mode = true
+root_extra_deps = [ "//tuffite" ]

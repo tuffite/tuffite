@@ -1,0 +1,51 @@
+source_set("browser") {
+  public = [
+    "context.h",
+    "dispatch_host.h",
+    "host_dispatch.h",
+    "request_registry.h",
+    "rpc_handler.h",
+    "rpc_route.h",
+    "rpc_router.h",
+  ]
+  sources = [
+    "context.h",
+    "dispatch_host.cc",
+    "dispatch_host.h",
+    "host_dispatch.h",
+    "request_registry.cc",
+    "request_registry.h",
+    "rpc_handler.h",
+    "rpc_route.h",
+    "rpc_router.cc",
+    "rpc_router.h",
+  ]
+  public_deps = [
+    "//base",
+    "//content/public/browser",
+    "//mojo/public/cpp/bindings",
+    "//tuffite/components/dispatch/common:implementation",
+    "//tuffite/components/dispatch/common:mojom",
+    "//url",
+  ]
+  deps = [
+    "//components/services/storage/public/mojom",
+    "//services/network/public/mojom",
+    "//skia",
+    "//ui/base",
+    "//ui/snapshot",
+  ]
+}
+
+source_set("shell_api_protocol") {
+  public = [ "shell_api_protocol.h" ]
+  sources = [
+    "shell_api_protocol.cc",
+    "shell_api_protocol.h",
+  ]
+  public_deps = [
+    ":browser",
+    "//base",
+    "//tuffite/components/dispatch/common:implementation",
+  ]
+}

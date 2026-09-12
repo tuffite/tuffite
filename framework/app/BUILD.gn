@@ -1,0 +1,101 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+# Service consumers can resolve interfaces without accessing the manager.
+source_set("context") {
+  public = [ "application_context.h" ]
+  sources = public
+  public_deps = [
+    "//base",
+    "//components/keyed_service/core",
+  ]
+}
+
+source_set("host_headers") {
+  sources = [ "abi_host_bridge.h" ]
+  deps = [
+    "//base",
+    "//tuffite/components/dispatch/browser",
+    "//tuffite/framework/public:abi",
+  ]
+}
+
+source_set("app") {
+  sources = [
+    "abi_host_bridge.cc",
+    "application_context.cc",
+    "main_delegate.cc",
+    "main_delegate.h",
+    "process_launch.cc",
+    "process_launch.h",
+  ]
+  deps = [
+    ":context",
+    "//base",
+    "//components/embedder_support:user_agent",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+    "//components/network_session_configurator/common",
+    "//components/services/storage/public/mojom",
+    "//components/viz/common",
+    "//content/public/app",
+    "//content/public/browser",
+    "//content/public/common",
+    "//content/public/renderer",
+    "//content/public/utility",
+    "//crypto",
+    "//gin",
+    "//mojo/public/cpp/bindings",
+    "//mojo/public/cpp/system",
+    "//net",
+    "//sandbox",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
+    "//skia",
+    "//third_party/blink/public:blink",
+    "//tuffite:buildflags",
+    "//tuffite/components/dispatch/browser",
+    "//tuffite/components/dispatch/common:implementation",
+    "//tuffite/components/dispatch/common:mojom",
+    "//tuffite/components/dispatch/renderer",
+    "//tuffite/components/explorer/browser",
+    "//tuffite/components/explorer/common:mojom",
+    "//tuffite/components/explorer/renderer",
+    "//tuffite/framework/app:host_headers",
+    "//tuffite/framework/app/services:manager",
+    "//tuffite/framework/app/services/asset",
+    "//tuffite/framework/app/services/policy",
+    "//tuffite/framework/app/services/remoting",
+    "//tuffite/framework/app/services/utility",
+    "//tuffite/framework/browser",
+    "//tuffite/framework/browser/services/shell_api/commands",
+    "//tuffite/framework/common",
+    "//tuffite/framework/common:capability_pattern",
+    "//tuffite/framework/common/utility:mojom",
+    "//tuffite/framework/public:abi",
+    "//tuffite/framework/renderer",
+    "//tuffite/framework/utility",
+    "//ui/base",
+    "//ui/display",
+    "//ui/menus",
+    "//ui/shell_dialogs",
+    "//ui/snapshot",
+    "//ui/views",
+    "//ui/views/controls/webview",
+    "//url",
+    "//v8",
+  ]
+  if (!is_mac) {
+    deps += [
+      "//ui/aura",
+      "//ui/wm",
+    ]
+  } else {
+    sources += [ "main_delegate_mac.mm" ]
+  }
+  configs += [ "//v8:external_startup_data" ]
+}

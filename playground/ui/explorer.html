@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script type="module" src="./src/presentation.js"></script>
+<link rel="stylesheet" href="/src/styles.css">
+</head>
+<body class="explorer-page">
+  <header>
+    <strong>&lt;explorer&gt;</strong>
+    <span id="role-status">ShellAPI probe running…</span>
+  </header>
+  <nav aria-label="Open request examples">
+    <a id="navigation-link" href="./history-a.html">navigation</a>
+    <button id="window-open-button">window.open</button>
+    <button id="popup-link">popup</button>
+    <a id="new-window-link" href="./history-a.html" target="_blank">Shift+click: new window</a>
+  </nav>
+  <div class="nested-demo">
+    <span>nested level 2</span>
+    <explorer id="nested"
+      navigation="emit" dialogs="emit"></explorer>
+  </div>
+  <footer>normal WebContents · omitted partition shares the parent's exact StoragePartition · parent/top messaging</footer>
+  <script type="module" src="/src/explorer.js"></script>
+</body>
+</html>

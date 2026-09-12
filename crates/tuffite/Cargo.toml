@@ -1,0 +1,82 @@
+[package]
+name = "tuffite"
+description = "Public Rust API for the Tuffite desktop framework"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+autobins = false
+
+[[bin]]
+name = "tuff"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+async = ["tuffite-runtime/async"]
+remoting = ["dep:base64", "dep:serde", "dep:tracing", "dep:tokio", "tokio/sync", "tokio/time"]
+build = [
+    "dep:indicatif",
+    "dep:ureq",
+    "dep:blake3",
+    "dep:oxc_allocator",
+    "dep:oxc_ast",
+    "dep:oxc_parser",
+    "dep:oxc_span",
+    "dep:oxc_syntax",
+    "dep:prettyplease",
+    "dep:proc-macro2",
+    "dep:quote",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:sha2",
+    "dep:syn",
+    "dep:tracing",
+    "dep:url",
+    "dep:zip",
+]
+cli = [
+    "build",
+    "dep:anyhow",
+    "dep:clap",
+    "dep:tracing",
+    "dep:tracing-subscriber",
+    "dep:getrandom",
+    "dep:processkit",
+    "dep:tokio",
+]
+
+[dependencies]
+base64 = { version = "0.22", optional = true }
+indicatif = { version = "0.18", optional = true }
+ureq = { version = "3.4", default-features = false, features = ["rustls", "json"], optional = true }
+anyhow = { workspace = true, optional = true }
+tuffite-abi = { version = "2.5.0", path = "../tuffite-abi" }
+tuffite-macros = { version = "0.1.0", path = "../tuffite-macros" }
+tuffite-runtime = { version = "0.1.0", path = "../tuffite-runtime" }
+blake3 = { version = "1.8.2", optional = true }
+clap = { version = "4.5.53", features = ["derive", "env"], optional = true }
+oxc_allocator = { version = "=0.116.0", optional = true }
+oxc_ast = { version = "=0.116.0", optional = true }
+oxc_parser = { version = "=0.116.0", optional = true }
+oxc_span = { version = "=0.116.0", optional = true }
+oxc_syntax = { version = "=0.116.0", optional = true }
+prettyplease = { version = "0.2", optional = true }
+proc-macro2 = { version = "1", optional = true }
+quote = { version = "1", optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+sha2 = { version = "0.10", optional = true }
+syn = { version = "2", features = ["full"], optional = true }
+tracing = { workspace = true, optional = true }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt"], optional = true }
+zip = { version = "4.6", default-features = false, features = ["deflate"], optional = true }
+url = { version = "2", optional = true }
+getrandom = { version = "0.4", optional = true }
+processkit = { version = "3.3.4", optional = true }
+tokio = { version = "1", features = ["rt", "signal"], optional = true }
+
+[lints]
+workspace = true

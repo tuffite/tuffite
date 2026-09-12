@@ -1,0 +1,41 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+source_set("utility") {
+  public = [
+    "host_runtime.h",
+    "utility_service.h",
+    "utility_service_factory.h",
+    "utility_types.h",
+  ]
+  sources = [
+    "host_runtime.cc",
+    "host_runtime.h",
+    "utility_process_launcher.cc",
+    "utility_process_launcher.h",
+    "utility_service.h",
+    "utility_service_factory.cc",
+    "utility_service_factory.h",
+    "utility_service_impl.cc",
+    "utility_types.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/core",
+    "//tuffite/framework/app/services:factory",
+    "//tuffite/framework/public:abi",
+  ]
+  deps = [
+    "//content/public/browser",
+    "//mojo/public/cpp/bindings",
+    "//tuffite/framework/app/services/policy",
+    "//tuffite/framework/common",
+    "//tuffite/framework/common/utility:mojom",
+    "//tuffite/framework/common/utility:service_name",
+    "//tuffite/framework/public:abi",
+  ]
+}

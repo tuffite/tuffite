@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+
+# Rust and generated application output
+/target/
+/dist/
+/playground/dist/
+/compile_commands.json
+/playground/ui/dist/
+/playground/ui/node_modules/
+/.cache/
+
+# Machine settings and credentials
+.env
+.env.*
+!.env.example
+mise.local.toml

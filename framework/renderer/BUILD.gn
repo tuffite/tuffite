@@ -1,0 +1,25 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+source_set("renderer") {
+  sources = [
+    "content_renderer_client.cc",
+    "content_renderer_client.h",
+  ]
+  deps = [
+    "//base",
+    "//content/public/renderer",
+    "//gin",
+    "//third_party/blink/public:blink",
+    "//tuffite/components/dispatch/renderer",
+    "//tuffite/components/explorer/renderer",
+    "//tuffite/framework/common",
+    "//url",
+    "//v8",
+  ]
+  configs += [ "//v8:external_startup_data" ]
+}

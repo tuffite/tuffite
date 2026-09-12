@@ -1,0 +1,29 @@
+{
+  "$schema": "../../schemas/tuffite.schema.json",
+  "app": {
+    "identifier": "org.tuffite.framework",
+    "security": {
+      "capabilities": []
+    },
+    "network": {},
+    "assets": []
+  },
+  "build": {
+    "shellApi": {
+      "namespace": "tuffite",
+      "definitions": [
+        "../../framework/shell_api/common.d.ts",
+        "../../framework/shell_api/dialog.d.ts",
+        "../../framework/shell_api/path.d.ts",
+        "../../framework/shell_api/remoting.d.ts",
+        "../../framework/shell_api/fs.d.ts",
+        "../../framework/shell_api/storage.d.ts",
+        "../../framework/shell_api/log.d.ts",
+        "../../framework/shell_api/network.d.ts",
+        "../../framework/shell_api/utility.d.ts",
+        "../../framework/shell_api/window.d.ts"
+      ],
+      "facade": "framework"
+    }
+  }
+}

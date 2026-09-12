@@ -1,0 +1,16 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+declare_args() {
+  # Compiles Tuffite integration hooks into Chromium.
+  tuffite_in_chromium = false
+
+  # Enables the authenticated loopback renderer override used by `tuff dev`.
+  # Production CI profiles intentionally leave this disabled.
+  tuffite_dev_mode = false
+
+  # Disables the Chromium Remote Desktop data-plane facade. Remoting is built
+  # by default; applications still need an explicit manifest capability before
+  # they can create a session.
+  tuffite_disable_remoting = false
+}

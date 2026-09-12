@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+  <title>Nested Explorer</title>
+  <script type="module" src="./src/presentation.js"></script>
+<link rel="stylesheet" href="/src/styles.css">
+</head>
+<body class="explorer-page">
+  <header>
+    <strong>nested &lt;explorer&gt;</strong>
+    <span>level 2 · requests can cross every Explorer boundary</span>
+  </header>
+  <nav aria-label="Nested Explorer request examples">
+    <a id="nested-navigation" href="./history-a.html?source=nested-navigation">navigation</a>
+    <button id="nested-open">window.open</button>
+    <button id="nested-popup">popup</button>
+    <a id="nested-newwindow" href="./history-a.html?source=nested-newwindow" target="_blank">new window</a>
+    <button id="nested-dialog">confirm</button>
+  </nav>
+  <footer>postMessage(notification request, {to: "top"})</footer>
+  <script type="module" src="/src/nested.js"></script>
+</body>
+</html>

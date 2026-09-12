@@ -1,0 +1,18 @@
+[package]
+name = "spo"
+description = "Git-backed stacked patch orchestration"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap = { version = "4.5.53", features = ["derive", "env"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+console = "0.16.6"
+
+[lints]
+workspace = true

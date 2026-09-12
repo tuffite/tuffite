@@ -1,0 +1,29 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/build/shell_api_protocol.gni")
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+shell_api_protocol("protocol") {
+  manifest = "//tuffite/packages/tuffite/tuffite.json"
+  definitions = [
+    "//tuffite/framework/shell_api/common.d.ts",
+    "//tuffite/framework/shell_api/dialog.d.ts",
+    "//tuffite/framework/shell_api/path.d.ts",
+    "//tuffite/framework/shell_api/remoting.d.ts",
+    "//tuffite/framework/shell_api/fs.d.ts",
+    "//tuffite/framework/shell_api/storage.d.ts",
+    "//tuffite/framework/shell_api/log.d.ts",
+    "//tuffite/framework/shell_api/network.d.ts",
+    "//tuffite/framework/shell_api/utility.d.ts",
+    "//tuffite/framework/shell_api/window.d.ts",
+  ]
+  visibility = [ "//tuffite/framework/browser/services/shell_api/commands" ]
+  deps = [ "//tuffite/components/dispatch/common:implementation" ]
+  public_deps = [
+    "//tuffite/components/dispatch/browser:shell_api_protocol",
+    "//tuffite/components/dispatch/common:implementation",
+  ]
+}

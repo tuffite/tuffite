@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; frame-src 'self' https://example.com">
+  <title>Playground on Tuffite</title>
+  <script type="module" src="/src/presentation.js"></script>
+  <link rel="stylesheet" href="/src/styles.css">
+</head>
+<body>
+  <main>
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">TUFFITE PLAYGROUND</p>
+        <h1>Capability lab</h1>
+        <p>Rust control plane, Chromium renderer, and normal inner WebContents.</p>
+      </div>
+      <output id="explorer-suite-status" role="status" class="status-pill running">Running self-checks</output>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="Playground areas">
+      <button id="tab-explorer" role="tab" aria-selected="true" aria-controls="panel-explorer" data-tab="explorer">Explorer</button>
+      <button id="tab-platform" role="tab" aria-selected="false" aria-controls="panel-platform" data-tab="platform" tabindex="-1">Platform APIs</button>
+      <button id="tab-services" role="tab" aria-selected="false" aria-controls="panel-services" data-tab="services" tabindex="-1">Services &amp; windows</button>
+    </nav>
+
+    <section id="panel-explorer" class="tab-panel" role="tabpanel" aria-labelledby="tab-explorer" data-panel="explorer">
+      <section class="card explorer-card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">NORMAL INNER WEBCONTENTS</p>
+            <h2>&lt;explorer&gt; capability lab</h2>
+            <p><a href="./capabilities.html">Open the origin permissions lab</a></p>
+            <p><a href="./transfer.html">Open the detach / attach transfer lab</a></p>
+            <p>Exercise the same navigation, dialog, storage, and messaging APIs an app uses in production.</p>
+          </div>
+        </div>
+
+        <div class="explorer-toolbar" aria-label="Explorer navigation controls">
+          <input id="explorer-url" class="explorer-url" value="https://www.baidu.com/" aria-label="Explorer URL">
+          <button id="explorer-load-url">Load URL</button>
+          <button id="explorer-home">Home</button>
+          <button id="explorer-history-a">Load A</button>
+          <button id="explorer-history-b">Load B</button>
+          <button id="explorer-baidu">Load Baidu</button>
+          <button id="explorer-back">Back</button>
+          <button id="explorer-forward">Forward</button>
+          <button id="explorer-go-back">go(-1)</button>
+          <button id="explorer-reload">Reload</button>
+          <button id="explorer-reload-cache">Bypass cache</button>
+          <button id="explorer-stop">Stop</button>
+          <label class="context-menu-toggle">
+            <input id="explorer-context-menu" type="checkbox" checked>
+            Native context menu
+          </label>
+        </div>
+        <output id="explorer-action-status" class="action-status" aria-live="polite">Ready for an action.</output>
+        <div id="thread-explorer-slot" class="explorer-slot"></div>
+
+        <div class="demo-grid">
+          <details class="demo-panel" open>
+            <summary><h3>Parent API</h3><span>navigation and scripting</span></summary>
+            <p>Execute JavaScript, inspect navigation state, message the child, or replace its WebContents.</p>
+            <div class="controls compact-controls">
+              <button id="explorer-execute">executeJavaScript</button>
+              <button id="explorer-state">getNavigationState</button>
+              <button id="explorer-message">postMessage</button>
+              <button id="explorer-recreate">Recreate</button>
+              <button id="explorer-stress">Stress ×20</button>
+            </div>
+            <output id="explorer-command-result" class="block-output code-output">Choose an operation.</output>
+          </details>
+
+          <details class="demo-panel" open>
+            <summary><h3>Dialog bridge</h3><span>manual and automatic responses</span></summary>
+            <p>Inspect and answer alert, confirm, prompt, and beforeunload requests from the parent.</p>
+            <label class="field-row">Handling
+              <select id="explorer-dialog-mode">
+                <option value="auto">Auto accept</option>
+                <option value="manual">Manual response</option>
+              </select>
+            </label>
+            <div class="controls compact-controls">
+              <button id="explorer-alert">alert</button>
+              <button id="explorer-confirm">confirm</button>
+              <button id="explorer-prompt">prompt</button>
+              <button id="explorer-beforeunload">beforeunload + reload</button>
+            </div>
+            <div class="dialog-response">
+              <input id="explorer-dialog-text" value="Typed by the parent" aria-label="Dialog prompt response">
+              <button id="explorer-dialog-accept" disabled>Accept</button>
+              <button id="explorer-dialog-reject" disabled>Cancel</button>
+            </div>
+            <output id="explorer-dialog-result" class="block-output code-output">No dialog request yet.</output>
+          </details>
+
+          <details class="demo-panel" open>
+            <summary><h3>Storage partition</h3><span>shared, isolated, and inherited</span></summary>
+            <p>Named partitions are independent; <code>inherit+*</code> snapshots cookies and localStorage into an empty destination.</p>
+            <div class="partition-demo">
+              <span>persist:playground-v2-persist</span>
+              <div id="persistent-explorer-slot" class="explorer-slot isolated-slot"></div>
+              <span>memory:playground-v2-memory</span>
+              <div id="isolated-explorer-slot" class="explorer-slot isolated-slot"></div>
+              <span>inherit+persist:playground-v2-inherit-persist</span>
+              <div id="inherit-persistent-explorer-slot" class="explorer-slot isolated-slot"></div>
+              <span>inherit+memory:playground-v2-inherit-memory</span>
+              <div id="inherit-memory-explorer-slot" class="explorer-slot isolated-slot"></div>
+            </div>
+            <button id="explorer-storage">Verify partition policy matrix</button>
+            <output id="explorer-storage-result" class="block-output code-output">Not mounted yet. The check covers shared, persist, memory, inherit+persist, inherit+memory, plus omitted-partition nesting.</output>
+          </details>
+
+          <details class="demo-panel" open>
+            <summary><h3>Events and nested routing</h3><span>bubbling across boundaries</span></summary>
+            <p>Requests from level 2 cross the inner element, outer element, and top Tuffite target unless stopped.</p>
+            <div class="controls compact-controls">
+              <button id="explorer-nested-open-bubble">Bubble nested open</button>
+              <button id="explorer-nested-open-stop">Stop nested open</button>
+              <button id="explorer-nested-dialog-bubble">Bubble nested dialog</button>
+              <button id="explorer-nested-dialog-stop">Stop nested dialog</button>
+              <button id="explorer-clear-events">Clear events</button>
+            </div>
+            <ol id="explorer-events" class="event-log" aria-live="polite"></ol>
+          </details>
+        </div>
+
+        <details class="diagnostics" open>
+          <summary>Capability summary and self-check output</summary>
+          <div class="capability-summary">
+            <span><strong>capability</strong> by committed document origin</span>
+            <span><strong>partition</strong> omitted = shared · persist/memory = empty · inherit = snapshot</span>
+            <span><strong>navigation</strong> emit</span>
+            <span><strong>dialogs</strong> emit / suppress</span>
+            <span><strong>nesting</strong> each owner needs create permission</span>
+          </div>
+          <output id="explorer-v2" class="block-output suite-output">Self-checks starting…</output>
+        </details>
+        <div id="explorer-notification" class="demo-notification" role="status" hidden></div>
+      </section>
+    </section>
+
+    <section id="panel-platform" class="tab-panel" role="tabpanel" aria-labelledby="tab-platform" data-panel="platform" hidden>
+      <details class="card" open>
+        <summary><h2>Runtime</h2><span>typed ShellAPI dispatch</span></summary>
+        <output id="runtime">Connecting to ShellAPI…</output>
+        <button id="invoke">Invoke Rust command</button>
+      </details>
+      <details class="card" open>
+        <summary><h2>Chromium Network Service</h2><span>policy-controlled fetch</span></summary>
+        <output id="network">Request pending…</output>
+      </details>
+      <details class="card" open>
+        <summary><h2>Path, filesystem, storage, and logging</h2><span>platform primitives</span></summary>
+        <output id="platform" class="block-output">Platform APIs pending…</output>
+      </details>
+      <details class="card" open>
+        <summary><h2>Native dialogs</h2><span>system file pickers</span></summary>
+        <output id="dialog" class="block-output">Choose a file or directory through the system picker.</output>
+        <div class="controls">
+          <button id="dialog-file">Choose file</button>
+          <button id="dialog-directory">Choose directory</button>
+        </div>
+      </details>
+    </section>
+
+    <section id="panel-services" class="tab-panel" role="tabpanel" aria-labelledby="tab-services" data-panel="services" hidden>
+      <details class="card" open>
+        <summary><h2>Async framework and backpressured assets</h2><span>events, utilities, and streaming</span></summary>
+        <output id="async-framework" class="block-output">Application event, async utility, and large asset pending…</output>
+      </details>
+      <details class="card" open>
+        <summary><h2>Supervised UtilityService</h2><span>lifecycle and recovery</span></summary>
+        <p>Binary IPC, state reuse, idle shutdown, and crash recovery.</p>
+        <output id="utility" class="block-output">Utility lifecycle pending…</output>
+        <div class="controls">
+          <input id="utility-message" value="hello from renderer" aria-label="Echo payload">
+          <button id="utility-echo">Echo binary payload</button>
+          <button id="utility-status">Status / restart</button>
+          <button id="utility-crash" class="danger">Crash child</button>
+        </div>
+      </details>
+      <details class="card" open>
+        <summary><h2>Window management</h2><span>managed native windows</span></summary>
+        <output id="window" class="block-output">Window lifecycle pending…</output>
+        <div class="controls">
+          <button id="window-create">Create child</button>
+          <button id="window-focus">Focus</button>
+          <button id="window-minimize">Minimize</button>
+          <button id="window-maximize">Maximize</button>
+          <button id="window-restore">Restore</button>
+          <button id="window-fullscreen">Toggle fullscreen</button>
+          <button id="window-list">List windows</button>
+          <button id="window-close" class="danger">Close child</button>
+        </div>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+assert(tuffite_in_chromium)
+
+source_set("download") {
+  public = [
+    "download_service.h",
+    "download_service_factory.h",
+  ]
+  sources = [
+    "download_service.h",
+    "download_service_factory.cc",
+    "download_service_factory.h",
+    "download_service_impl.cc",
+    "download_service_impl.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+  ]
+  deps = [
+    "//components/download/public/common:public",
+    "//content/public/browser",
+    "//net",
+    "//tuffite/components/explorer/browser",
+  ]
+}

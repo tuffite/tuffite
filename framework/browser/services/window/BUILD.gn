@@ -1,0 +1,83 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//build/config/ui.gni")
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+source_set("window") {
+  public = [
+    "devtools_frontend.h",
+    "platform.h",
+    "video_overlay_window.h",
+    "window.h",
+    "window_backend.h",
+    "window_service.h",
+    "window_service_factory.h",
+    "window_types.h",
+  ]
+  sources = [
+    "devtools_frontend.cc",
+    "devtools_frontend.h",
+    "document_picture_in_picture_window.cc",
+    "document_picture_in_picture_window.h",
+    "platform.h",
+    "video_overlay_window.cc",
+    "video_overlay_window.h",
+    "window.cc",
+    "window.h",
+    "window_backend.cc",
+    "window_backend.h",
+    "window_service.h",
+    "window_service_factory.cc",
+    "window_service_factory.h",
+    "window_service_impl.cc",
+    "window_service_impl.h",
+    "window_types.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+    "//content/public/browser",
+    "//skia",
+    "//third_party/blink/public:blink",
+    "//ui/gfx",
+    "//ui/views",
+  ]
+  deps = [
+    "//ipc",
+    "//net",
+    "//services/media_session/public/cpp",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
+    "//tuffite:buildflags",
+    "//tuffite/components/explorer/browser",
+    "//tuffite/framework/browser:support",
+    "//tuffite/framework/browser/services/context_menu",
+    "//tuffite/framework/browser/services/file_chooser",
+    "//tuffite/framework/browser/services/javascript_dialog",
+    "//tuffite/framework/common",
+    "//ui/base",
+    "//ui/base:hit_test",
+    "//ui/compositor",
+    "//ui/display",
+    "//ui/views/controls/webview",
+    "//url",
+  ]
+  if (is_mac) {
+    sources += [ "platform_mac.mm" ]
+  } else if (toolkit_views) {
+    sources += [ "platform_views.cc" ]
+  }
+  if (is_win) {
+    libs = [ "dwmapi.lib" ]
+  }
+  if (!is_mac) {
+    deps += [
+      "//ui/aura",
+      "//ui/wm",
+    ]
+  }
+}

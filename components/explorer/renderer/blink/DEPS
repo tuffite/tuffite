@@ -1,0 +1,5 @@
+# Compiled into Blink Core, separate from the public renderer adapter.
+include_rules = [
+  "+third_party/blink/renderer",
+  "+ui/gfx",
+]

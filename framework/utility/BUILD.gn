@@ -1,0 +1,33 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+source_set("utility") {
+  sources = [
+    "content_utility_client.cc",
+    "content_utility_client.h",
+    "js_extension_session.cc",
+    "js_extension_session.h",
+    "utility_service.cc",
+    "utility_service.h",
+  ]
+  deps = [
+    "//base",
+    "//content/public/common",
+    "//content/public/utility",
+    "//gin",
+    "//mojo/public/cpp/bindings",
+    "//mojo/public/cpp/system",
+    "//tuffite:buildflags",
+    "//tuffite/framework/common",
+    "//tuffite/framework/common/utility:mojom",
+    "//tuffite/framework/common/utility:service_name",
+    "//tuffite/framework/public:abi",
+    "//url",
+    "//v8",
+  ]
+  configs += [ "//v8:external_startup_data" ]
+}

@@ -1,0 +1,9 @@
+[
+  {
+    "name": "chromium",
+    "repo": "src",
+    "patch_dir": "src/tuffite/patches/chromium",
+    "base_ref": "refs/spo/upstream",
+    "exclude": ["tuffite"]
+  }
+]

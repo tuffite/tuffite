@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Live transfer sample</title><link rel="stylesheet" href="/src/styles.css"></head>
+<body class="explorer-page">
+  <h2>Live page</h2>
+  <label>Unsaved text <textarea id="draft" rows="4" cols="30">Edit this text, then move this page.</textarea></label>
+  <p><button id="history">Add history entry</button> <output id="history-state"></output></p>
+  <p>The draft and history should survive detach / attach and opening an independent window.</p>
+  <script type="module" src="./src/transfer-sample.js"></script>
+</body>
+</html>

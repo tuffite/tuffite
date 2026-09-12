@@ -1,0 +1,21 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+action("abi_version") {
+  script = "//tuffite/scripts/abi.py"
+  inputs = [ "//tuffite/crates/tuffite-abi/Cargo.toml" ]
+  outputs = [ "$target_gen_dir/abi_version.h" ]
+  args = [
+    "--output",
+    rebase_path(outputs[0], root_build_dir),
+  ]
+}
+
+source_set("abi") {
+  sources = [ "abi.h" ]
+  public_deps = [ ":abi_version" ]
+}

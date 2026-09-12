@@ -1,0 +1,60 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+source_set("commands") {
+  visibility = [
+    "//tuffite/framework/app",
+    "//tuffite/framework/browser/services/shell_api",
+    "//tuffite/framework/test:abi_host_bridge_unittests",
+  ]
+  public = [ "registry.h" ]
+  sources = [
+    "application_policy.h",
+    "dialog.cc",
+    "dialog.h",
+    "fs.cc",
+    "fs.h",
+    "log.cc",
+    "log.h",
+    "network.cc",
+    "network.h",
+    "path.cc",
+    "path.h",
+    "registry.cc",
+    "registry.h",
+    "remoting.cc",
+    "remoting.h",
+    "storage.cc",
+    "storage.h",
+    "utility.cc",
+    "utility.h",
+    "window_api.cc",
+    "window_api.h",
+  ]
+  public_deps = [
+    "//tuffite/components/dispatch/browser",
+    "//tuffite/framework/shell_api:protocol",
+  ]
+  deps = [
+    "//base",
+    "//content/public/browser",
+    "//net",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
+    "//tuffite/components/dispatch/common:implementation",
+    "//tuffite/framework/app:context",
+    "//tuffite/framework/app/services/policy",
+    "//tuffite/framework/app/services/remoting",
+    "//tuffite/framework/app/services/utility",
+    "//tuffite/framework/browser:support",
+    "//tuffite/framework/browser/services/window",
+    "//tuffite/framework/common",
+    "//tuffite/framework/public:abi",
+    "//ui/shell_dialogs",
+    "//url",
+  ]
+}
