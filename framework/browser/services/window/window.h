@@ -15,6 +15,7 @@
 #include "content/public/browser/web_contents_observer.h"
 #include "third_party/blink/public/mojom/page/draggable_region.mojom-forward.h"
 #include "third_party/skia/include/core/SkRegion.h"
+#include "tuffite/framework/browser/services/window/window_types.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/views/widget/widget_delegate.h"
@@ -37,9 +38,8 @@ class ClientView;
 namespace tuffite {
 namespace window {
 class WindowService;
-}
-
-struct AppWindow;
+struct Constraints;
+}  // namespace window
 
 class Window final : public views::WidgetDelegate,
                      public views::WidgetObserver,
@@ -50,7 +50,7 @@ class Window final : public views::WidgetDelegate,
                         const GURL& url,
                         const gfx::Size& size,
                         bool decorations = true,
-                        const AppWindow* configuration = nullptr);
+                        const window::Constraints* constraints = nullptr);
   static Window* FromWebContents(content::WebContents* web_contents);
   static const std::vector<Window*>& windows();
   static void SetQuitClosure(base::OnceClosure quit_closure);
@@ -68,6 +68,9 @@ class Window final : public views::WidgetDelegate,
   bool web_view_is_drawn() const;
   //   bool native_web_contents_view_is_visible() const;
   bool decorations() const { return decorations_; }
+  window::Constraints constraints() const {
+    return {minimum_size_, maximum_size_};
+  }
   gfx::Size minimum_size() const { return minimum_size_; }
   gfx::Size maximum_size() const { return maximum_size_; }
   bool IsPointWithinDraggableRegion(const gfx::Point& point) const;

@@ -1,7 +1,7 @@
 // Copyright 2026 The Tuffite Authors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-#include "tuffite/framework/browser/services/window/devtools_frontend.h"
+#include "tuffite/framework/browser/services/devtools/devtools_frontend.h"
 
 #include <algorithm>
 #include <memory>
@@ -35,8 +35,8 @@
 #include "services/network/public/cpp/simple_url_loader.h"
 #include "services/network/public/cpp/simple_url_loader_stream_consumer.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
-#include "tuffite/framework/browser/services/window/platform.h"
 #include "tuffite/framework/browser/services/window/window.h"
+#include "tuffite/framework/browser/services/window/window_service.h"
 
 namespace tuffite {
 namespace {
@@ -65,7 +65,9 @@ base::DictValue BuildResourceResponse(const net::HttpResponseHeaders* headers,
 class DevToolsFrontend final : public content::WebContentsObserver,
                                public content::DevToolsAgentHostClient {
  public:
-  DevToolsFrontend(Window* window, content::WebContents* inspected);
+  DevToolsFrontend(window::WindowService& windows,
+                   Window* window,
+                   content::WebContents* inspected);
 
   DevToolsFrontend(const DevToolsFrontend&) = delete;
   DevToolsFrontend& operator=(const DevToolsFrontend&) = delete;
@@ -77,11 +79,14 @@ class DevToolsFrontend final : public content::WebContentsObserver,
   static DevToolsFrontend* FindFor(content::WebContents* inspected);
 
   void Focus() {
-    if (window_) {
-      if (window::GetState(window_).minimized) {
-        window::Restore(window_);
+    if (!windows_) {
+      return;
+    }
+    if (auto info = windows_->GetInfo(window_)) {
+      if (info->state.minimized) {
+        windows_->Restore(window_);
       }
-      window::Focus(window_);
+      windows_->Focus(window_);
     }
   }
 
@@ -160,13 +165,15 @@ class DevToolsFrontend final : public content::WebContentsObserver,
       content::WebContents* outermost = inspected_->GetOutermostWebContents();
       Window* inspected_window = Window::FromWebContents(outermost);
       if (inspected_window) {
-        window::Focus(inspected_window);
+        if (windows_) {
+          windows_->Focus(inspected_window);
+        }
       } else {
         inspected_->Focus();
       }
     } else if (*method == "closeWindow") {
-      if (window_) {
-        window_->Close();
+      if (windows_) {
+        windows_->Close(window_);
       }
       return;
     } else if (*method == "loadCompleted") {
@@ -178,8 +185,8 @@ class DevToolsFrontend final : public content::WebContentsObserver,
       SendAck(request_id, {});
       return;
     } else if (*method == "inspectElementCompleted") {
-      if (window_) {
-        window::Focus(window_);
+      if (windows_) {
+        windows_->Focus(window_);
       }
     } else if (*method == "setInspectedPageBounds" ||
                *method == "inspectedURLChanged") {
@@ -296,6 +303,7 @@ class DevToolsFrontend final : public content::WebContentsObserver,
                base::Value(std::move(response)));
   }
 
+  const base::WeakPtr<window::WindowService> windows_;
   raw_ptr<Window> window_;
   base::WeakPtr<content::WebContents> inspected_;
   scoped_refptr<content::DevToolsAgentHost> agent_host_;
@@ -350,9 +358,11 @@ void DevToolsFrontend::NetworkResourceLoader::OnRetry(base::OnceClosure) {
   NOTREACHED();
 }
 
-DevToolsFrontend::DevToolsFrontend(Window* window,
+DevToolsFrontend::DevToolsFrontend(window::WindowService& windows,
+                                   Window* window,
                                    content::WebContents* inspected)
     : content::WebContentsObserver(window->web_contents()),
+      windows_(windows.GetWeakPtr()),
       window_(window),
       inspected_(inspected->GetWeakPtr()) {
   // Register before navigation so repeated Inspect requests also reuse a
@@ -400,8 +410,8 @@ void DevToolsFrontend::PrimaryMainDocumentElementAvailable() {
         content::DevToolsAgentHost::GetOrCreateForTab(inspected_.get());
     if (!agent_host_ || !agent_host_->AttachClient(this)) {
       agent_host_ = nullptr;
-      if (window_) {
-        window_->Close();
+      if (windows_) {
+        windows_->Close(window_);
       }
       return;
     }
@@ -416,8 +426,8 @@ void DevToolsFrontend::WebContentsDestroyed() {
 void DevToolsFrontend::AgentHostClosed(content::DevToolsAgentHost*) {
   agent_host_ = nullptr;
   inspected_ = nullptr;
-  if (window_) {
-    window_->Close();
+  if (windows_) {
+    windows_->Close(window_);
   }
 }
 
@@ -441,7 +451,8 @@ void DevToolsFrontend::DispatchProtocolMessage(
 
 }  // namespace
 
-void ShowDevToolsFrontend(content::WebContents* inspected,
+void ShowDevToolsFrontend(window::WindowService& windows,
+                          content::WebContents* inspected,
                           content::RenderFrameHost* inspected_frame,
                           int x,
                           int y) {
@@ -467,9 +478,11 @@ void ShowDevToolsFrontend(content::WebContents* inspected,
     frontend->Focus();
     return;
   }
-  Window* window = Window::Create(inspected->GetBrowserContext(), GURL(),
-                                  gfx::Size(1100, 760));
-  new DevToolsFrontend(window, inspected);
+  Window* window = windows.Create(gfx::Size(1100, 760));
+  if (!window) {
+    return;
+  }
+  new DevToolsFrontend(windows, window, inspected);
   window->LoadURL(
       GURL("http://" + address + "/devtools/devtools_app.html?targetType=tab"));
 }

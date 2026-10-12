@@ -8,6 +8,8 @@ source_set("devtools") {
     "devtools_service_factory.h",
   ]
   sources = [
+    "devtools_frontend.cc",
+    "devtools_frontend.h",
     "devtools_service.h",
     "devtools_service_factory.cc",
     "devtools_service_factory.h",
@@ -26,6 +28,7 @@ source_set("devtools") {
     "//services/network/public/cpp",
     "//services/network/public/mojom",
     "//tuffite/framework/browser:support",
+    "//tuffite/framework/browser/services/window",
     "//url",
   ]
 }

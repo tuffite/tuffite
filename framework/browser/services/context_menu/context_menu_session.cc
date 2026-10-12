@@ -62,7 +62,7 @@ class TuffiteContextMenu final : public ui::SimpleMenuModel::Delegate {
   TuffiteContextMenu(content::WebContents* web_contents,
                      content::RenderFrameHost& render_frame_host,
                      const content::ContextMenuParams& params,
-                     DevToolsService& devtools)
+                     base::WeakPtr<DevToolsService> devtools)
       : devtools_(devtools),
         web_contents_(web_contents),
         frame_id_(render_frame_host.GetGlobalId()),
@@ -113,6 +113,8 @@ class TuffiteContextMenu final : public ui::SimpleMenuModel::Delegate {
       return false;
     }
     switch (command_id) {
+      case kInspectElement:
+        return !!devtools_;
       case kCopyImage:
         return params_.has_image_contents &&
                content::RenderFrameHost::FromID(frame_id_);
@@ -217,15 +219,17 @@ class TuffiteContextMenu final : public ui::SimpleMenuModel::Delegate {
         web_contents_->SelectAll();
         break;
       case kInspectElement:
-        devtools_->InspectElement(web_contents_,
-                                  content::RenderFrameHost::FromID(frame_id_),
-                                  params_.x, params_.y);
+        if (devtools_) {
+          devtools_->InspectElement(web_contents_,
+                                    content::RenderFrameHost::FromID(frame_id_),
+                                    params_.x, params_.y);
+        }
         break;
     }
   }
 
  private:
-  const raw_ref<DevToolsService> devtools_;
+  const base::WeakPtr<DevToolsService> devtools_;
   raw_ptr<content::WebContents> web_contents_;
   content::GlobalRenderFrameHostId frame_id_;
   content::ContextMenuParams params_;
@@ -236,7 +240,7 @@ class ContextMenuSessionImpl final : public ContextMenuSession {
  public:
   ContextMenuSessionImpl(content::WebContents* web_contents,
                          ApplicationPolicyService& policy,
-                         DevToolsService& devtools)
+                         base::WeakPtr<DevToolsService> devtools)
       : web_contents_(web_contents), policy_(policy), devtools_(devtools) {}
   ~ContextMenuSessionImpl() override = default;
 
@@ -251,7 +255,7 @@ class ContextMenuSessionImpl final : public ContextMenuSession {
     }
     context_menu_runner_.reset();
     context_menu_ = std::make_unique<TuffiteContextMenu>(
-        web_contents_, render_frame_host, params, *devtools_);
+        web_contents_, render_frame_host, params, devtools_);
     context_menu_runner_ = std::make_unique<views::MenuRunner>(
         context_menu_->model(), views::MenuRunner::CONTEXT_MENU);
 
@@ -303,7 +307,7 @@ class ContextMenuSessionImpl final : public ContextMenuSession {
  private:
   raw_ptr<content::WebContents> web_contents_;
   const raw_ref<ApplicationPolicyService> policy_;
-  const raw_ref<DevToolsService> devtools_;
+  const base::WeakPtr<DevToolsService> devtools_;
   std::unique_ptr<TuffiteContextMenu> context_menu_;
   std::unique_ptr<views::MenuRunner> context_menu_runner_;
 };
@@ -313,7 +317,7 @@ class ContextMenuSessionImpl final : public ContextMenuSession {
 std::unique_ptr<ContextMenuSession> CreateContextMenuSession(
     content::WebContents* web_contents,
     ApplicationPolicyService& policy,
-    DevToolsService& devtools) {
+    base::WeakPtr<DevToolsService> devtools) {
   return std::make_unique<ContextMenuSessionImpl>(web_contents, policy,
                                                   devtools);
 }

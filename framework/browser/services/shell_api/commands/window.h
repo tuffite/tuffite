@@ -1,8 +1,8 @@
 // Copyright 2026 The Tuffite Authors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-#ifndef TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_WINDOW_API_H_
-#define TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_WINDOW_API_H_
+#ifndef TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_WINDOW_H_
+#define TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_WINDOW_H_
 
 #include "tuffite/framework/shell_api/window.h"
 
@@ -47,4 +47,4 @@ void SetBounds(const ::tuffite::dispatch::Context& context,
 
 }  // namespace tuffite::shell_api::window
 
-#endif  // TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_WINDOW_API_H_
+#endif  // TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_WINDOW_H_

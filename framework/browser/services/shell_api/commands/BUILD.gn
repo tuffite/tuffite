@@ -32,8 +32,8 @@ source_set("commands") {
     "storage.h",
     "utility.cc",
     "utility.h",
-    "window_api.cc",
-    "window_api.h",
+    "window.cc",
+    "window.h",
   ]
   public_deps = [
     "//tuffite/components/dispatch/browser",

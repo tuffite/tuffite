@@ -301,10 +301,28 @@ changing directories does not merge scope lifetimes or factory ordering.
 DevToolsService holds a weak lease on Chromium's one process-wide remote debugging
 server. The process manager delegate resolves the current lease owner rather
 than retaining a profile. Each profile has its own service; shutdown releases
-only a server owned by that profile. Native frontend window creation is injected
-from BrowserMainParts through a callback implemented in `window/devtools_frontend`.
-This keeps the dependency direction Window → ContextMenu → DevTools and avoids a
-GN/factory cycle. Window factories depend on ContextMenu; menus depend on DevTools.
+only a server owned by that profile. DevTools owns `devtools/devtools_frontend`
+and creates its frontend through WindowService, with no launcher callback in
+BrowserMainParts. GN and factory dependencies follow ContextMenu → DevTools →
+Window. Context menus are attached through the browser client's WebContents view
+delegate; Window does not depend on ContextMenu. Sessions retain a weak DevTools
+reference, which is invalidated during service shutdown.
+Window factories create an empty owner; WebContents creation happens after
+service construction, so installing a menu session cannot recurse through the
+factory graph.
+
+WindowService owns windows, identifiers, labels, and native operations. It does
+not authorize application origins or read the manifest. Shell API
+`commands/window` checks command, URL, and current/other-window grants before
+calling the service. BrowserMainParts converts manifest entries to generic
+WindowOptions. WindowService owns startup configuration and its navigation
+observer, starts primary navigation on the next task, and opens secondary
+windows after the primary commits. Closing the primary cancels pending startup;
+shutdown detaches the observer and invalidates queued navigation before closing
+windows. The service never retains the manifest or AppWindow configuration.
+Each Shell API route calls a named WindowService method directly; there is no
+second command dispatcher or WindowBackend abstraction. Reply-before-close
+ordering belongs to the Shell API close handler.
 The application policy remains borrowed and outlives every profile.
 
 

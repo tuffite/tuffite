@@ -13,7 +13,7 @@
 #include "tuffite/framework/browser/services/shell_api/commands/remoting.h"
 #include "tuffite/framework/browser/services/shell_api/commands/storage.h"
 #include "tuffite/framework/browser/services/shell_api/commands/utility.h"
-#include "tuffite/framework/browser/services/shell_api/commands/window_api.h"
+#include "tuffite/framework/browser/services/shell_api/commands/window.h"
 #include "tuffite/framework/shell_api/common.h"
 #include "tuffite/framework/shell_api/dialog.h"
 #include "tuffite/framework/shell_api/fs.h"

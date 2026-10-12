@@ -6,16 +6,21 @@
 #include <cstdint>
 
 #include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "content/public/browser/global_routing_id.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service.h"
 
 namespace tuffite {
+namespace window {
+class WindowService;
+}
 class DevToolsServiceImpl final : public DevToolsService {
  public:
-  explicit DevToolsServiceImpl(content::BrowserContext& context);
+  DevToolsServiceImpl(content::BrowserContext& context,
+                      window::WindowService& windows);
   ~DevToolsServiceImpl() override;
-  void SetFrontendLauncher(FrontendLauncher launcher) override;
+  base::WeakPtr<DevToolsService> GetWeakPtr() override;
   void StartIfRequested(content::BrowserContext* context) override;
   void InspectElement(content::WebContents* contents,
                       content::RenderFrameHost* frame,
@@ -33,7 +38,7 @@ class DevToolsServiceImpl final : public DevToolsService {
                              int attempts);
   raw_ptr<content::BrowserContext> browser_context_ = nullptr;
   bool stopped_ = false;
-  FrontendLauncher frontend_launcher_;
+  const raw_ref<window::WindowService> windows_;
   base::WeakPtrFactory<DevToolsServiceImpl> weak_factory_{this};
 };
 }  // namespace tuffite

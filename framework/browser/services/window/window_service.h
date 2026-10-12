@@ -13,31 +13,30 @@
 #include "base/memory/weak_ptr.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "tuffite/framework/browser/services/window/window_types.h"
-namespace content {
-class WebContents;
-}
 namespace tuffite {
 class Window;
 }
 namespace tuffite::window {
-enum class Status {
-  kOk,
-  kInvalidArgument,
-  kAccessDenied,
-  kUnavailable,
-};
-
-struct Result {
-  Status status = Status::kUnavailable;
-  std::vector<Info> windows;
-  std::optional<gfx::Rect> bounds;
-  std::optional<int64_t> close_after_reply;
-};
-
 class WindowService : public KeyedService {
  public:
-  virtual Window* CreateStartupWindows(const gfx::Size& primary_size = {}) = 0;
-  virtual Result Invoke(const Command&, content::WebContents*) = 0;
+  virtual Window* Create(const gfx::Size& size = {},
+                         bool decorations = true,
+                         const Constraints& constraints = {}) = 0;
+  // Primary navigation starts on the next task so callers can install
+  // observers. Secondary windows open after its first successful navigation.
+  virtual Window* CreateStartupWindows(std::vector<WindowOptions> windows,
+                                       const gfx::Size& primary_size = {}) = 0;
+  virtual Window* FindById(int64_t) = 0;
+  virtual std::optional<Info> GetInfo(Window*) = 0;
+  virtual std::vector<Info> List() = 0;
+  virtual bool Focus(Window*) = 0;
+  virtual bool Minimize(Window*) = 0;
+  virtual bool Maximize(Window*) = 0;
+  virtual bool Restore(Window*) = 0;
+  virtual bool SetFullscreen(Window*, bool) = 0;
+  virtual bool SetTitle(Window*, std::u16string_view) = 0;
+  virtual bool SetBounds(Window*, const gfx::Rect&) = 0;
+  virtual bool Close(Window*) = 0;
   virtual void Adopt(std::unique_ptr<Window>) = 0;
   virtual void DestroyWhenIdle(Window*) = 0;
   virtual void Register(Window*, std::string) = 0;

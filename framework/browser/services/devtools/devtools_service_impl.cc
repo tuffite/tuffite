@@ -26,6 +26,8 @@
 #include "net/base/net_errors.h"
 #include "net/log/net_log_source.h"
 #include "net/socket/tcp_server_socket.h"
+#include "tuffite/framework/browser/services/devtools/devtools_frontend.h"
+#include "tuffite/framework/browser/services/window/window_service.h"
 
 namespace tuffite {
 namespace {
@@ -114,8 +116,9 @@ bool DevToolsManagerDelegate::HasBundledFrontendResources() {
 }
 
 }  // namespace
-DevToolsServiceImpl::DevToolsServiceImpl(content::BrowserContext& context)
-    : browser_context_(&context) {}
+DevToolsServiceImpl::DevToolsServiceImpl(content::BrowserContext& context,
+                                         window::WindowService& windows)
+    : browser_context_(&context), windows_(windows) {}
 DevToolsServiceImpl::~DevToolsServiceImpl() {
   Shutdown();
 }
@@ -141,8 +144,8 @@ bool DevToolsServiceImpl::Start(content::BrowserContext* context,
       base::FilePath());
   return true;
 }
-void DevToolsServiceImpl::SetFrontendLauncher(FrontendLauncher launcher) {
-  frontend_launcher_ = std::move(launcher);
+base::WeakPtr<DevToolsService> DevToolsServiceImpl::GetWeakPtr() {
+  return weak_factory_.GetWeakPtr();
 }
 void DevToolsServiceImpl::StartIfRequested(content::BrowserContext* context) {
   const auto& command_line = *base::CommandLine::ForCurrentProcess();
@@ -191,8 +194,8 @@ void DevToolsServiceImpl::ShowFrontendWhenReady(
   if (!frame) {
     frame = inspected->GetFocusedFrame();
   }
-  if (frame && frontend_launcher_) {
-    frontend_launcher_.Run(inspected.get(), frame, x, y);
+  if (frame) {
+    ShowDevToolsFrontend(*windows_, inspected.get(), frame, x, y);
   }
 }
 void DevToolsServiceImpl::Shutdown() {
@@ -204,7 +207,6 @@ void DevToolsServiceImpl::Shutdown() {
     content::DevToolsAgentHost::StopRemoteDebuggingServer();
     ServerOwner().reset();
   }
-  frontend_launcher_.Reset();
   browser_context_ = nullptr;
   weak_factory_.InvalidateWeakPtrs();
 }

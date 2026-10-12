@@ -22,7 +22,6 @@
 #include "third_party/blink/public/mojom/page/draggable_region.mojom.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "third_party/skia/include/core/SkRegion.h"
-#include "tuffite/framework/browser/browser_context.h"
 #include "tuffite/framework/browser/services/file_chooser/file_chooser_service.h"
 #include "tuffite/framework/browser/services/file_chooser/file_chooser_service_factory.h"
 #include "tuffite/framework/browser/services/javascript_dialog/javascript_dialog_service.h"
@@ -31,7 +30,6 @@
 #include "tuffite/framework/browser/services/window/platform.h"
 #include "tuffite/framework/browser/services/window/window_service.h"
 #include "tuffite/framework/browser/services/window/window_service_factory.h"
-#include "tuffite/framework/common/app_manifest.h"
 #include "tuffite/framework/common/constants.h"
 #if !BUILDFLAG(IS_MAC)
 #include "ui/aura/window.h"
@@ -209,15 +207,13 @@ Window* Window::Create(content::BrowserContext* browser_context,
                        const GURL& url,
                        const gfx::Size& size,
                        bool decorations,
-                       const AppWindow* configuration) {
+                       const window::Constraints* constraints) {
   auto owned =
       std::unique_ptr<Window>(new Window(browser_context, size, decorations));
   Window* window = owned.get();
-  if (configuration) {
-    window->minimum_size_ =
-        gfx::Size(configuration->min_width, configuration->min_height);
-    window->maximum_size_ =
-        gfx::Size(configuration->max_width, configuration->max_height);
+  if (constraints) {
+    window->minimum_size_ = constraints->minimum_size;
+    window->maximum_size_ = constraints->maximum_size;
   }
   window->widget_ = std::make_unique<views::Widget>();
   views::Widget::InitParams params(

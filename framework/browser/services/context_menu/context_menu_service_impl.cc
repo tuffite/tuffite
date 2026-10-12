@@ -13,6 +13,6 @@ ContextMenuServiceImpl::ContextMenuServiceImpl(ApplicationPolicyService& policy,
     : policy_(policy), devtools_(devtools) {}
 std::unique_ptr<ContextMenuSession> ContextMenuServiceImpl::CreateSession(
     content::WebContents* contents) {
-  return CreateContextMenuSession(contents, *policy_, *devtools_);
+  return CreateContextMenuSession(contents, *policy_, devtools_->GetWeakPtr());
 }
 }  // namespace tuffite

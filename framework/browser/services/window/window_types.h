@@ -10,7 +10,32 @@
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
 #include "url/gurl.h"
+namespace tuffite {
+enum class WebContentsRole;
+}
 namespace tuffite::window {
+struct Constraints {
+  gfx::Size minimum_size{1, 1};
+  gfx::Size maximum_size{16384, 16384};
+  bool Contains(const gfx::Rect& bounds) const {
+    return bounds.width() >= minimum_size.width() &&
+           bounds.height() >= minimum_size.height() &&
+           bounds.width() <= maximum_size.width() &&
+           bounds.height() <= maximum_size.height();
+  }
+};
+struct WindowOptions {
+  std::string label;
+  GURL url;
+  std::u16string title;
+  gfx::Size size;
+  std::optional<gfx::Point> position;
+  bool focused = true;
+  bool decorations = true;
+  Constraints constraints;
+  // No role means an unprivileged surface. Only trusted browser callers set it.
+  std::optional<WebContentsRole> role;
+};
 struct State {
   std::u16string title;
   gfx::Rect bounds;
@@ -20,35 +45,6 @@ struct State {
   bool fullscreen = false;
 };
 
-enum class Operation {
-  kCurrent,
-  kList,
-  kCreate,
-  kFocus,
-  kMinimize,
-  kMaximize,
-  kRestore,
-  kSetFullscreen,
-  kClose,
-  kSetTitle,
-  kGetBounds,
-  kSetBounds
-};
-struct CreateOptions {
-  std::optional<std::string> label;
-  std::optional<GURL> url;
-  std::optional<std::string> title;
-  std::optional<gfx::Rect> bounds;
-  std::optional<bool> focused;
-};
-struct Command {
-  Operation operation;
-  std::optional<int64_t> target;
-  CreateOptions create;
-  std::string title;
-  gfx::Rect bounds;
-  bool fullscreen = false;
-};
 struct Info {
   int64_t id;
   std::string label;

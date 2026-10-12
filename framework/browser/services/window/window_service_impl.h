@@ -20,8 +20,6 @@ class WebContents;
 class BrowserContext;
 }  // namespace content
 namespace tuffite {
-class AppManifest;
-struct AppWindow;
 class Window;
 }  // namespace tuffite
 
@@ -30,22 +28,33 @@ namespace tuffite::window {
 // Browser-process owner for opaque WindowIds and the builtin window routes.
 // The registry intentionally stores Shell identity only; native handles never
 // cross the ShellAPI boundary.
-class WindowBackend;
 class StartupWindowsObserver;
 class WindowServiceImpl final : public WindowService {
  public:
-  WindowServiceImpl(content::BrowserContext&,
-                    const AppManifest&,
-                    std::unique_ptr<WindowBackend>);
+  explicit WindowServiceImpl(content::BrowserContext&);
   ~WindowServiceImpl() override;
   void Shutdown() override;
-  Window* CreateStartupWindows(const gfx::Size& primary_size) override;
+  Window* Create(const gfx::Size&,
+                 bool decorations,
+                 const Constraints&) override;
+  Window* CreateStartupWindows(std::vector<WindowOptions>,
+                               const gfx::Size&) override;
+  std::optional<Info> GetInfo(Window*) override;
+  std::vector<Info> List() override;
+  bool Focus(Window*) override;
+  bool Minimize(Window*) override;
+  bool Maximize(Window*) override;
+  bool Restore(Window*) override;
+  bool SetFullscreen(Window*, bool) override;
+  bool SetTitle(Window*, std::u16string_view) override;
+  bool SetBounds(Window*, const gfx::Rect&) override;
+  bool Close(Window*) override;
+  Window* FindById(int64_t id) override;
   void Adopt(std::unique_ptr<Window>) override;
   void DestroyWhenIdle(Window*) override;
   void Unregister(Window*) override;
   base::WeakPtr<WindowService> GetWeakPtr() override;
 
-  Result Invoke(const Command&, content::WebContents*) override;
   void Register(Window* window, std::string label) override;
   void CloseById(int64_t id) override;
 
@@ -56,18 +65,19 @@ class WindowServiceImpl final : public WindowService {
     std::string label;
   };
 
-  Window* CreateConfiguredWindow(const AppWindow&, const gfx::Size& size);
+  bool IsAvailable(Window*) const;
+  Window* CreateConfiguredWindow(const WindowOptions&, const gfx::Size&);
   void CreateSecondaryWindows();
+  void CancelStartupWindows();
   void DestroyWindow(Window*);
   void Reconcile();
   int64_t IdFor(Window* window, std::string label = {});
-  Window* FindById(int64_t id);
 
   const raw_ref<content::BrowserContext> context_;
-  const raw_ref<const AppManifest> manifest_;
-  std::unique_ptr<WindowBackend> backend_;
   bool stopped_ = false;
   bool startup_created_ = false;
+  std::optional<int64_t> startup_primary_id_;
+  std::vector<WindowOptions> startup_windows_;
   std::unique_ptr<StartupWindowsObserver> startup_windows_observer_;
   std::vector<std::unique_ptr<Window>> windows_;
   std::set<Window*> closing_;

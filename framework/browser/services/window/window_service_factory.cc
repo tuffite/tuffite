@@ -4,11 +4,8 @@
 #include "tuffite/framework/browser/services/window/window_service_factory.h"
 
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
-#include "tuffite/framework/browser/browser_context.h"
-#include "tuffite/framework/browser/services/context_menu/context_menu_service_factory.h"
 #include "tuffite/framework/browser/services/file_chooser/file_chooser_service_factory.h"
 #include "tuffite/framework/browser/services/javascript_dialog/javascript_dialog_service_factory.h"
-#include "tuffite/framework/browser/services/window/window_backend.h"
 #include "tuffite/framework/browser/services/window/window_service_impl.h"
 
 namespace tuffite::window {
@@ -22,7 +19,6 @@ WindowServiceFactory::WindowServiceFactory()
           BrowserContextDependencyManager::GetInstance()) {
   DependsOn(JavaScriptDialogServiceFactory::Get());
   DependsOn(FileChooserServiceFactory::Get());
-  DependsOn(ContextMenuServiceFactory::Get());
 }
 WindowService* WindowServiceFactory::GetForBrowserContext(
     content::BrowserContext* context,
@@ -33,8 +29,6 @@ WindowService* WindowServiceFactory::GetForBrowserContext(
 std::unique_ptr<KeyedService>
 WindowServiceFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
-  return std::make_unique<WindowServiceImpl>(
-      *context, BrowserContext::GetFrom(*context).manifest(),
-      CreateWindowBackend());
+  return std::make_unique<WindowServiceImpl>(*context);
 }
 }  // namespace tuffite::window

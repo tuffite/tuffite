@@ -3,7 +3,9 @@
 
 #include "tuffite/framework/browser/browser_main_parts.h"
 
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "base/command_line.h"
@@ -20,7 +22,6 @@
 #include "tuffite/framework/browser/services/devtools/devtools_service.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service_factory.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service_factory.h"
-#include "tuffite/framework/browser/services/window/devtools_frontend.h"
 #include "tuffite/framework/browser/services/window/platform.h"
 #include "tuffite/framework/browser/services/window/window.h"
 #include "tuffite/framework/browser/services/window/window_service.h"
@@ -122,8 +123,6 @@ int BrowserMainParts::PreMainMessageLoopRun() {
   browser_context_ =
       std::make_unique<BrowserContext>(std::move(profile), *application_);
   DevToolsServiceFactory::GetForBrowserContext(browser_context_.get())
-      ->SetFrontendLauncher(base::BindRepeating(&ShowDevToolsFrontend));
-  DevToolsServiceFactory::GetForBrowserContext(browser_context_.get())
       ->StartIfRequested(browser_context_.get());
   InitializeMessageLoopContext();
   return 0;
@@ -164,9 +163,31 @@ void BrowserMainParts::InitializeMessageLoopContext() {
   const gfx::Size primary_size = command_line->HasSwitch(kSmokeTestSwitch)
                                      ? gfx::Size(1100, 1000)
                                      : gfx::Size(primary.width, primary.height);
+  std::vector<window::WindowOptions> startup_windows;
+  startup_windows.reserve(manifest->windows().size());
+  for (const auto& configured : manifest->windows()) {
+    startup_windows.push_back({
+        .label = configured.label,
+        .url = configured.url,
+        .title = base::UTF8ToUTF16(configured.title),
+        .size = gfx::Size(configured.width, configured.height),
+        .position =
+            configured.x && configured.y
+                ? std::make_optional(gfx::Point(*configured.x, *configured.y))
+                : std::nullopt,
+        .focused = configured.focused,
+        .decorations = configured.decorations,
+        .constraints = {.minimum_size = gfx::Size(configured.min_width,
+                                                  configured.min_height),
+                        .maximum_size = gfx::Size(configured.max_width,
+                                                  configured.max_height)},
+        .role = WebContentsRole::kApp,
+    });
+  }
   Window* primary_window =
       window::WindowServiceFactory::GetForBrowserContext(browser_context_.get())
-          ->CreateStartupWindows(primary_size);
+          ->CreateStartupWindows(std::move(startup_windows), primary_size);
+
   if (command_line->HasSwitch(kSmokeTestSwitch)) {
     base::FilePath marker = command_line->GetSwitchValuePath(kSmokeTestSwitch);
     if (!marker.empty()) {
@@ -182,7 +203,6 @@ void BrowserMainParts::InitializeMessageLoopContext() {
           primary_window->web_contents(), primary_window, std::move(marker));
     }
   }
-  primary_window->LoadURL(primary.url);
 }
 
 }  // namespace tuffite

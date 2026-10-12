@@ -5,7 +5,7 @@
 #define TUFFITE_FRAMEWORK_BROWSER_SERVICES_DEVTOOLS_DEVTOOLS_SERVICE_H_
 #include <memory>
 
-#include "base/functional/callback.h"
+#include "base/memory/weak_ptr.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "content/public/browser/devtools_manager_delegate.h"
 namespace content {
@@ -20,9 +20,7 @@ CreateDevToolsManagerDelegate();
 
 class DevToolsService : public KeyedService {
  public:
-  using FrontendLauncher = base::RepeatingCallback<
-      void(content::WebContents*, content::RenderFrameHost*, int, int)>;
-  virtual void SetFrontendLauncher(FrontendLauncher launcher) = 0;
+  virtual base::WeakPtr<DevToolsService> GetWeakPtr() = 0;
   virtual void StartIfRequested(content::BrowserContext* context) = 0;
   virtual void InspectElement(content::WebContents* contents,
                               content::RenderFrameHost* frame,
