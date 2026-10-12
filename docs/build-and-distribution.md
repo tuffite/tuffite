@@ -38,6 +38,38 @@ Applications do not link against or rebuild Chromium. Framework developers do
 build Chromium when changing Framework, FFI, Shell Binding, `<explorer>`, or an
 upstream integration hook.
 
+For Git-based application dependencies, pin the Rust SDK, npm SDK, and CLI to
+the same full commit. Mise can install the CLI with the Cargo backend's
+`version = "rev:<commit>"`, `crate = "tuffite"`, `bin = "tuff"`, and
+`features = ["cli"]` options. The npm dependency is
+`git+https://github.com/tuffite/tuffite.git#<commit>`. This installs the private
+workspace root, not the SDK child package. Git consumers such as Ovule resolve
+the SDK's own exports from `packages/tuffite/package.json`; the root does not
+duplicate those exports. Updating a commit requires
+refreshing both Cargo and Bun lockfiles and installing the new CLI through Mise.
+`tuff --version` reports the package version and full build commit. Source
+archives use Cargo's `.cargo_vcs_info.json` when available; release builders can
+set `TUFFITE_BUILD_COMMIT` explicitly. Without commit metadata, it reports
+`unknown`.
+
+Rust SDK source selection belongs to the application's Cargo configuration.
+The CLI runs Cargo in the application directory so `.cargo/config.toml` applies
+to metadata and builds, including calls made with `--manifest` from elsewhere.
+`TUFFITE_FRAMEWORK_DIR` selects native Framework output; it does not patch Rust
+dependencies. Ordinary Git-pinned application builds need no `[patch]`.
+For intentional local SDK co-development, an application can add:
+
+```toml
+# Application .cargo/config.toml; this example assumes the adjacent checkout.
+[patch."https://github.com/tuffite/tuffite.git"]
+tuffite = { path = "../src/tuffite/crates/tuffite" }
+```
+
+The relative path is resolved from the application root. Match the patch key
+to the application's dependency source; a crates.io dependency instead uses
+`[patch.crates-io]`. Keep machine-specific path overrides out of shared commits.
+The CLI, Rust SDK, JavaScript SDK, and native ABI still need to be compatible.
+
 The Framework identity is the tuple of framework version, pinned Chromium
 revision, Rust target triple, build profile, component-build mode, variant,
 feature set, and FFI ABI. Distributions for different tuples are never treated
@@ -171,6 +203,37 @@ tuff dev
 tuff build
 tuff package
 ```
+
+Build workflow commands accept a script string or
+`{ "script": "bun run build", "cwd": "ui" }`. Working directories are relative
+to the application manifest; a failed finite command stops the workflow.
+
+- `build.beforeBuildCommand`: runs once before Cargo in `tuff build` and
+  production `tuff package`. It does not run during `tuff dev` rebuilds.
+- `build.beforePackageCommand`: runs after Cargo succeeds and before collecting
+  resources in production packaging and each development package preparation,
+  including `--prepare-only`. Use it to consume newly generated bindings and
+  build frontend or extension resources. It does not run in `tuff build`.
+- `build.beforeDevCommand`: starts the long-running Web server once per dev
+  session, after the initial package preparation. Native rebuilds keep that
+  server running; `--prepare-only` does not start it.
+
+Development packages default to a separate `<crate>` directory beside
+the Cargo cdylib, normally `target/<triple>/<debug|release>/<crate>`.
+Using the reported Cargo artifact path respects workspace and `target-dir`
+settings. The separate directory allows package replacement without touching
+Cargo's build artifacts. `build.devPackage` and `--package` remain optional
+location overrides; without a manifest, `--package` is required.
+
+Development packaging reuses unmodified Framework runtime files through a
+content-addressed `.tuffite-framework` cache beside the Cargo cdylib. Each file
+is snapshotted and SHA-256 verified before reuse, so rebuilding a local Framework
+Distribution cannot modify an existing development package. Packages hard-link
+these snapshots where supported and fall back to copying across volumes or on
+unsupported filesystems. The launcher remains a copy because application icon
+embedding modifies it; application libraries and production packages also remain
+independent copies. Package replacement removes old links, not cached contents.
+`cargo clean` removes this cache with other target output.
 
 `tuff dev` refreshes an unpacked application package and launches it
 against the loopback HTTP development URL declared in the source
@@ -432,7 +495,6 @@ Manifest schema v2 separates runtime application policy from packaging:
     ]
   },
   "build": {
-    "devPackage": "../dist/demo-dev",
     "devUrl": "http://127.0.0.1:5173/",
     "beforeDevCommand": {
       "script": "mise exec -- bun run dev",
@@ -632,6 +694,12 @@ single npm `tuffite` package owns the browser runtime, built-in TypeScript
 contract, generated `window.tuffite` facade, and their public types. A separate
 protocol crate is deferred until it has multiple independently versioned
 consumers.
+
+The repository's `package.json` is a private npm workspace root covering
+`packages/*` and `playground/ui`. The SDK's publishable manifest and exports live
+only in `packages/tuffite/package.json`. Bun manages both workspaces with one
+root `bun.lock`; run `bun install --frozen-lockfile` at the repository root or
+from the Playground UI directory. The root package is not a second SDK package.
 
 The exact public package split should remain small at first. Internal crates can
 live in the workspace without being published. Publishing placeholder packages

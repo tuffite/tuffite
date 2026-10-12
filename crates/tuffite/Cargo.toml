@@ -16,6 +16,8 @@ required-features = ["cli"]
 [features]
 default = ["cli"]
 async = ["tuffite-runtime/async"]
+ioc = ["dep:tuffite-ioc"]
+ioc-registry = ["ioc", "tuffite-ioc/registry"]
 remoting = ["dep:base64", "dep:serde", "dep:tracing", "dep:tokio", "tokio/sync", "tokio/time"]
 build = [
     "dep:indicatif",
@@ -38,6 +40,7 @@ build = [
     "dep:zip",
 ]
 cli = [
+    "ioc-registry",
     "build",
     "dep:anyhow",
     "dep:clap",
@@ -55,6 +58,7 @@ ureq = { version = "3.4", default-features = false, features = ["rustls", "json"
 anyhow = { workspace = true, optional = true }
 tuffite-abi = { version = "2.5.0", path = "../tuffite-abi" }
 tuffite-macros = { version = "0.1.0", path = "../tuffite-macros" }
+tuffite-ioc = { version = "0.1.0", path = "../tuffite-ioc", optional = true, default-features = false }
 tuffite-runtime = { version = "0.1.0", path = "../tuffite-runtime" }
 blake3 = { version = "1.8.2", optional = true }
 clap = { version = "4.5.53", features = ["derive", "env"], optional = true }

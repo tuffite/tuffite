@@ -53,6 +53,12 @@ pub struct BrowserContext {
     providers: Arc<crate::utility::V8Providers>,
 }
 
+impl AsRef<Self> for BrowserContext {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
 impl BrowserContext {
     pub(crate) fn new(
         configuration: Vec<u8>,

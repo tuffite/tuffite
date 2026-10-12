@@ -501,11 +501,19 @@ fn check_build(value: &Value) -> Result<(), String> {
             "devUrl",
             "beforeDevCommand",
             "beforeBuildCommand",
+            "beforePackageCommand",
             "devtoolsPort",
             "profile",
         ],
     )?;
     check_shell_api(required(build, "shellApi", "build.shellApi")?)?;
+    for hook in ["beforeBuildCommand", "beforePackageCommand"] {
+        if let Some(command) = build.get(hook) {
+            let command: super::hooks::BuildCommand = serde_json::from_value(command.clone())
+                .map_err(|error| format!("build.{hook}: {error}"))?;
+            command.validate(hook)?;
+        }
+    }
     if let Some(port) = build.get("devtoolsPort") {
         let port = integer(Some(port), "build.devtoolsPort")?;
         if port == 0 || port > u64::from(u16::MAX) {

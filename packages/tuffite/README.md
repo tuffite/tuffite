@@ -4,6 +4,15 @@ JavaScript package for Tuffite applications. Its `tuffite/runtime` export is
 used by generated ShellAPI facades and implements the binary request envelope,
 deterministic codecs, and immutable Proxy trees.
 
+This directory is the SDK package in the repository's private npm workspace.
+Its `package.json` is the sole definition of the SDK exports. Run
+`bun install --frozen-lockfile` at the repository root to install the SDK and
+Playground UI workspaces using the shared root `bun.lock`.
+
+A dependency on `git+https://github.com/tuffite/tuffite.git#<commit>` installs
+the repository root. Git consumers must resolve this child package's exports;
+workspace membership alone does not expose `tuffite/vite` from the root package.
+
 Applications normally do not import the runtime directly. The generation phase
 of `tuff build`, `package`, and `dev` creates the typed facade, and packaging injects this module at the
 framework-owned `/tuffite-runtime.js` URL together with the generated built-in

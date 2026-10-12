@@ -39,7 +39,7 @@ struct Build {
 pub(super) struct Configuration {
     pub(super) root: PathBuf,
     pub(super) manifest: Option<PathBuf>,
-    pub(super) package: PathBuf,
+    pub(super) package: Option<PathBuf>,
     pub(super) server: ServerConfiguration,
     pub(super) devtools_port: Option<u16>,
 }
@@ -75,14 +75,10 @@ impl Configuration {
                 Build::default(),
             )
         };
-        let package = options
-        .package
-        .clone()
-        .or(build.dev_package)
-        .ok_or_else(|| {
-            "development package is required; set build.devPackage in tuffite.json or pass --package"
-                .to_owned()
-        })?;
+        let package = options.package.clone().or(build.dev_package);
+        if package.is_none() && manifest.is_none() {
+            return Err("pass --package when running without an application manifest".to_owned());
+        }
         let url = options
             .url
             .clone()
@@ -118,7 +114,7 @@ impl Configuration {
         }
         Ok(Configuration {
             manifest,
-            package: resolve_from(&root, package),
+            package: package.map(|path| resolve_from(&root, path)),
             server: ServerConfiguration {
                 url: super::server::validate_development_url(&url)?,
                 command: web_command,
@@ -238,7 +234,7 @@ mod tests {
         let canonical_root = std::fs::canonicalize(&root).unwrap();
         assert_eq!(
             configured.package,
-            canonical_root.parent().unwrap().join("dist/demo")
+            Some(canonical_root.parent().unwrap().join("dist/demo"))
         );
         assert_eq!(configured.server.url.as_str(), "http://127.0.0.1:4321/");
         assert_eq!(
@@ -280,7 +276,6 @@ mod tests {
             &manifest,
             project_with_build(
                 r#"{
-                "devPackage": "dist/demo",
                 "beforeDevCommand": "bun run dev"
               }"#,
             ),
@@ -303,6 +298,7 @@ mod tests {
         .unwrap();
         assert_eq!(configured.server.cwd, fs::canonicalize(&root).unwrap());
         assert_eq!(configured.server.args.last().unwrap(), "bun run dev");
+        assert!(configured.package.is_none());
         fs::remove_dir_all(root).unwrap();
     }
 

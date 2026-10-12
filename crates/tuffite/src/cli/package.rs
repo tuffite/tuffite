@@ -10,8 +10,16 @@ mod runtime;
 mod symbols;
 
 #[cfg(test)]
+mod tests;
+
+#[cfg(test)]
 use super::filesystem::safe_relative_path;
 use super::filesystem::{absolute_path, canonical_directory, io_error, reject_symlink};
+use super::processes::Processes;
+use crate::{
+    build::framework::Distribution,
+    ioc::{FactoryContext, Service},
+};
 #[cfg(test)]
 use archive::PackageManifest;
 use archive::{
@@ -34,11 +42,14 @@ use runtime::{
     copy_framework_runtime, executable_name, validate_executable_name, validate_executable_stem,
     validate_runtime_library_name,
 };
+
+use anyhow::Context as _;
 use serde::Deserialize;
 use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 const MANIFEST_FILE: &str = "manifest.json";
 const RENDERER_RUNTIME_FILE: &str = "tuffite-runtime.js";
@@ -68,6 +79,34 @@ pub struct Options {
     force: bool,
 }
 
+pub(super) struct PackageService {
+    options: Arc<Options>,
+    framework: Arc<Distribution>,
+    processes: Arc<dyn Processes>,
+}
+impl PackageService {
+    pub(super) fn new(build: &mut FactoryContext<'_, Options>) -> Result<Arc<Self>, String> {
+        Ok(Arc::new(Self {
+            options: build.depends_on::<Service<Options>>()?,
+            framework: build.depends_on::<Service<Distribution>>()?,
+            processes: build.depends_on::<Service<dyn Processes>>()?,
+        }))
+    }
+
+    pub(super) fn run(&self) -> anyhow::Result<()> {
+        Packager::new(
+            self.framework.as_ref(),
+            self.processes.as_ref(),
+            &self.options,
+            Mode::Distribution,
+        )
+        .run()
+        .map(|_| ())
+        .map_err(anyhow::Error::msg)
+        .context("package application")
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AppManifest {
@@ -87,30 +126,40 @@ struct Bundle {
 }
 
 impl Options {
-    pub(super) fn run(&self, context: &mut super::Context) -> Result<(), String> {
-        Packager::new(context, self, Mode::Distribution).run()
+    pub(super) fn validate(&self) -> Result<(), String> {
+        self.format.validate()?;
+        let manifest = super::config::resolve_manifest(self.manifest.as_deref())?;
+        super::config::check(&manifest).map(|_| ())
     }
 }
 
 pub(super) fn prepare_development(
-    context: &mut super::Context,
+    framework: &crate::build::framework::Distribution,
+    processes: &dyn super::processes::Processes,
     manifest: &Path,
-    package_dir: &Path,
+    package_dir: Option<&Path>,
     release: bool,
-) -> Result<(), String> {
+) -> Result<PathBuf, String> {
     let destination = package_dir
-        .parent()
-        .ok_or_else(|| "development package has no parent directory".to_owned())?;
+        .map(|path| {
+            path.parent()
+                .ok_or("development package has no parent directory")
+        })
+        .transpose()?;
     let name = package_dir
-        .file_name()
-        .and_then(OsStr::to_str)
-        .ok_or_else(|| "development package name must be valid UTF-8".to_owned())?;
+        .map(|path| {
+            path.file_name()
+                .and_then(OsStr::to_str)
+                .ok_or("development package name must be valid UTF-8")
+        })
+        .transpose()?;
     Packager::new(
-        context,
+        framework,
+        processes,
         &Options {
             manifest: Some(manifest.to_path_buf()),
-            destination: Some(destination.to_path_buf()),
-            name: Some(name.to_owned()),
+            destination: destination.map(Path::to_path_buf),
+            name: name.map(str::to_owned),
             include_symbols: false,
             format: Format::Directory,
             no_strip: true,
@@ -129,24 +178,32 @@ enum Mode {
 }
 
 struct Packager<'a> {
-    context: &'a mut super::Context,
+    framework: &'a crate::build::framework::Distribution,
+    processes: &'a dyn super::processes::Processes,
     options: &'a Options,
     mode: Mode,
 }
 
 impl<'a> Packager<'a> {
-    fn new(context: &'a mut super::Context, options: &'a Options, mode: Mode) -> Self {
+    fn new(
+        framework: &'a crate::build::framework::Distribution,
+        processes: &'a dyn super::processes::Processes,
+        options: &'a Options,
+        mode: Mode,
+    ) -> Self {
         Self {
-            context,
+            framework,
+            processes,
             options,
             mode,
         }
     }
 
     #[allow(clippy::too_many_lines)]
-    fn run(self) -> Result<(), String> {
+    fn run(self) -> Result<PathBuf, String> {
         let Self {
-            context,
+            framework,
+            processes,
             options,
             mode,
         } = self;
@@ -196,7 +253,6 @@ impl<'a> Packager<'a> {
         let app_manifest: AppManifest = serde_json::from_value(packaged_manifest.clone())
             .map_err(|error| format!("parse {}: {error}", manifest_path.display()))?;
         validate_application_id(&app_manifest.app.identifier)?;
-        let framework = context.framework()?;
         let framework_manifest = framework.manifest();
         tracing::info!(
             framework = %framework.root().display(),
@@ -209,7 +265,12 @@ impl<'a> Packager<'a> {
             "using Tuffite Framework Distribution"
         );
         let target = package_target(&framework.manifest().target)?;
-        let application_runtime = ApplicationRuntime::build(project_dir, framework, release)?;
+        if matches!(mode, Mode::Distribution) {
+            super::hooks::run(&manifest_path, "beforeBuildCommand", processes)?;
+        }
+        let application_runtime =
+            ApplicationRuntime::build(project_dir, framework, release, processes)?;
+        super::hooks::run(&manifest_path, "beforePackageCommand", processes)?;
         let product_name = app_manifest
             .product_name
             .as_deref()
@@ -251,7 +312,9 @@ impl<'a> Packager<'a> {
         validate_internal_asset_root(&asset_root, &executable_name, &runtime_library)?;
 
         let package_name = options.name.clone().unwrap_or_else(|| {
-            if options.format.is_bundle() {
+            if matches!(mode, Mode::Development { .. }) {
+                application_runtime.package_name.clone()
+            } else if options.format.is_bundle() {
                 product_name.to_owned()
             } else if app_manifest.product_name.is_some() {
                 format!("{product_name}-{}-{}", target.platform, target.architecture)
@@ -260,12 +323,25 @@ impl<'a> Packager<'a> {
             }
         });
         validate_package_name(&package_name)?;
-        let destination = absolute_path(
-            options
-                .destination
-                .clone()
-                .unwrap_or_else(|| project_dir.join("dist")),
-        )?;
+        if matches!(mode, Mode::Development { .. })
+            && options.destination.is_none()
+            && matches!(
+                package_name.as_str(),
+                "build" | "deps" | "examples" | "incremental"
+            )
+        {
+            return Err("crate name conflicts with a Cargo output directory; pass --package to select a development directory".to_owned());
+        }
+        let destination = absolute_path(options.destination.clone().unwrap_or_else(|| {
+            match mode {
+                Mode::Development { .. } => application_runtime
+                    .library
+                    .parent()
+                    .expect("Cargo artifact parent")
+                    .to_path_buf(),
+                Mode::Distribution => project_dir.join("dist"),
+            }
+        }))?;
         fs::create_dir_all(&destination).map_err(io_error("create package destination"))?;
         let destination = canonical_directory(&destination)?;
         let directory_name = if options.format.is_bundle() {
@@ -339,6 +415,15 @@ impl<'a> Packager<'a> {
                 &asset_root,
                 OsStr::new(&executable_name),
                 options.include_symbols,
+                matches!(mode, Mode::Development { .. })
+                    .then(|| {
+                        application_runtime
+                            .library
+                            .parent()
+                            .expect("Cargo artifact parent")
+                            .join(".tuffite-framework")
+                    })
+                    .as_deref(),
             )?;
             copy_regular_file(
                 &application_runtime.library,
@@ -434,9 +519,6 @@ impl<'a> Packager<'a> {
                 let _ = fs::remove_file(&archive_path);
             }
         }
-        result
+        result.map(|()| final_package_dir)
     }
 }
-
-#[cfg(test)]
-mod tests;

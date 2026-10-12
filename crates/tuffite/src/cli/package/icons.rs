@@ -15,7 +15,7 @@ impl Icons {
         root: &Path,
         project: &Path,
         platform: &str,
-        _executable: &str,
+        executable: &str,
     ) -> Result<(), String> {
         let (name, configured, default): (&str, Option<&str>, &[u8]) = match platform {
             "macos" => (
@@ -46,9 +46,11 @@ impl Icons {
         }
         #[cfg(windows)]
         embed_windows(
-            &root.join(_executable),
+            &root.join(executable),
             &fs::read(root.join(name)).map_err(io_error("read icon"))?,
         )?;
+        #[cfg(not(windows))]
+        let _ = executable;
         Ok(())
     }
 }
@@ -142,7 +144,7 @@ fn embed_windows(executable: &Path, icon: &[u8]) -> Result<(), String> {
             UpdateResourceW(
                 handle,
                 14usize as *const u16,
-                1usize as *const u16,
+                std::ptr::without_provenance::<u16>(1),
                 0,
                 group.as_ptr().cast(),
                 u32::try_from(group.len()).map_err(|_| "icon group too large")?,

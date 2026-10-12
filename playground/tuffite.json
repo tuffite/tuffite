@@ -209,7 +209,6 @@
     }
   },
   "build": {
-    "devPackage": "../dist/playground-dev",
     "devUrl": "http://127.0.0.1:5189/",
     "beforeDevCommand": {
       "script": "mise exec -- bun run dev",

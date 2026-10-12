@@ -1,5 +1,4 @@
 //! Native package preparation, identity validation, and launch arguments.
-use super::super::Context;
 use super::super::filesystem::reject_symlink;
 use super::configuration::Configuration;
 use super::server::{DEV_TOKEN_ENV, DevelopmentToken};
@@ -44,22 +43,29 @@ struct PackageManifest {
 
 impl DevelopmentApplication {
     pub(super) fn prepare(
-        context: &mut Context,
+        framework: Option<&crate::build::framework::Distribution>,
+        processes: &dyn super::super::processes::Processes,
         configuration: &Configuration,
         release: bool,
     ) -> Result<Self, String> {
-        if let Some(manifest) = configuration.manifest.as_deref() {
+        let requested_package = if let Some(manifest) = configuration.manifest.as_deref() {
             super::super::package::prepare_development(
-                context,
+                framework.ok_or("development preparation requires Framework")?,
+                processes,
                 manifest,
-                &configuration.package,
+                configuration.package.as_deref(),
                 release,
-            )?;
-        }
-        let package = std::fs::canonicalize(&configuration.package).map_err(|error| {
+            )?
+        } else {
+            configuration
+                .package
+                .clone()
+                .ok_or("development package is required without a manifest")?
+        };
+        let package = std::fs::canonicalize(&requested_package).map_err(|error| {
             format!(
                 "resolve development package {} after automatic preparation: {error}",
-                configuration.package.display()
+                requested_package.display()
             )
         })?;
         if !package.is_dir() {

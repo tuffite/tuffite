@@ -1704,6 +1704,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tuffite-abi",
+ "tuffite-ioc",
  "tuffite-macros",
  "tuffite-runtime",
  "ureq",
@@ -1714,6 +1715,10 @@ dependencies = [
 [[package]]
 name = "tuffite-abi"
 version = "2.5.0"
+
+[[package]]
+name = "tuffite-ioc"
+version = "0.1.0"
 
 [[package]]
 name = "tuffite-macros"

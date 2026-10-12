@@ -1,0 +1,15 @@
+[package]
+name = "tuffite-ioc"
+description = "Typed construction contracts and optional context registry for Tuffite applications and tools"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+registry = []
+
+[lints]
+workspace = true

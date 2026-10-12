@@ -47,7 +47,7 @@ build = "build.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-tuffite = {{ version = "{}", default-features = false }}
+tuffite = {{ version = "{}", default-features = false, features = ["ioc-registry"] }}
 
 [build-dependencies]
 tuffite = {{ version = "{}", default-features = false, features = ["build"] }}
@@ -81,11 +81,19 @@ fn main() {
 
 mod shell_api { include!(concat!(env!("OUT_DIR"), "/bindings.rs")); }
 
-struct AppBrowser;
+struct AppBrowser {
+    _services: tuffite::ioc::Registry<BrowserContext>,
+}
 
 #[tuffite::browser]
 impl tuffite::Browser for AppBrowser {
-    fn new(_context: BrowserContext) -> ApplicationResult<Self> { Ok(Self) }
+    fn new(context: BrowserContext) -> ApplicationResult<Self> {
+        let mut registry = tuffite::ioc::browser_registry(context)
+            .map_err(tuffite::ApplicationError::new)?;
+        // Register application factories here, then explicitly start service roots.
+        registry.freeze();
+        Ok(Self { _services: registry })
+    }
 }
 
 #[tuffite::main(browser = AppBrowser)]
@@ -132,14 +140,19 @@ fn ping(_app: &mut AppBrowser, message: String) -> Result<String, CommandError> 
     Ok(())
 }
 
-pub fn build(context: &mut super::Context, manifest: &Path, release: bool) -> Result<(), String> {
+pub fn build(
+    framework: &crate::build::framework::Distribution,
+    manifest: &Path,
+    release: bool,
+    processes: &dyn super::processes::Processes,
+) -> Result<(), String> {
     super::config::check(manifest)?;
     let root = manifest
         .parent()
         .filter(|path| !path.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    let framework = context.framework()?;
-    let mut command = super::package::cargo::cargo_command();
+    super::hooks::run(manifest, "beforeBuildCommand", processes)?;
+    let mut command = super::package::cargo::cargo_command(root);
     command
         .arg("build")
         .arg("--lib")
@@ -149,9 +162,8 @@ pub fn build(context: &mut super::Context, manifest: &Path, release: bool) -> Re
     if release {
         command.arg("--release");
     }
-    let status = command
-        .current_dir(root)
-        .status()
+    let status = processes
+        .status(command.current_dir(root))
         .map_err(|error| format!("start cargo build: {error}"))?;
     if status.success() {
         Ok(())
@@ -160,15 +172,18 @@ pub fn build(context: &mut super::Context, manifest: &Path, release: bool) -> Re
     }
 }
 
-pub fn doctor(context: &mut super::Context, manifest: &Path) -> Result<(), String> {
+pub fn doctor(
+    distribution: &crate::build::framework::Distribution,
+    processes: &dyn super::processes::Processes,
+    manifest: &Path,
+) -> Result<(), String> {
     super::config::check(manifest)?;
     tracing::info!(manifest = %manifest.display(), "manifest is valid");
     tracing::info!(
         host_target = crate::build::framework::host_target(),
         "host toolchain"
     );
-    tracing::info!(cargo = %tool_version("cargo")?, rustc = %tool_version("rustc")?, "Rust toolchain");
-    let distribution = context.framework()?;
+    tracing::info!(cargo = %tool_version("cargo", processes)?, rustc = %tool_version("rustc", processes)?, "Rust toolchain");
     let identity = distribution.manifest();
     tracing::info!(
         framework = %distribution.root().display(),
@@ -181,10 +196,9 @@ pub fn doctor(context: &mut super::Context, manifest: &Path) -> Result<(), Strin
     Ok(())
 }
 
-fn tool_version(tool: &str) -> Result<String, String> {
-    let output = Command::new(tool)
-        .arg("--version")
-        .output()
+fn tool_version(tool: &str, processes: &dyn super::processes::Processes) -> Result<String, String> {
+    let output = processes
+        .output(Command::new(tool).arg("--version"))
         .map_err(|error| format!("run {tool} --version: {error}"))?;
     if !output.status.success() {
         return Err(format!("{tool} --version exited with {}", output.status));

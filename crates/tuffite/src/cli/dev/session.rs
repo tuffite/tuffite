@@ -1,5 +1,4 @@
 //! Owns the dev invocation, process runtime, and restart/stop decisions.
-use super::super::Context;
 use super::Options;
 use super::application::{DevelopmentApplication, Launch};
 use super::configuration::Configuration;
@@ -12,7 +11,8 @@ use std::time::Duration;
 use tokio::runtime::{Builder, Runtime};
 
 pub(super) struct DevelopmentSession<'a> {
-    context: &'a mut Context,
+    framework: Option<std::sync::Arc<crate::build::framework::Distribution>>,
+    processes: std::sync::Arc<dyn super::super::processes::Processes>,
     options: &'a Options,
     configuration: Configuration,
     runtime: Runtime,
@@ -32,7 +32,11 @@ enum SessionExit {
 }
 
 impl<'a> DevelopmentSession<'a> {
-    pub(super) fn new(context: &'a mut Context, options: &'a Options) -> Result<Self, String> {
+    pub(super) fn new(
+        framework: Option<std::sync::Arc<crate::build::framework::Distribution>>,
+        processes: std::sync::Arc<dyn super::super::processes::Processes>,
+        options: &'a Options,
+    ) -> Result<Self, String> {
         let configuration = Configuration::load(options)?;
         if options.force_download_framework && configuration.manifest.is_none() {
             return Err("--force-download-framework requires a tuffite.json manifest so the development package can be rebuilt".to_owned());
@@ -42,7 +46,8 @@ impl<'a> DevelopmentSession<'a> {
             .build()
             .map_err(|error| format!("create development session runtime: {error}"))?;
         Ok(Self {
-            context,
+            framework,
+            processes,
             options,
             configuration,
             runtime,
@@ -51,7 +56,8 @@ impl<'a> DevelopmentSession<'a> {
 
     pub(super) fn run(mut self) -> Result<(), String> {
         let mut application = DevelopmentApplication::prepare(
-            self.context,
+            self.framework.as_deref(),
+            self.processes.as_ref(),
             &self.configuration,
             self.options.release,
         )?;
@@ -97,7 +103,8 @@ impl<'a> DevelopmentSession<'a> {
                 SessionExit::SourcesChanged => {
                     tracing::info!(root = %self.configuration.root.display(), "project sources changed; rebuilding");
                     application = DevelopmentApplication::prepare(
-                        self.context,
+                        self.framework.as_deref(),
+                        self.processes.as_ref(),
                         &self.configuration,
                         self.options.release,
                     )?;
@@ -131,7 +138,26 @@ impl<'a> DevelopmentSession<'a> {
                 Ok(SessionExit::Finished)
             }
             DevExit::Application(Ok(outcome)) => {
-                Err(format!("development application exited with {outcome:?}"))
+                let log_path = executable.with_file_name("tuffite.log");
+                let details = std::fs::read_to_string(&log_path)
+                    .ok()
+                    .map(|log| {
+                        log.lines()
+                            .filter(|line| line.contains(":ERROR:") || line.contains(":FATAL:"))
+                            .rev()
+                            .take(5)
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .rev()
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                    .filter(|details| !details.is_empty());
+                Err(format!(
+                    "development application exited with {outcome:?}; native log: {}{}",
+                    log_path.display(),
+                    details.map_or_else(String::new, |details| format!("\n{details}"))
+                ))
             }
             DevExit::Application(Err(error)) => {
                 Err(format!("wait for {}: {error}", executable.display()))

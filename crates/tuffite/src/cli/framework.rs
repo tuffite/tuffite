@@ -1,85 +1,132 @@
-//! Application-facing Distribution commands and the GN code-generation entry.
+//! Framework maintenance commands use independent typed child scopes.
+use super::service;
+use crate::{
+    build::shell_api::{Generator, OutputMode},
+    ioc::{FactoryContext, Registry, Service},
+};
 use clap::{Args, Subcommand};
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 #[derive(Args, Debug)]
 pub struct Options {
     #[command(subcommand)]
     command: Command,
 }
-
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Clone, Subcommand)]
 enum Command {
     /// Generate or verify SDK JavaScript bindings at an explicit destination.
-    GenerateJs {
-        manifest: PathBuf,
-        #[arg(long)]
-        output: PathBuf,
-        #[arg(long)]
-        check: bool,
-    },
+    GenerateJs(GenerateOptions),
     /// Generate the C++ builtin protocol consumed by Chromium GN.
-    GenerateCpp {
-        manifest: PathBuf,
-        #[arg(long)]
-        output: PathBuf,
-    },
+    GenerateCpp(CppOptions),
     /// Generate checked-in Rust bindings for the SDK native Shell API client.
-    GenerateRust {
-        manifest: PathBuf,
-        #[arg(long)]
-        output: PathBuf,
-        #[arg(long)]
-        check: bool,
-    },
+    GenerateRust(GenerateOptions),
     /// Verify a local Distribution and its runtime hashes.
-    Verify { distribution: PathBuf },
+    Verify(VerifyOptions),
+}
+#[derive(Args, Debug, Clone)]
+struct GenerateOptions {
+    manifest: PathBuf,
+    #[arg(long)]
+    output: PathBuf,
+    #[arg(long)]
+    check: bool,
+}
+impl GenerateOptions {
+    fn mode(&self) -> OutputMode {
+        if self.check {
+            OutputMode::Verify
+        } else {
+            OutputMode::Write
+        }
+    }
+}
+#[derive(Args, Debug, Clone)]
+struct CppOptions {
+    manifest: PathBuf,
+    #[arg(long)]
+    output: PathBuf,
+}
+#[derive(Args, Debug, Clone)]
+struct VerifyOptions {
+    distribution: PathBuf,
 }
 
-pub fn run(options: &Options) -> Result<(), String> {
-    match &options.command {
-        Command::GenerateJs {
-            manifest,
-            output,
-            check,
-        } => crate::build::shell_api::Generator::new()
-            .manifest(manifest)
-            .javascript(
-                output,
-                if *check {
-                    crate::build::shell_api::OutputMode::Verify
-                } else {
-                    crate::build::shell_api::OutputMode::Write
-                },
-            )
+pub(super) fn run<P: Send + Sync + 'static>(
+    options: Options,
+    parent: &Registry<P>,
+) -> anyhow::Result<()> {
+    let mut scope = parent.scope(options);
+    scope.freeze();
+    match scope.context().command.clone() {
+        Command::GenerateJs(options) => service(&scope, options, GenerateJsService::new)?.run(),
+        Command::GenerateCpp(options) => service(&scope, options, GenerateCppService::new)?.run(),
+        Command::GenerateRust(options) => service(&scope, options, GenerateRustService::new)?.run(),
+        Command::Verify(options) => service(&scope, options, VerifyService::new)?.run(),
+    }
+}
+
+struct GenerateJsService(Arc<GenerateOptions>);
+impl GenerateJsService {
+    fn new(build: &mut FactoryContext<'_, GenerateOptions>) -> Result<Arc<Self>, String> {
+        Ok(Arc::new(Self(
+            build.depends_on::<Service<GenerateOptions>>()?,
+        )))
+    }
+
+    fn run(&self) -> anyhow::Result<()> {
+        Generator::new()
+            .manifest(&self.0.manifest)
+            .javascript(&self.0.output, self.0.mode())
             .generate()
-            .map(|_| ()),
-        Command::GenerateCpp { manifest, output } => crate::build::shell_api::Generator::new()
-            .manifest(manifest)
-            .cpp(output, crate::build::shell_api::OutputMode::Write)
+            .map(|_| ())
+            .map_err(anyhow::Error::msg)
+    }
+}
+struct GenerateRustService(Arc<GenerateOptions>);
+impl GenerateRustService {
+    fn new(build: &mut FactoryContext<'_, GenerateOptions>) -> Result<Arc<Self>, String> {
+        Ok(Arc::new(Self(
+            build.depends_on::<Service<GenerateOptions>>()?,
+        )))
+    }
+
+    fn run(&self) -> anyhow::Result<()> {
+        Generator::new()
+            .manifest(&self.0.manifest)
+            .rust_file(&self.0.output, self.0.mode())
             .generate()
-            .map(|_| ()),
-        Command::GenerateRust {
-            manifest,
-            output,
-            check,
-        } => crate::build::shell_api::Generator::new()
-            .manifest(manifest)
-            .rust_file(
-                output,
-                if *check {
-                    crate::build::shell_api::OutputMode::Verify
-                } else {
-                    crate::build::shell_api::OutputMode::Write
-                },
-            )
+            .map(|_| ())
+            .map_err(anyhow::Error::msg)
+    }
+}
+struct GenerateCppService(Arc<CppOptions>);
+impl GenerateCppService {
+    fn new(build: &mut FactoryContext<'_, CppOptions>) -> Result<Arc<Self>, String> {
+        Ok(Arc::new(Self(build.depends_on::<Service<CppOptions>>()?)))
+    }
+
+    fn run(&self) -> anyhow::Result<()> {
+        Generator::new()
+            .manifest(&self.0.manifest)
+            .cpp(&self.0.output, OutputMode::Write)
             .generate()
-            .map(|_| ()),
-        Command::Verify { distribution } => {
-            let value = crate::build::framework::Distribution::open(distribution)?;
-            value.runtime_files(true)?;
-            value.bootstrap(true)?;
-            Ok(())
-        }
+            .map(|_| ())
+            .map_err(anyhow::Error::msg)
+    }
+}
+struct VerifyService(Arc<VerifyOptions>);
+impl VerifyService {
+    fn new(build: &mut FactoryContext<'_, VerifyOptions>) -> Result<Arc<Self>, String> {
+        Ok(Arc::new(Self(
+            build.depends_on::<Service<VerifyOptions>>()?,
+        )))
+    }
+
+    fn run(&self) -> anyhow::Result<()> {
+        let value = crate::build::framework::Distribution::open(&self.0.distribution)
+            .map_err(anyhow::Error::msg)?;
+        value.runtime_files(true).map_err(anyhow::Error::msg)?;
+        value.bootstrap(true).map_err(anyhow::Error::msg)?;
+        Ok(())
     }
 }

@@ -1,22 +1,27 @@
+mod build;
+mod check;
 mod config;
 mod context;
 mod dev;
+mod doctor;
 mod filesystem;
 mod framework;
+mod hooks;
+mod init;
 mod package;
+mod processes;
 mod workflow;
 
-use std::path::PathBuf;
-
-use context::Context;
-
+use crate::ioc::{FactoryContext, Registry, Service, factory};
 use anyhow::Context as _;
+use context::Invocation;
+
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
     name = "tuff",
-    version,
+    version = env!("TUFFITE_CLI_VERSION"),
     about = "Build and package Tuffite desktop applications"
 )]
 pub struct Cli {
@@ -30,37 +35,62 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Create a minimal typed Tuffite application.
-    Init {
-        /// Empty directory to initialize.
-        directory: PathBuf,
-        /// Cargo package name; defaults to the directory name.
-        #[arg(long)]
-        name: Option<String>,
-    },
+    Init(init::Options),
     /// Validate the complete application configuration without building it.
-    Check {
-        #[command(flatten)]
-        manifest: config::ManifestOptions,
-    },
+    Check(check::Options),
     /// Generate bindings and compile the application library.
-    Build {
-        #[command(flatten)]
-        manifest: config::ManifestOptions,
-        /// Use Cargo's release profile.
-        #[arg(long)]
-        release: bool,
-    },
+    Build(build::Options),
     /// Report configuration, toolchain, target, and Distribution identity.
-    Doctor {
-        #[command(flatten)]
-        manifest: config::ManifestOptions,
-    },
+    Doctor(doctor::Options),
     /// Refresh and launch a native package against a loopback Web development server.
     Dev(dev::Options),
     /// Package an application as a directory, ZIP, macOS bundle/DMG or Windows installer.
     Package(package::Options),
     /// Maintain the Tuffite framework and prebuilt Framework Distributions.
     Framework(framework::Options),
+}
+
+impl Command {
+    fn run(self, parent: &Registry<Invocation>) -> anyhow::Result<()> {
+        match self {
+            Command::Init(options) => service(parent, options, init::InitService::new)?.run(),
+            Command::Check(options) => service(parent, options, check::CheckService::new)?.run(),
+            Command::Build(options) => {
+                options.validate().map_err(anyhow::Error::msg)?;
+                service(parent, options, build::BuildService::new)?.run()
+            }
+            Command::Doctor(options) => {
+                options.validate().map_err(anyhow::Error::msg)?;
+                service(parent, options, doctor::DoctorService::new)?.run()
+            }
+            Command::Dev(options) => service(parent, options, dev::DevService::new)?.run(),
+            Command::Package(options) => {
+                options.validate().map_err(anyhow::Error::msg)?;
+                service(parent, options, package::PackageService::new)?.run()
+            }
+            Command::Framework(options) => {
+                framework::run(options, parent).context("run framework command")
+            }
+        }
+    }
+}
+
+fn service<
+    P: Send + Sync + 'static,
+    C: Send + Sync + 'static,
+    T: Send + Sync + 'static,
+    F: Fn(&mut FactoryContext<'_, C>) -> Result<std::sync::Arc<T>, String> + Send + Sync + 'static,
+>(
+    parent: &Registry<P>,
+    options: C,
+    construct: F,
+) -> anyhow::Result<std::sync::Arc<T>> {
+    let mut scope = parent.scope(options);
+    scope
+        .register(factory::<Service<T>, C, F>(construct))
+        .map_err(anyhow::Error::msg)?;
+    scope.freeze();
+    scope.get::<Service<T>>().map_err(anyhow::Error::msg)
 }
 
 pub fn main() {
@@ -74,46 +104,13 @@ impl Cli {
     pub fn run(self) -> anyhow::Result<()> {
         Self::init_tracing(self.verbose);
         tracing::debug!(command = ?self.command, "running Tuffite CLI command");
-        let mut context = Context::new(matches!(
+        let mut context = context::registry(matches!(
             &self.command,
             Command::Dev(options) if options.force_download_framework
-        ));
-        match self.command {
-            Command::Init { directory, name } => workflow::init(&directory, name.as_deref())
-                .map_err(anyhow::Error::msg)
-                .with_context(|| format!("initialize {}", directory.display())),
-            Command::Check { manifest } => {
-                let manifest = manifest.resolve().map_err(anyhow::Error::msg)?;
-                config::check(&manifest)
-                    .map_err(anyhow::Error::msg)
-                    .with_context(|| format!("check {}", manifest.display()))?;
-                tracing::info!(manifest = %manifest.display(), "configuration is valid");
-                Ok(())
-            }
-            Command::Build { manifest, release } => {
-                let manifest = manifest.resolve().map_err(anyhow::Error::msg)?;
-                workflow::build(&mut context, &manifest, release)
-                    .map_err(anyhow::Error::msg)
-                    .with_context(|| format!("build {}", manifest.display()))
-            }
-            Command::Doctor { manifest } => {
-                let manifest = manifest.resolve().map_err(anyhow::Error::msg)?;
-                workflow::doctor(&mut context, &manifest)
-                    .map_err(anyhow::Error::msg)
-                    .with_context(|| format!("diagnose {}", manifest.display()))
-            }
-            Command::Dev(options) => options
-                .run(&mut context)
-                .map_err(anyhow::Error::msg)
-                .context("launch development application"),
-            Command::Package(options) => options
-                .run(&mut context)
-                .map_err(anyhow::Error::msg)
-                .context("package application"),
-            Command::Framework(options) => framework::run(&options)
-                .map_err(anyhow::Error::msg)
-                .context("run framework command"),
-        }
+        ))
+        .map_err(anyhow::Error::msg)?;
+        context.freeze();
+        self.command.run(&context)
     }
 
     fn init_tracing(verbosity: u8) {
@@ -145,6 +142,17 @@ mod tests {
     use clap::Parser as _;
 
     use super::{Cli, Command};
+
+    #[test]
+    fn version_reports_the_build_commit() {
+        let error = Cli::try_parse_from(["tuff", "--version"]).err().unwrap();
+        assert_eq!(error.kind(), clap::error::ErrorKind::DisplayVersion);
+        assert_eq!(
+            error.to_string(),
+            format!("tuff {}\n", env!("TUFFITE_CLI_VERSION"))
+        );
+        assert!(env!("TUFFITE_CLI_VERSION").starts_with(concat!(env!("CARGO_PKG_VERSION"), " (")));
+    }
 
     #[test]
     fn verbosity_is_global_and_counted() {

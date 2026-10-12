@@ -45,6 +45,10 @@ pub mod build;
 #[cfg(feature = "cli")]
 pub mod cli;
 
+/// Typed construction contracts and optional Browser composition helpers.
+#[cfg(feature = "ioc")]
+pub mod ioc;
+
 pub use tuffite_macros::{browser, command, main, utility};
 pub use tuffite_runtime::{
     ApplicationError, ApplicationResult, Browser, BrowserContext, Bytes, ChromiumExecutor, Command,

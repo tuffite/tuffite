@@ -5,9 +5,16 @@ mod server;
 mod session;
 mod watch;
 
-use super::Context;
+use anyhow::Context as _;
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::sync::Arc;
+
+use super::processes::Processes;
+use crate::{
+    build::framework::Distribution,
+    ioc::{FactoryContext, Service},
+};
 
 #[derive(clap::Args, Debug)]
 #[allow(clippy::struct_excessive_bools)]
@@ -51,7 +58,41 @@ pub struct Options {
 }
 
 impl Options {
-    pub(super) fn run(&self, context: &mut Context) -> Result<(), String> {
-        session::DevelopmentSession::new(context, self)?.run()
+    pub(super) fn requires_framework(&self) -> Result<bool, String> {
+        let configuration = configuration::Configuration::load(self)?;
+        if self.force_download_framework && configuration.manifest.is_none() {
+            return Err("--force-download-framework requires an application manifest".to_owned());
+        }
+        Ok(configuration.manifest.is_some())
+    }
+}
+
+pub(super) struct DevService {
+    options: Arc<Options>,
+    framework: Option<Arc<Distribution>>,
+    processes: Arc<dyn Processes>,
+}
+impl DevService {
+    pub(super) fn new(build: &mut FactoryContext<'_, Options>) -> Result<Arc<Self>, String> {
+        Ok(Arc::new(Self {
+            options: build.depends_on::<Service<Options>>()?,
+            framework: if build.context().requires_framework()? {
+                Some(build.depends_on::<Service<Distribution>>()?)
+            } else {
+                None
+            },
+            processes: build.depends_on::<Service<dyn Processes>>()?,
+        }))
+    }
+
+    pub(super) fn run(&self) -> anyhow::Result<()> {
+        session::DevelopmentSession::new(
+            self.framework.clone(),
+            self.processes.clone(),
+            &self.options,
+        )
+        .and_then(session::DevelopmentSession::run)
+        .map_err(anyhow::Error::msg)
+        .context("launch development application")
     }
 }

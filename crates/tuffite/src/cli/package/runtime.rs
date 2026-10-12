@@ -18,6 +18,7 @@ pub(super) fn copy_framework_runtime(
     asset_root: &Path,
     application_name: &OsStr,
     include_symbols: bool,
+    development_cache: Option<&Path>,
 ) -> Result<RuntimeMetadata, String> {
     let previous = previous_package_hashes(package_dir);
     let bootstrap = framework.bootstrap(false)?;
@@ -61,14 +62,18 @@ pub(super) fn copy_framework_runtime(
                 .iter()
                 .find(|entry| entry.path == source_key)
                 .ok_or_else(|| format!("missing Framework runtime metadata for {key}"))?;
-            copy_if_changed_from_manifest(
-                &source,
-                &destination,
-                &key,
-                entry.size,
-                &entry.sha256,
-                &previous,
-            )?;
+            if let Some(cache) = development_cache {
+                reuse_runtime_file(&source, &destination, entry.size, &entry.sha256, cache)?;
+            } else {
+                copy_if_changed_from_manifest(
+                    &source,
+                    &destination,
+                    &key,
+                    entry.size,
+                    &entry.sha256,
+                    &previous,
+                )?;
+            }
         }
     }
     if !renderer_runtime || !framework_shell_api {
@@ -77,6 +82,65 @@ pub(super) fn copy_framework_runtime(
     Ok(RuntimeMetadata {
         development_enabled: framework.manifest().development_enabled,
     })
+}
+
+// Snapshot mutable local Distributions into a content-addressed cache first.
+// Only unmodified development runtime files share storage; launchers (icons),
+// application libraries, and production files must always remain independent.
+fn reuse_runtime_file(
+    source: &Path,
+    destination: &Path,
+    size: u64,
+    hash: &str,
+    cache: &Path,
+) -> Result<(), String> {
+    use super::archive::hash_file;
+    if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("invalid Framework runtime SHA-256".to_owned());
+    }
+    fs::create_dir_all(cache).map_err(|error| format!("create Framework reuse cache: {error}"))?;
+    let cached = cache.join(hash);
+    super::super::filesystem::reject_symlink(cache)?;
+    if cached.exists() {
+        super::super::filesystem::reject_symlink(&cached)?;
+    }
+    let valid = cached.is_file() && hash_file(&cached)? == (size, hash.to_owned());
+    if !valid {
+        let temporary = cache.join(format!(".{hash}.{}.tmp", std::process::id()));
+        if temporary.exists() {
+            super::super::filesystem::reject_symlink(&temporary)?;
+        }
+        copy_regular_file(source, &temporary)?;
+        if hash_file(&temporary)? != (size, hash.to_owned()) {
+            let _ = fs::remove_file(&temporary);
+            return Err(format!(
+                "Framework runtime hash mismatch: {}",
+                source.display()
+            ));
+        }
+        // Never overwrite an inode which existing development packages may link.
+        if cached.exists() {
+            fs::remove_file(&cached)
+                .map_err(|error| format!("replace invalid cached Framework file: {error}"))?;
+        }
+        if let Err(error) = fs::rename(&temporary, &cached) {
+            // Another application may have populated the same workspace cache.
+            let valid = cached.is_file() && hash_file(&cached)? == (size, hash.to_owned());
+            let _ = fs::remove_file(&temporary);
+            if !valid {
+                return Err(format!("publish cached Framework file: {error}"));
+            }
+        }
+    }
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("create Framework runtime directory: {error}"))?;
+    }
+    if let Err(error) = fs::hard_link(&cached, destination) {
+        tracing::debug!(%error, path = %destination.display(), "Framework hard link unavailable; copying cached file");
+        copy_regular_file(&cached, destination)?;
+    }
+    Ok(())
 }
 
 pub(super) fn previous_package_hashes(package_dir: &Path) -> BTreeMap<String, String> {

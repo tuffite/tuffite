@@ -3,6 +3,7 @@ members = [
     "crates/spo",
     "crates/tuffite",
     "crates/tuffite-abi",
+    "crates/tuffite-ioc",
     "crates/tuffite-macros",
     "crates/tuffite-runtime",
     "playground",
@@ -13,6 +14,7 @@ default-members = [
     "crates/spo",
     "crates/tuffite",
     "crates/tuffite-abi",
+    "crates/tuffite-ioc",
     "crates/tuffite-macros",
     "crates/tuffite-runtime",
 ]

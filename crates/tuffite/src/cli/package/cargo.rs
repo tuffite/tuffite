@@ -58,11 +58,12 @@ impl ApplicationRuntime {
         project_dir: &Path,
         framework: &crate::build::framework::Distribution,
         release: bool,
+        processes: &dyn super::super::processes::Processes,
     ) -> Result<Self, String> {
         let target_triple = &framework.manifest().target;
         let manifest = canonical_file(&project_dir.join("Cargo.toml"))?;
-        let mut metadata_command = cargo_command();
-        let metadata_output = metadata_command
+        let mut metadata_command = cargo_command(project_dir);
+        metadata_command
             .args([
                 "metadata",
                 "--format-version",
@@ -70,8 +71,9 @@ impl ApplicationRuntime {
                 "--no-deps",
                 "--manifest-path",
             ])
-            .arg(&manifest)
-            .output()
+            .arg(&manifest);
+        let metadata_output = processes
+            .output(&mut metadata_command)
             .map_err(|error| format!("run cargo metadata: {error}"))?;
         if !metadata_output.status.success() {
             return Err(format!(
@@ -111,10 +113,12 @@ impl ApplicationRuntime {
         );
         let mut build_command =
             application_build_command(&manifest, target_triple, framework.root(), release);
-        let mut child = build_command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
+        let mut child = processes
+            .spawn(
+                build_command
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::inherit()),
+            )
             .map_err(|error| format!("run cargo build: {error}"))?;
         let stdout = child
             .stdout
@@ -164,7 +168,11 @@ pub(super) fn application_build_command(
     framework_root: &Path,
     release: bool,
 ) -> Command {
-    let mut command = cargo_command();
+    let root = manifest
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut command = cargo_command(root);
     command
         .env("TUFFITE_FRAMEWORK_DIST", framework_root)
         .arg("build");
@@ -183,16 +191,11 @@ pub(super) fn application_build_command(
     command
 }
 
-pub(in crate::cli) fn cargo_command() -> Command {
+pub(in crate::cli) fn cargo_command(project_dir: &Path) -> Command {
     let mut command = Command::new("cargo");
-    if let Some(root) = env::var_os("TUFFITE_FRAMEWORK_DIR") {
-        let path = PathBuf::from(root).join("crates/tuffite");
-        let portable = path.to_string_lossy().replace('\\', "/");
-        command.args([
-            "--config",
-            &format!("patch.crates-io.tuffite.path='{portable}'"),
-        ]);
-    }
+    // Cargo discovers application configuration from cwd, not --manifest-path.
+    // SDK source overrides belong to that configuration, never Framework env.
+    command.current_dir(project_dir);
     command
 }
 
