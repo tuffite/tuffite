@@ -110,7 +110,7 @@ def test(context, args):
         args.targets = ["tuffite/framework:unittests"]
         native_action(context, args, "build")
         output = framework.chromium_output(args)
-        for name in ("dispatch_unittests", "capability_pattern_unittests", "abi_host_bridge_unittests", "explorer_browser_support_unittests", "utility_service_unittests"):
+        for name in ("dispatch_unittests", "capability_pattern_unittests", "abi_host_bridge_unittests", "explorer_browser_support_unittests", "utility_service_unittests", "remoting_service_unittests"):
             binary = output / framework.executable_name(name)
             require(context.dry_run or binary.is_file(), f"missing native test: {binary}")
             context.command([binary], cwd=output)

@@ -9,19 +9,29 @@
 
 namespace tuffite::remoting {
 
+using SessionCallback = base::OnceCallback<void(SessionResult)>;
+using EmptyCallback = base::OnceCallback<void(EmptyResult)>;
+using SignalsCallback = base::OnceCallback<void(SignalsResult)>;
+using StatsCallback = base::OnceCallback<void(StatsResult)>;
+
 class RemotingService : public KeyedService {
  public:
   virtual CapabilitiesResult GetCapabilities() const = 0;
-  virtual SessionResult Start(StartOptions options) = 0;
-  virtual EmptyResult ProcessSignal(uint64_t session_id, Signal signal) = 0;
-  virtual SignalsResult TakeSignals(uint64_t session_id,
-                                    uint64_t after_sequence) = 0;
-  virtual EmptyResult SendInput(uint64_t session_id, InputEvent event) = 0;
-  virtual EmptyResult InjectInput(InputEvent event) = 0;
+  virtual void Start(StartOptions options, SessionCallback callback) = 0;
+  virtual void ProcessSignal(uint64_t session_id,
+                             Signal signal,
+                             EmptyCallback callback) = 0;
+  virtual void TakeSignals(uint64_t session_id,
+                           uint64_t after_sequence,
+                           SignalsCallback callback) = 0;
+  virtual void SendInput(uint64_t session_id,
+                         InputEvent event,
+                         EmptyCallback callback) = 0;
+  virtual void InjectInput(InputEvent event, EmptyCallback callback) = 0;
   virtual void Capture(std::optional<int64_t> screen_id,
                        SnapshotCallback callback) = 0;
-  virtual EmptyResult Stop(uint64_t session_id) = 0;
-  virtual StatsResult GetStats(uint64_t session_id) const = 0;
+  virtual void Stop(uint64_t session_id, EmptyCallback callback) = 0;
+  virtual void GetStats(uint64_t session_id, StatsCallback callback) const = 0;
 };
 
 }  // namespace tuffite::remoting

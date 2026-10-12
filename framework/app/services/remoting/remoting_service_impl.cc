@@ -16,16 +16,20 @@
 #include <utility>
 #include <vector>
 
+#include "base/check.h"
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/memory/ref_counted_delete_on_sequence.h"
 #include "base/memory/weak_ptr.h"
+#include "base/message_loop/message_pump_type.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/task/bind_post_task.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner_thread_mode.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
+#include "base/threading/thread.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "crypto/hash.h"
@@ -371,8 +375,11 @@ class HostSession final : public protocol::ConnectionToClient::EventHandler,
                           public protocol::InputStub,
                           public protocol::ChannelDispatcherBase::EventHandler {
  public:
-  HostSession(api::StartOptions options, protocol::IceConfig ice_config)
+  HostSession(api::StartOptions options,
+              protocol::IceConfig ice_config,
+              scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner)
       : options_(std::move(options)),
+        ui_task_runner_(std::move(ui_task_runner)),
         capture_task_runner_(base::ThreadPool::CreateSingleThreadTaskRunner(
             {base::TaskPriority::USER_BLOCKING, base::MayBlock()},
             base::SingleThreadTaskRunnerThreadMode::DEDICATED)),
@@ -390,8 +397,8 @@ class HostSession final : public protocol::ConnectionToClient::EventHandler,
     if (state_ != "starting") {
       return false;
     }
-    input_injector_ = ::remoting::InputInjector::Create(
-        input_task_runner_, base::SingleThreadTaskRunner::GetCurrentDefault());
+    input_injector_ =
+        ::remoting::InputInjector::Create(input_task_runner_, ui_task_runner_);
     if (!input_injector_) {
       state_ = "failed";
       error_ = "input injector is unavailable";
@@ -654,6 +661,7 @@ class HostSession final : public protocol::ConnectionToClient::EventHandler,
   }
 
   api::StartOptions options_;
+  scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner_;
   std::string state_ = "starting";
   std::string route_ = "unknown";
   std::string transport_ = "unknown";
@@ -673,17 +681,19 @@ class HostSession final : public protocol::ConnectionToClient::EventHandler,
   base::WeakPtrFactory<HostSession> weak_factory_{this};
 };
 
-class RemotingServiceImpl final : public api::RemotingService {
+class RemotingServiceImpl final {
  public:
-  RemotingServiceImpl()
-      : input_task_runner_(base::ThreadPool::CreateSingleThreadTaskRunner(
+  explicit RemotingServiceImpl(
+      scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner)
+      : ui_task_runner_(std::move(ui_task_runner)),
+        input_task_runner_(base::ThreadPool::CreateSingleThreadTaskRunner(
             {base::TaskPriority::USER_BLOCKING, base::MayBlock()},
             base::SingleThreadTaskRunnerThreadMode::DEDICATED)),
         capture_task_runner_(base::ThreadPool::CreateSingleThreadTaskRunner(
             {base::TaskPriority::USER_BLOCKING, base::MayBlock()},
             base::SingleThreadTaskRunnerThreadMode::DEDICATED)) {}
 
-  api::CapabilitiesResult GetCapabilities() const override {
+  static api::CapabilitiesResult GetCapabilities() {
     protocol::WebrtcVideoEncoderFactory encoder_factory;
     std::vector<std::string> codecs;
     for (const auto& format : encoder_factory.GetSupportedFormats()) {
@@ -702,7 +712,7 @@ class RemotingServiceImpl final : public api::RemotingService {
                       .snapshot = true}};
   }
 
-  api::SessionResult Start(api::StartOptions options) override {
+  api::SessionResult Start(api::StartOptions options) {
     // Reclaim completed sessions before enforcing capacity, including clients
     // that vanished without ever delivering Stop.
     std::erase_if(sessions_, [](const auto& entry) {
@@ -723,8 +733,8 @@ class RemotingServiceImpl final : public api::RemotingService {
       return {.status = api::Status::kInvalidArgument};
     }
     const uint64_t id = next_session_id_++;
-    auto session = std::make_unique<HostSession>(std::move(options),
-                                                 std::move(*ice_config));
+    auto session = std::make_unique<HostSession>(
+        std::move(options), std::move(*ice_config), ui_task_runner_);
     if (!session->Start()) {
       return {.status = api::Status::kUnavailable};
     }
@@ -733,8 +743,7 @@ class RemotingServiceImpl final : public api::RemotingService {
     return {.status = api::Status::kOk, .value = std::move(info)};
   }
 
-  api::EmptyResult ProcessSignal(uint64_t session_id,
-                                 api::Signal signal) override {
+  api::EmptyResult ProcessSignal(uint64_t session_id, api::Signal signal) {
     HostSession* session = Find(session_id);
     if (!session) {
       return {.status = api::Status::kInvalidHandle};
@@ -745,8 +754,7 @@ class RemotingServiceImpl final : public api::RemotingService {
             .value = true};
   }
 
-  api::SignalsResult TakeSignals(uint64_t session_id,
-                                 uint64_t after_sequence) override {
+  api::SignalsResult TakeSignals(uint64_t session_id, uint64_t after_sequence) {
     HostSession* session = Find(session_id);
     if (!session) {
       return {.status = api::Status::kInvalidHandle};
@@ -755,8 +763,7 @@ class RemotingServiceImpl final : public api::RemotingService {
             .value = session->TakeSignals(after_sequence)};
   }
 
-  api::EmptyResult SendInput(uint64_t session_id,
-                             api::InputEvent event) override {
+  api::EmptyResult SendInput(uint64_t session_id, api::InputEvent event) {
     HostSession* session = Find(session_id);
     if (!session) {
       return {.status = api::Status::kInvalidHandle};
@@ -767,11 +774,10 @@ class RemotingServiceImpl final : public api::RemotingService {
             .value = true};
   }
 
-  api::EmptyResult InjectInput(api::InputEvent event) override {
+  api::EmptyResult InjectInput(api::InputEvent event) {
     if (!direct_input_injector_) {
       direct_input_injector_ = ::remoting::InputInjector::Create(
-          input_task_runner_,
-          base::SingleThreadTaskRunner::GetCurrentDefault());
+          input_task_runner_, ui_task_runner_);
       if (!direct_input_injector_) {
         return {.status = api::Status::kUnavailable};
       }
@@ -786,12 +792,12 @@ class RemotingServiceImpl final : public api::RemotingService {
   }
 
   void Capture(std::optional<int64_t> screen_id,
-               api::SnapshotCallback callback) override {
+               api::SnapshotCallback callback) {
     OneShotDesktopCapture::Start(screen_id, capture_task_runner_,
                                  std::move(callback));
   }
 
-  api::EmptyResult Stop(uint64_t session_id) override {
+  api::EmptyResult Stop(uint64_t session_id) {
     auto found = sessions_.find(session_id);
     if (found == sessions_.end()) {
       return {.status = api::Status::kOk, .value = true};
@@ -801,7 +807,7 @@ class RemotingServiceImpl final : public api::RemotingService {
     return {.status = api::Status::kOk, .value = true};
   }
 
-  api::StatsResult GetStats(uint64_t session_id) const override {
+  api::StatsResult GetStats(uint64_t session_id) const {
     const HostSession* session = Find(session_id);
     if (!session) {
       return {.status = api::Status::kInvalidHandle};
@@ -809,7 +815,7 @@ class RemotingServiceImpl final : public api::RemotingService {
     return {.status = api::Status::kOk, .value = session->stats()};
   }
 
-  void Shutdown() override {
+  void Shutdown() {
     auto sessions = std::move(sessions_);
     sessions_.clear();
     for (auto& [id, session] : sessions) {
@@ -829,6 +835,7 @@ class RemotingServiceImpl final : public api::RemotingService {
     return found == sessions_.end() ? nullptr : found->second.get();
   }
 
+  scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner_;
   uint64_t next_session_id_ = 1;
   std::map<uint64_t, std::unique_ptr<HostSession>> sessions_;
   scoped_refptr<base::SingleThreadTaskRunner> input_task_runner_;
@@ -836,10 +843,132 @@ class RemotingServiceImpl final : public api::RemotingService {
   std::unique_ptr<::remoting::InputInjector> direct_input_injector_;
 };
 
+// CRD's sockets and WebRTC observers need an IO message pump. Keep the entire
+// connection lifecycle on that sequence and reply asynchronously to the UI;
+// neither blocking the UI nor pumping a reentrant nested UI loop is necessary.
+class IoRemotingService final : public api::RemotingService {
+ public:
+  IoRemotingService()
+      : ui_task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()),
+        io_thread_("TuffiteRemotingIO") {
+    base::Thread::Options options;
+    options.message_pump_type = base::MessagePumpType::IO;
+    CHECK(io_thread_.StartWithOptions(std::move(options)));
+    Post([this] {
+      impl_ = std::make_unique<RemotingServiceImpl>(ui_task_runner_);
+    });
+  }
+
+  ~IoRemotingService() override {
+    Post([this] {
+      impl_->Shutdown();
+      impl_.reset();
+    });
+    io_thread_.Stop();
+  }
+
+  api::CapabilitiesResult GetCapabilities() const override {
+    // Codec discovery is pure metadata and does not access connection state.
+    return RemotingServiceImpl::GetCapabilities();
+  }
+
+  void Start(api::StartOptions options,
+             api::SessionCallback callback) override {
+    Call(
+        [options = std::move(options)](RemotingServiceImpl* impl) mutable {
+          return impl->Start(std::move(options));
+        },
+        std::move(callback));
+  }
+
+  void ProcessSignal(uint64_t id,
+                     api::Signal signal,
+                     api::EmptyCallback callback) override {
+    Call(
+        [id, signal = std::move(signal)](RemotingServiceImpl* impl) mutable {
+          return impl->ProcessSignal(id, std::move(signal));
+        },
+        std::move(callback));
+  }
+
+  void TakeSignals(uint64_t id,
+                   uint64_t after,
+                   api::SignalsCallback callback) override {
+    Call(
+        [id, after](RemotingServiceImpl* impl) {
+          return impl->TakeSignals(id, after);
+        },
+        std::move(callback));
+  }
+
+  void SendInput(uint64_t id,
+                 api::InputEvent event,
+                 api::EmptyCallback callback) override {
+    Call(
+        [id, event = std::move(event)](RemotingServiceImpl* impl) mutable {
+          return impl->SendInput(id, std::move(event));
+        },
+        std::move(callback));
+  }
+
+  void InjectInput(api::InputEvent event,
+                   api::EmptyCallback callback) override {
+    Call(
+        [event = std::move(event)](RemotingServiceImpl* impl) mutable {
+          return impl->InjectInput(std::move(event));
+        },
+        std::move(callback));
+  }
+
+  void Capture(std::optional<int64_t> screen_id,
+               api::SnapshotCallback callback) override {
+    auto reply = base::BindPostTask(ui_task_runner_, std::move(callback));
+    Post([this, screen_id, reply = std::move(reply)]() mutable {
+      impl_->Capture(screen_id, std::move(reply));
+    });
+  }
+
+  void Stop(uint64_t id, api::EmptyCallback callback) override {
+    Call([id](RemotingServiceImpl* impl) { return impl->Stop(id); },
+         std::move(callback));
+  }
+
+  void GetStats(uint64_t id, api::StatsCallback callback) const override {
+    Call([id](RemotingServiceImpl* impl) { return impl->GetStats(id); },
+         std::move(callback));
+  }
+
+  void Shutdown() override {
+    Post([this] { impl_->Shutdown(); });
+  }
+
+ private:
+  template <typename Function>
+  void Post(Function function) const {
+    CHECK(io_thread_.task_runner()->PostTask(
+        FROM_HERE,
+        base::BindOnce([](Function function) { std::move(function)(); },
+                       std::move(function))));
+  }
+
+  template <typename Function, typename Callback>
+  void Call(Function function, Callback callback) const {
+    auto reply = base::BindPostTask(ui_task_runner_, std::move(callback));
+    Post([this, function = std::move(function),
+          reply = std::move(reply)]() mutable {
+      std::move(reply).Run(std::move(function)(impl_.get()));
+    });
+  }
+
+  scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner_;
+  base::Thread io_thread_;
+  std::unique_ptr<RemotingServiceImpl> impl_;
+};
+
 }  // namespace
 
 std::unique_ptr<::tuffite::remoting::RemotingService> CreateRemotingService() {
-  return std::make_unique<RemotingServiceImpl>();
+  return std::make_unique<IoRemotingService>();
 }
 
 }  // namespace tuffite::remoting

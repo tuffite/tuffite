@@ -19,16 +19,30 @@ class UnavailableRemotingService final : public RemotingService {
   CapabilitiesResult GetCapabilities() const override {
     return {.status = Status::kOk, .value = {}};
   }
-  SessionResult Start(StartOptions) override { return {}; }
-  EmptyResult ProcessSignal(uint64_t, Signal) override { return {}; }
-  SignalsResult TakeSignals(uint64_t, uint64_t) override { return {}; }
-  EmptyResult SendInput(uint64_t, InputEvent) override { return {}; }
-  EmptyResult InjectInput(InputEvent) override { return {}; }
+  void Start(StartOptions, SessionCallback callback) override {
+    std::move(callback).Run({});
+  }
+  void ProcessSignal(uint64_t, Signal, EmptyCallback callback) override {
+    std::move(callback).Run({});
+  }
+  void TakeSignals(uint64_t, uint64_t, SignalsCallback callback) override {
+    std::move(callback).Run({});
+  }
+  void SendInput(uint64_t, InputEvent, EmptyCallback callback) override {
+    std::move(callback).Run({});
+  }
+  void InjectInput(InputEvent, EmptyCallback callback) override {
+    std::move(callback).Run({});
+  }
   void Capture(std::optional<int64_t>, SnapshotCallback callback) override {
     std::move(callback).Run(Status::kUnavailable, {});
   }
-  EmptyResult Stop(uint64_t) override { return {}; }
-  StatsResult GetStats(uint64_t) const override { return {}; }
+  void Stop(uint64_t, EmptyCallback callback) override {
+    std::move(callback).Run({});
+  }
+  void GetStats(uint64_t, StatsCallback callback) const override {
+    std::move(callback).Run({});
+  }
 };
 
 }  // namespace

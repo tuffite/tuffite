@@ -109,6 +109,7 @@ group("unittests") {
     "//tuffite/framework/common:capability_pattern_unittests",
     "//tuffite/framework/test:abi_host_bridge_unittests",
     "//tuffite/framework/test:explorer_browser_support_unittests",
+    "//tuffite/framework/test:remoting_service_unittests",
     "//tuffite/framework/test:utility_service_unittests",
   ]
 }

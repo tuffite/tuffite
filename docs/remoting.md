@@ -22,3 +22,10 @@ Enable the public SDK with `tuffite = { version = "0.1.0", features = ["remoting
 use tuffite::remoting::Remoting;
 let remoting = Remoting::new(Some(context.shell_api()));
 ```
+
+Native connections, ICE sockets, WebRTC callbacks and session teardown are owned
+by a dedicated Chromium IO message loop. The browser UI thread only forwards
+asynchronous service requests; snapshot results return asynchronously on their
+caller's sequence. Input injectors retain the actual UI task runner for platform
+operations. A UI message pump must never be passed off as the WebRTC network
+thread: POSIX socket descriptor watches require an IO pump.

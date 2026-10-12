@@ -69,3 +69,42 @@ test("explorer_browser_support_unittests") {
     "//ui/base",
   ]
 }
+
+# Exercise real CRD socket allocation from a UI caller without a browser
+# process.
+test("remoting_service_unittests") {
+  sources = [
+    "remoting_service_unittest.cc",
+    "utility_test_main.cc",
+  ]
+  deps = [
+    "//base",
+    "//base/test:test_support",
+    "//mojo/core/embedder",
+    "//testing/gtest",
+    "//tuffite:buildflags",
+  ]
+  if (!tuffite_disable_remoting) {
+    sources += [
+      "//tuffite/framework/app/services/remoting/remoting_service.h",
+      "//tuffite/framework/app/services/remoting/remoting_service_impl.cc",
+      "//tuffite/framework/app/services/remoting/remoting_service_impl.h",
+      "//tuffite/framework/app/services/remoting/remoting_types.h",
+      "//tuffite/framework/app/services/remoting/sequenced_input_dispatcher.cc",
+      "//tuffite/framework/app/services/remoting/sequenced_input_dispatcher.h",
+    ]
+    deps += [
+      "//components/keyed_service/core",
+      "//crypto",
+      "//remoting/base",
+      "//remoting/base:errors",
+      "//remoting/host",
+      "//remoting/host:platform_interfaces",
+      "//remoting/protocol",
+      "//remoting/signaling",
+      "//third_party/webrtc_overrides:webrtc_component",
+      "//ui/gfx/codec",
+      "//ui/gfx/geometry",
+    ]
+  }
+}

@@ -139,10 +139,17 @@ void Start(const ::tuffite::dispatch::Context& context,
          .username = server.username.value_or(""),
          .credential = server.credential.value_or("")});
   }
-  auto result = ServiceFor(context)->Start(std::move(options));
-  std::move(callback).Run(ToRpcStatus(result.status),
-                          {.id = static_cast<int64_t>(result.value.id),
-                           .state = std::move(result.value.state)});
+  ServiceFor(context)->Start(
+      std::move(options),
+      base::BindOnce(
+          [](generated::remoting::StartCallback callback,
+             api::SessionResult result) {
+            std::move(callback).Run(
+                ToRpcStatus(result.status),
+                {.id = static_cast<int64_t>(result.value.id),
+                 .state = std::move(result.value.state)});
+          },
+          std::move(callback)));
 }
 
 void ProcessSignal(const ::tuffite::dispatch::Context& context,
@@ -175,9 +182,14 @@ void ProcessSignal(const ::tuffite::dispatch::Context& context,
                                  .m_line_index = *m_line_index,
                                  .candidate = std::move(candidate.candidate)});
   }
-  const auto result =
-      ServiceFor(context)->ProcessSignal(*id, std::move(signal));
-  std::move(callback).Run(ToRpcStatus(result.status), {});
+  ServiceFor(context)->ProcessSignal(
+      *id, std::move(signal),
+      base::BindOnce(
+          [](generated::remoting::ProcessSignalCallback callback,
+             api::EmptyResult result) {
+            std::move(callback).Run(ToRpcStatus(result.status), {});
+          },
+          std::move(callback)));
 }
 
 void TakeSignals(const ::tuffite::dispatch::Context& context,
@@ -192,14 +204,20 @@ void TakeSignals(const ::tuffite::dispatch::Context& context,
     std::move(callback).Run(kStatusInvalidArgument, {});
     return;
   }
-  const auto result = ServiceFor(context)->TakeSignals(
-      *id, static_cast<uint64_t>(request.after_sequence.value_or(0)));
-  std::vector<wire::RemotingSignal> signals;
-  signals.reserve(result.value.size());
-  for (const auto& signal : result.value) {
-    signals.push_back(ToWire(signal));
-  }
-  std::move(callback).Run(ToRpcStatus(result.status), std::move(signals));
+  ServiceFor(context)->TakeSignals(
+      *id, static_cast<uint64_t>(request.after_sequence.value_or(0)),
+      base::BindOnce(
+          [](generated::remoting::TakeSignalsCallback callback,
+             api::SignalsResult result) {
+            std::vector<wire::RemotingSignal> signals;
+            signals.reserve(result.value.size());
+            for (const auto& signal : result.value) {
+              signals.push_back(ToWire(signal));
+            }
+            std::move(callback).Run(ToRpcStatus(result.status),
+                                    std::move(signals));
+          },
+          std::move(callback)));
 }
 
 namespace {
@@ -253,8 +271,14 @@ void SendInput(const dispatch::Context& context,
     std::move(callback).Run(kStatusInvalidArgument, {});
     return;
   }
-  const auto result = ServiceFor(context)->SendInput(*id, std::move(*event));
-  std::move(callback).Run(ToRpcStatus(result.status), {});
+  ServiceFor(context)->SendInput(
+      *id, std::move(*event),
+      base::BindOnce(
+          [](generated::remoting::SendInputCallback callback,
+             api::EmptyResult result) {
+            std::move(callback).Run(ToRpcStatus(result.status), {});
+          },
+          std::move(callback)));
 }
 
 void InjectInput(const dispatch::Context& context,
@@ -269,8 +293,14 @@ void InjectInput(const dispatch::Context& context,
     std::move(callback).Run(kStatusInvalidArgument, {});
     return;
   }
-  const auto result = ServiceFor(context)->InjectInput(std::move(*event));
-  std::move(callback).Run(ToRpcStatus(result.status), {});
+  ServiceFor(context)->InjectInput(
+      std::move(*event),
+      base::BindOnce(
+          [](generated::remoting::InjectInputCallback callback,
+             api::EmptyResult result) {
+            std::move(callback).Run(ToRpcStatus(result.status), {});
+          },
+          std::move(callback)));
 }
 
 void Stop(const ::tuffite::dispatch::Context& context,
@@ -285,8 +315,13 @@ void Stop(const ::tuffite::dispatch::Context& context,
     std::move(callback).Run(kStatusInvalidArgument, {});
     return;
   }
-  const auto result = ServiceFor(context)->Stop(*id);
-  std::move(callback).Run(ToRpcStatus(result.status), {});
+  ServiceFor(context)->Stop(
+      *id, base::BindOnce(
+               [](generated::remoting::StopCallback callback,
+                  api::EmptyResult result) {
+                 std::move(callback).Run(ToRpcStatus(result.status), {});
+               },
+               std::move(callback)));
 }
 
 void Stats(const ::tuffite::dispatch::Context& context,
@@ -301,16 +336,22 @@ void Stats(const ::tuffite::dispatch::Context& context,
     std::move(callback).Run(kStatusInvalidArgument, {});
     return;
   }
-  const auto result = ServiceFor(context)->GetStats(*id);
-  std::move(callback).Run(
-      ToRpcStatus(result.status),
-      {.state = result.value.state,
-       .route = result.value.route,
-       .transport = result.value.transport,
-       .latency_ms = result.value.latency_ms,
-       .jitter_ms = result.value.jitter_ms,
-       .available_bandwidth_kbps = result.value.available_bandwidth_kbps,
-       .packet_loss_percent = result.value.packet_loss_percent});
+  ServiceFor(context)->GetStats(
+      *id, base::BindOnce(
+               [](generated::remoting::StatsCallback callback,
+                  api::StatsResult result) {
+                 std::move(callback).Run(
+                     ToRpcStatus(result.status),
+                     {.state = result.value.state,
+                      .route = result.value.route,
+                      .transport = result.value.transport,
+                      .latency_ms = result.value.latency_ms,
+                      .jitter_ms = result.value.jitter_ms,
+                      .available_bandwidth_kbps =
+                          result.value.available_bandwidth_kbps,
+                      .packet_loss_percent = result.value.packet_loss_percent});
+               },
+               std::move(callback)));
 }
 
 void Capture(const ::tuffite::dispatch::Context& context,
