@@ -114,8 +114,7 @@ try {
       );
     });
   await expectText(app, "#explorer-events", "navigation");
-  await expectText(app, "#explorer-events", "open");
-  await expectText(app, "#explorer-events", "popup");
+  await expectText(app, "#explorer-events", "newwindow");
   const newWindowPoint = await app
     .locator("#thread-explorer-slot explorer")
     .evaluate(async (element) => {
@@ -143,8 +142,8 @@ try {
   phase("nested-request-bubbling");
   await app.locator("#explorer-clear-events").click();
   await app.locator("#explorer-nested-open-bubble").click();
-  await expectText(app, "#explorer-events", "level-1-element:open");
-  await expectText(app, "#explorer-events", "top:open");
+  await expectText(app, "#explorer-events", "level-1-element:newwindow");
+  await expectText(app, "#explorer-events", "top:newwindow");
 
   await app.locator("#explorer-clear-events").click();
   await app.locator("#explorer-nested-open-stop").click();
@@ -152,7 +151,7 @@ try {
   await app.waitForTimeout(750);
   assert.equal(
     await app
-      .locator("#explorer-events > li", { hasText: "top:open" })
+      .locator("#explorer-events > li", { hasText: "top:newwindow" })
       .count(),
     0,
   );
@@ -282,7 +281,7 @@ try {
       inheritedPartitions: true,
       openRequests: true,
       nestedRequestBubbling: true,
-      nestedStopPropagation: true,
+      nestedPreventDefault: true,
       lifecycleStress: true,
       remoteNavigation: true,
       nativeContextMenu: true,
@@ -459,6 +458,9 @@ async function verifyDialogBridgeWithoutDevToolsDialogHandling() {
         );
       }
     }
+  } catch (error) {
+    console.error(await evaluate("({title:document.title,status:document.querySelector('#explorer-suite-status')?.textContent,checks:document.querySelector('#explorer-v2')?.textContent,events:document.querySelector('#explorer-events')?.textContent})"));
+    throw error;
   } finally {
     socket.close();
   }

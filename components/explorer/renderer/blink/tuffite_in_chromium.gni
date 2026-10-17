@@ -7,13 +7,26 @@ import("//tuffite/tuffite_in_chromium.gni")
 # states; this dependency only generates that header and pulls no feature code.
 tuffite_blink_buildflag_deps = [ "//tuffite:buildflags" ]
 
+tuffite_explorer_messaging_buildflag_deps = [ "//tuffite:buildflags" ]
+
+tuffite_explorer_content_renderer_deps =
+    [ "//tuffite/components/explorer/renderer/blink:bridge" ]
+
 tuffite_explorer_sources = [
   "//tuffite/components/explorer/renderer/blink/explorer_dialog.cc",
   "//tuffite/components/explorer/renderer/blink/explorer_dialog.h",
   "//tuffite/components/explorer/renderer/blink/explorer_event_propagation_monitor.cc",
   "//tuffite/components/explorer/renderer/blink/explorer_event_propagation_monitor.h",
-  "//tuffite/components/explorer/renderer/blink/explorer_transfer.cc",
-  "//tuffite/components/explorer/renderer/blink/explorer_transfer.h",
+  "//tuffite/components/explorer/renderer/blink/explorer_frame_ancestry.cc",
+  "//tuffite/components/explorer/renderer/blink/explorer_frame_ancestry.h",
+  "//tuffite/components/explorer/renderer/blink/explorer_handle.cc",
+  "//tuffite/components/explorer/renderer/blink/explorer_handle.h",
+  "//tuffite/components/explorer/renderer/blink/explorer_handle_serialization.cc",
+  "//tuffite/components/explorer/renderer/blink/explorer_handle_serialization.h",
+  "//tuffite/components/explorer/renderer/blink/explorer_message_serialization.h",
+  "//tuffite/components/explorer/renderer/blink/explorer_new_window.cc",
+  "//tuffite/components/explorer/renderer/blink/explorer_new_window.h",
+  "//tuffite/components/explorer/renderer/blink/explorer_window_messaging.cc",
   "//tuffite/components/explorer/renderer/blink/html_explorer_element.cc",
   "//tuffite/components/explorer/renderer/blink/html_explorer_element.h",
 ]
@@ -21,6 +34,7 @@ tuffite_explorer_sources = [
 tuffite_explorer_deps = [
   "//base",
   "//tuffite/components/explorer/common:mojom_blink",
+  "//tuffite/components/explorer/renderer/blink:bridge",
 ]
 
 tuffite_explorer_hot_deps =
@@ -32,18 +46,22 @@ tuffite_explorer_web_idl_deps =
     [ "//tuffite/components/explorer/common:blink_idl_inputs" ]
 
 tuffite_explorer_static_idl_files = [
-  "$root_gen_dir/third_party/blink/renderer/core/html/explorer_transfer.idl",
+  "$root_gen_dir/third_party/blink/renderer/core/html/explorer_new_window.idl",
+  "$root_gen_dir/third_party/blink/renderer/core/html/explorer_handle.idl",
   "$root_gen_dir/third_party/blink/renderer/core/html/explorer_dialog.idl",
   "$root_gen_dir/third_party/blink/renderer/core/html/explorer_execute_javascript_options.idl",
   "$root_gen_dir/third_party/blink/renderer/core/html/explorer_reload_options.idl",
+  "$root_gen_dir/third_party/blink/renderer/core/html/explorer_find_options.idl",
   "$root_gen_dir/third_party/blink/renderer/core/html/html_explorer_element.idl",
 ]
 
 tuffite_explorer_generated_interface_sources = [
   "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_dialog.cc",
   "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_dialog.h",
-  "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_transfer.cc",
-  "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_transfer.h",
+  "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_handle.cc",
+  "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_handle.h",
+  "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_new_window.cc",
+  "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_new_window.h",
   "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_html_explorer_element.cc",
   "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_html_explorer_element.h",
 ]
@@ -51,18 +69,23 @@ tuffite_explorer_generated_interface_sources = [
 tuffite_explorer_generated_dictionary_sources = [
   "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_execute_java_script_options.cc",
   "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_execute_java_script_options.h",
+  "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_find_options.cc",
+  "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_find_options.h",
   "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_reload_options.cc",
   "$root_gen_dir/third_party/blink/renderer/bindings/core/v8/v8_explorer_reload_options.h",
 ]
 
 # Source inputs staged at Blink-compatible generated paths.
 tuffite_explorer_blink_idl_inputs = [
-  "//tuffite/components/explorer/renderer/blink/explorer_transfer.h",
-  "//tuffite/components/explorer/renderer/blink/explorer_transfer.idl",
+  "//tuffite/components/explorer/renderer/blink/explorer_new_window.h",
+  "//tuffite/components/explorer/renderer/blink/explorer_new_window.idl",
+  "//tuffite/components/explorer/renderer/blink/explorer_handle.h",
+  "//tuffite/components/explorer/renderer/blink/explorer_handle.idl",
   "//tuffite/components/explorer/renderer/blink/explorer_dialog.h",
   "//tuffite/components/explorer/renderer/blink/explorer_dialog.idl",
   "//tuffite/components/explorer/renderer/blink/explorer_execute_javascript_options.idl",
   "//tuffite/components/explorer/renderer/blink/explorer_reload_options.idl",
+  "//tuffite/components/explorer/renderer/blink/explorer_find_options.idl",
   "//tuffite/components/explorer/renderer/blink/html_explorer_element.h",
   "//tuffite/components/explorer/renderer/blink/html_explorer_element.idl",
 ]

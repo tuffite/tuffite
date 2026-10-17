@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Explorer event model</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <script type="module" src="/src/event-model.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Explorer event model</h1>
+      <a href="./index.html">Back to capability lab</a>
+      <p>
+        Capture and bubble within a document; preventDefault claims a request.
+        Unclaimed requests continue to the top app.
+      </p>
+      <label
+        >Handle at
+        <select id="event-handler">
+          <option value="top">Top</option>
+          <option value="element">Element</option>
+          <option value="none">No handler</option>
+        </select></label
+      >
+      <label
+        >New window
+        <select id="window-action">
+          <option value="attach">Attach original page</option>
+          <option value="discard">Discard</option>
+          <option value="hold">Hold until canceled</option>
+        </select></label
+      >
+      <button id="event-open">Open window</button
+      ><button id="event-dialog">Confirm</button
+      ><button id="event-reset">Navigate source</button>
+      <div id="event-owner"></div>
+      <div id="event-windows"></div>
+      <pre id="event-output"></pre>
+    </main>
+  </body>
+</html>

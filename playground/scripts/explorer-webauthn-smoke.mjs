@@ -3,13 +3,18 @@
 
 import assert from "node:assert/strict";
 import http from "node:http";
-import { chromium } from "playwright-core";
+import { createRequire } from "node:module";
+const require = createRequire(new URL("../ui/package.json", import.meta.url));
+const { chromium } = require("playwright-core");
 
 const requests = [];
 const server = http.createServer((request, response) => {
   requests.push({ url: request.url, host: request.headers.host, headers: request.headers });
   if (request.url === "/client-hints-opt-in") {
     response.setHeader("Accept-CH", "Sec-CH-UA-Arch, Sec-CH-UA-Full-Version-List");
+  }
+  if (request.url === "/frame-policy-header-denied") {
+    response.setHeader("Permissions-Policy", "publickey-credentials-get=(), publickey-credentials-create=()");
   }
   response.setHeader("Content-Type", "text/html");
   if (request.url === "/input-frame") {
@@ -55,18 +60,19 @@ try {
     () => pages().find((page) => page.url().includes("/index.html")),
     "Missing Playground",
   );
-  const mountExplorer = (url) => app.evaluate(async (url) => {
+  const mountExplorer = (url, allow = "publickey-credentials-get *; publickey-credentials-create *; clipboard-write *") => app.evaluate(async ({url, allow}) => {
     window.webauthnExplorer?.remove();
     const explorer = document.createElement("explorer");
     explorer.id = "webauthn-fixture-explorer";
     explorer.navigation = "allow";
+    explorer.allow = allow;
     explorer.style.cssText = "position:fixed;inset:0;display:block;z-index:9999";
     explorer.src = url;
     window.webauthnExplorer = explorer;
     const ready = new Promise((resolve) => explorer.addEventListener("loadstop", resolve, { once: true }));
     document.body.append(explorer);
     await ready;
-  }, url);
+  }, {url, allow});
   await mountExplorer(url);
   let page = await until(() => pages().find((page) => page.url().startsWith(url)), "Missing Explorer target");
   assert.deepEqual(await page.evaluate(() => {
@@ -74,11 +80,13 @@ try {
     document.cookie = "explorer-session-check=present; Path=/; SameSite=Strict";
     const storage = localStorage.getItem("explorer-session-check") === "present";
     localStorage.removeItem("explorer-session-check");
+    const strictCookies = document.cookie.includes("explorer-session-check=present");
+    document.cookie = "explorer-session-check=present; Path=/; SameSite=None; Secure";
     const cookies = document.cookie.includes("explorer-session-check=present");
-    document.cookie = "explorer-session-check=; Path=/; Max-Age=0";
-    return { topLevel: window.top === window, parentIsSelf: window.parent === window, storage, cookies };
-  }), { topLevel: true, parentIsSelf: true, storage: true, cookies: true },
-  "Explorer must expose an independent top-level page with working session storage");
+    document.cookie = "explorer-session-check=; Path=/; Max-Age=0; SameSite=None; Secure";
+    return { topLevel: window.top === window, parentIsSelf: window.parent === window, storage, strictCookies, cookies };
+  }), { topLevel: false, parentIsSelf: false, storage: true, strictCookies: false, cookies: true },
+  "Explorer must expose its embedding ancestry with working session storage");
   await page.goto(`${url}/input-parent`);
   await until(async () => (await page.frames().find(frame => frame.url().endsWith("/input-frame"))
     ?.locator("#input-fixture").count()) === 1, "Missing cross-origin input fixture");
@@ -236,6 +244,25 @@ try {
   await session.send("WebAuthn.disable");
   // Chromium keeps DisableUI on the document's AuthenticatorCommonImpl after
   // a virtual request. A fresh document is required for real embedder UI.
+  const deniedUrl = `${url}/real-policy-denied`;
+  await mountExplorer(deniedUrl, "");
+  const deniedPage = await until(() => pages().find(page => page.url() === deniedUrl), "Missing permission-policy fixture");
+  const denied = await deniedPage.evaluate(async () => {
+    const allowed = (document.permissionsPolicy || document.featurePolicy).allowsFeature("publickey-credentials-get");
+    try {
+      await navigator.credentials.get({publicKey:{challenge:new Uint8Array(32),rpId:"localhost",timeout:1000}});
+      return {allowed, error:"accepted"};
+    } catch(error) {return {allowed,error:error.name};}
+  });
+  assert.deepEqual(denied,{allowed:false,error:"NotAllowedError"}, "Cross-origin Explorer credentials require explicit iframe-style allow delegation");
+  await app.evaluate(() => {webauthnExplorer.allow="publickey-credentials-get *";});
+  await until(() => deniedPage.evaluate(() => (document.permissionsPolicy || document.featurePolicy).allowsFeature("publickey-credentials-get")), "Changing allow must delegate the feature without reloading");
+  await app.evaluate(() => {webauthnExplorer.allow="";});
+  await until(async () => !(await deniedPage.evaluate(() => (document.permissionsPolicy || document.featurePolicy).allowsFeature("publickey-credentials-get"))), "Removing allow must restore the inherited restriction");
+  const headerDeniedUrl = `${url}/frame-policy-header-denied`;
+  await mountExplorer(headerDeniedUrl);
+  const headerDeniedPage = await until(() => pages().find(page => page.url() === headerDeniedUrl), "Missing header policy fixture");
+  assert.equal(await headerDeniedPage.evaluate(() => (document.permissionsPolicy || document.featurePolicy).allowsFeature("publickey-credentials-get")),false,"allow must not override the guest's response Permissions-Policy header");
   const realUrl = `${url}/real`;
   await mountExplorer(realUrl);
   page = await until(() => pages().find((page) => page.url() === realUrl), "Missing real Explorer target");

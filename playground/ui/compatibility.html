@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Explorer browser compatibility</title>
+  <link rel="stylesheet" href="/src/styles.css">
+  <script type="module" src="/src/browser-compatibility.js"></script>
+</head>
+<body><main>
+  <h1>Explorer browser compatibility</h1>
+  <p><a href="./index.html">Back to capability lab</a></p>
+  <p>Compare real browser API operations in the application and Explorer. The public Turnstile check runs separately and requires an actual successful result.</p>
+  <div class="controls">
+    <button id="compatibility-local">Run local checks</button>
+    <button id="compatibility-turnstile">Open Turnstile troubleshooter</button>
+    <button id="compatibility-result">Read Turnstile result</button>
+  </div>
+  <output id="compatibility-status" role="status">Ready</output>
+  <div id="compatibility-host" class="explorer-slot"></div>
+  <pre id="compatibility-report" class="block-output code-output"></pre>
+</main></body>
+</html>

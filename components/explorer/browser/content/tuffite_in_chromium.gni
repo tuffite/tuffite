@@ -8,6 +8,7 @@ import("//tuffite/tuffite_in_chromium.gni")
 tuffite_content_buildflag_deps = [ "//tuffite:buildflags" ]
 
 tuffite_content_explorer_isolation_sources = [
+  "//tuffite/components/explorer/browser/content/explorer_frame_ancestry.cc",
   "//tuffite/components/explorer/browser/content/explorer_isolation.cc",
   "//tuffite/components/explorer/browser/content/explorer_isolation.h",
 ]

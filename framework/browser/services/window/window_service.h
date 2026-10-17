@@ -10,9 +10,14 @@
 #include <string_view>
 #include <vector>
 
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "tuffite/framework/browser/services/window/window_types.h"
+namespace content {
+class WebContents;
+class RenderFrameHost;
+}  // namespace content
 namespace tuffite {
 class Window;
 }
@@ -42,6 +47,10 @@ class WindowService : public KeyedService {
   virtual void Register(Window*, std::string) = 0;
   virtual void Unregister(Window*) = 0;
   virtual void CloseById(int64_t) = 0;
+  virtual void ResolveMessageTarget(
+      int64_t,
+      content::RenderFrameHost&,
+      base::OnceCallback<void(content::RenderFrameHost*)> callback);
   virtual base::WeakPtr<WindowService> GetWeakPtr() = 0;
 };
 }  // namespace tuffite::window

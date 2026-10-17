@@ -15,6 +15,8 @@
 
 namespace blink {
 
+class AbortController;
+class AbortSignal;
 class HTMLExplorerElement;
 class ScriptState;
 
@@ -22,7 +24,8 @@ class CORE_EXPORT ExplorerDialog final : public ScriptWrappable {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
-  ExplorerDialog(HTMLExplorerElement& owner,
+  ExplorerDialog(ScriptState*,
+                 HTMLExplorerElement& owner,
                  uint64_t request_id,
                  String type,
                  String message,
@@ -31,6 +34,9 @@ class CORE_EXPORT ExplorerDialog final : public ScriptWrappable {
                  String from);
   ~ExplorerDialog() final;
 
+  AbortSignal* signal() const;
+  void Finish(ScriptState*, bool canceled);
+  bool responded() const { return responded_; }
   const String& type() const { return type_; }
   const String& message() const { return message_; }
   const String& defaultValue() const { return default_value_; }
@@ -47,6 +53,7 @@ class CORE_EXPORT ExplorerDialog final : public ScriptWrappable {
                                     bool accept,
                                     const String& prompt_text);
 
+  Member<AbortController> controller_;
   Member<HTMLExplorerElement> owner_;
   const uint64_t request_id_;
   const String type_;

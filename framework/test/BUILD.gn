@@ -93,6 +93,7 @@ test("remoting_service_unittests") {
   ]
   if (!tuffite_disable_remoting) {
     sources += [
+      "//tuffite/framework/app/services/remoting/pointer_geometry.h",
       "//tuffite/framework/app/services/remoting/remoting_service.h",
       "//tuffite/framework/app/services/remoting/remoting_service_impl.cc",
       "//tuffite/framework/app/services/remoting/remoting_service_impl.h",

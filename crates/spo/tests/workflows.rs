@@ -533,7 +533,14 @@ fn stash_preserves_index_when_worktree_reverts_staged_changes() {
     fs::write(f.target.repo.join("file.txt"), "staged WIP\n").unwrap();
     git(&f.target.repo, &["add", "file.txt"]).unwrap();
     fs::write(f.target.repo.join("file.txt"), &original).unwrap();
-    fs::write(f.target.repo.join("line\nbreak.txt"), "untracked\n").unwrap();
+    // Windows disallows control characters in filenames; retain the newline
+    // case on other platforms and exercise a spaced path on Windows.
+    let untracked = if cfg!(windows) {
+        "line break.txt"
+    } else {
+        "line\nbreak.txt"
+    };
+    fs::write(f.target.repo.join(untracked), "untracked\n").unwrap();
     let oid = f.target.stash().unwrap().unwrap();
     assert!(!f.target.dirty().unwrap());
     f.target.restore_stash(&oid).unwrap();
@@ -543,7 +550,7 @@ fn stash_preserves_index_when_worktree_reverts_staged_changes() {
         git(&f.target.repo, &["show", ":file.txt"]).unwrap(),
         "staged WIP"
     );
-    assert!(f.target.repo.join("line\nbreak.txt").exists());
+    assert!(f.target.repo.join(untracked).exists());
 }
 
 #[test]

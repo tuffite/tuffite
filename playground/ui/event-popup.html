@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Original popup</title>
+  </head>
+  <body>
+    <p>The original Chromium page was attached.</p>
+    <script>
+      let marker;
+      try {
+        marker = window.opener?.eventProof;
+      } catch {}
+      window.popupProof = {
+        opener: !!window.opener,
+        storage: sessionStorage.getItem("event-proof"),
+        marker,
+      };
+      window.opener?.postMessage(
+        { type: "event-popup-loaded", ...window.popupProof },
+        "*",
+      );
+    </script>
+  </body>
+</html>

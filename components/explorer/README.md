@@ -24,7 +24,7 @@ lists. Chromium build files import them directly; no mirrored forwarding
 files are needed. Generated IDL/V8 paths are unchanged.
 
 The component has no framework dependency. Browser hosts receive an
-`ExplorerPolicyProvider` interface; the framework's ApplicationPolicyService
+`ExplorerPolicyProvider` interface; the framework's ExplorerService
 implements manifest and application-role rules. BrowserContext owns the router,
 and document/WebContents destruction cleans up hosts and surface state.
 The manifest example below describes Tuffite framework configuration, rather
@@ -363,6 +363,19 @@ const delivered = await explorer.postMessage({type: 'selection-changed'});
 ```
 
 Navigation methods resolve to whether the browser accepted the operation.
+Native tab controls include `findInPage(text, options)`, `stopFindInPage(action)`,
+`setZoomFactor(factor)`, `getZoomFactor()` and `setAudioMuted(muted)`.
+Find results arrive through `findresult` and include an accepted request ID,
+match count, active ordinal, screen selection rect and final-update flag.
+Zoom is native, per Explorer and bounded to 25–500%; zoom/mute persist across
+navigation and transfer. `zoomchange`, `audiostatechange`, `faviconchange` and
+`renderprocessgone` report the native page state. See the
+[tab audit and lab](../../../docs/explorer-tab-parity.md) for semantics and tests.
+
+`getNavigationState()` also exposes `zoomFactor`, `audioMuted`, `audible`,
+`crashed` and primary-document `favicons`. Existing `reload()` recovers a crashed
+renderer. Favicon entries are metadata only, without an additional fetch.
+
 `getNavigationState()` returns URL/title/history/loading state, a document ID,
 renderer diagnostics, and storage diagnostics. Every Explorer has a stable
 Chromium `kUniqueInstance` isolation domain, so `rendererProcess.isolated` is
@@ -385,44 +398,77 @@ Structured payloads are available as `event.detail`.
 | `loadstart` | navigation state |
 | `loadstop` | navigation state |
 | `loaderror` | navigation state plus `errorCode` and `errorDescription` after a rejected or failed load |
-| `loadcommit` | navigation state after commit or title update |
-| `navigation` | intercepted current-surface navigation request |
-| `open` | ordinary `window.open()` request |
-| `popup` | popup-window request |
-| `newwindow` | new-window/tab request not initiated by `window.open()` |
-| `dialog` | `ExplorerDialog {type, message, defaultValue, isReload, from, accept(), dismiss()}` |
+| `loadcommit` | navigation state after commit |
+| `titlechange` | navigation state after title update |
+| `newwindow` | pending original page with attach/discard and cancellation signal |
+| `navigation` | intercepted current-page navigation |
+| `dialog` | one-shot JavaScript dialog response and cancellation signal |
 
-The four request events have `{url, disposition, userGesture, from}` detail.
-`disposition` retains Chromium's current-tab/background-tab/etc. classification,
-while the event type carries the semantic category. `open` is emitted only for
-an ordinary DOM `window.open()` call, regardless of whether platform policy
-would otherwise choose a tab or window; popup features produce `popup`, and
-link or browser gestures requesting another window/tab produce `newwindow`.
+The request events are `navigation`, `newwindow`, and `dialog`. All are
+`bubbles: true`, `composed: true`, `cancelable: true`. Each owner document uses
+ordinary DOM capture, target, and bubble phases, including shadow-root retargeting.
+After that dispatch, the browser offers an unclaimed request at the next outer
+Explorer. The final fallback dispatches on the top app's `window.tuffite`.
+This is a new dispatch in each document, not a DOM event path through guest DOMs.
+Guest input events never automatically cross the document boundary.
+
+Call `preventDefault()` synchronously to claim a request before asynchronous UI
+work. `stopPropagation()` and `stopImmediatePropagation()` only affect that
+document's DOM listeners. A response initiated during dispatch also consumes the
+request, so it is not offered outward. Passive listeners cannot claim a request.
+Synthetic events have no browser request behind them.
+
+`navigation.detail` contains `{url, disposition, userGesture, from}`; it reports an
+intercepted current-page navigation. `newwindow.detail` adds `signal`,
+`attach(targetExplorer)`, and `discard()`. It covers window.open, popup features,
+target=_blank and browser gestures; `disposition` retains the native classification.
+Attach adopts the original WebContents, preserving opener, POST, sessionStorage
+and its actual partition. It requires a connected target with matching
+immutable policy and partition. It never replays the URL. Successful attach and
+discard return true; duplicate or stale responses return false. Invalid attach
+targets reject with a DOMException. The old `open` and `popup` event names are
+replaced by `newwindow`.
+
+`dialog.detail` contains `{type, message, defaultValue, isReload, from, signal,
+accept(), dismiss()}`. A dialog event means the guest invoked alert, confirm,
+prompt or beforeunload; native UI has not already been shown. The application may
+show its own UI and return the JavaScript result using accept/dismiss.
+
+Requests are browser-owned and one-shot. Source navigation/destruction cancels
+pending requests and aborts their signals. Destruction of the current claimant
+also releases its pending requests. Completion retires all previously offered
+controllers. Unhandled top-level new windows are discarded and dialogs dismissed.
+Normal completion does not abort the signal; cancellation does. Keeping a JS
+wrapper alive does not keep a native pending page alive after its source exits.
+
+State events bubble and are composed, but are not cancelable and are not forwarded
+across documents. `loadcommit` describes a committed navigation; `titlechange`
+reports title updates. `zoomchange` includes `oldFactor` and `newFactor`.
+`fullscreenchange` has `{entered}`; `pictureinpicturechange` has
+`{type: "video" | "document", entered}`. `renderprocessgone` includes a stable
+`reason` plus the diagnostic native terminationStatus. Other state events are
+loadstart/loadstop/loaderror, attached/detached/error, download, findresult,
+audiostatechange and faviconchange. Both element and surface message events use
+`{data, from}`; explicit message routing is independent of DOM propagation.
 
 ```js
-for (const type of ['navigation', 'open', 'popup', 'newwindow']) {
-  explorer.addEventListener(type, ({detail}) => {
-    workbench.openBrowserTab({
-      url: detail.url,
-      source: type,
-      foreground: detail.disposition !== 'new-background-tab',
-    });
+window.tuffite.addEventListener('newwindow', event => {
+  event.preventDefault();
+  const target = document.createElement('explorer');
+  target.navigation = 'allow'; // match the source's immutable policy
+  document.querySelector('#tabs').append(target);
+  void event.detail.attach(target);
+});
+explorer.addEventListener('dialog', event => {
+  event.preventDefault();
+  const request = event.detail;
+  showConfirm(request.message, {signal: request.signal}).then(yes => {
+    if (yes) void request.accept(); else void request.dismiss();
   });
-}
+});
 ```
 
-These request events and `dialog` are composed bubbling events. They first
-dispatch on the direct `<explorer>`, bubble through that document, then
-continue across each outer Explorer boundary. Calling `stopPropagation()` at
-any layer stops both the local DOM path and browser-owned cross-WebContents
-continuation. If no layer stops them, the outermost app receives the same type
-on `window.tuffite`.
-Calling a dialog controller's `accept()` or `dismiss()` answers the dialog but
-does not stop event propagation. Use `event.stopPropagation()` independently
-when the current layer also owns the routing decision.
-
-`error` means the WebContents could not be created/attached; `loaderror` means
-an already-created Explorer failed a navigation.
+Playground `events.html` and `smoke.py --explorer-events` exercise this contract.
 
 ## Dialogs
 
@@ -435,7 +481,9 @@ answer a newer dialog with stale copied fields. A second response resolves to
 `false`. Navigation, destruction, or a newer dialog cancels the old request.
 
 ```js
-explorer.addEventListener('dialog', async ({detail: dialog}) => {
+explorer.addEventListener('dialog', async event => {
+  event.preventDefault();
+  const dialog = event.detail;
   const response = await showAppDialog(dialog);
   if (response.accept) {
     await dialog.accept(response.text ?? '');
@@ -566,7 +614,7 @@ colocated with their `tuffite_in_chromium.gni` files in `browser/content/` and
 
 The Playground Capability Lab covers parent navigation APIs, isolated-world
 execution, all four request event types, dialog response, nested top messaging,
-multi-level request bubbling and `stopPropagation()`, renderer isolation,
+multi-level request fallback and `preventDefault()`, renderer isolation,
 omitted/shared storage, independent `persist` / `memory`, snapshot-seeded
 `inherit+persist` / `inherit+memory`, lifecycle stress, and the native context
 menu on Baidu.
@@ -629,3 +677,12 @@ The native resources regression runs with:
 ```console
 mise exec -- python3 playground/scripts/smoke.py --package dist/playground --explorer-resources
 ```
+
+### Exclusive page handles
+
+`detach()` returns `ExplorerHandle`; `attach(handle)` consumes it and removes
+`src` on success. `win.transfer(name, handle)` hands it to the newly created
+window's initial document. `<explorer src="explorer:name" defer>` waits empty
+for that resource and adopts it once. Names are document-local, not bearer
+credentials. See [the ownership contract](../../docs/explorer.md) for
+replacement rollback, policy compatibility and lifetime rules.

@@ -8,7 +8,10 @@ import("//tuffite/tuffite_in_chromium.gni")
 
 mojom("mojom") {
   sources = [ "explorer.mojom" ]
-  deps = [ "//third_party/blink/public/mojom/tokens" ]
+  deps = [
+    "//third_party/blink/public/mojom:mojom_core",
+    "//third_party/blink/public/mojom/tokens",
+  ]
 }
 
 if (tuffite_in_chromium) {

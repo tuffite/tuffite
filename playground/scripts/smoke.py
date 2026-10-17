@@ -133,6 +133,8 @@ def run_explorer_demo(
     keep_files: bool,
     requested_port: int,
     script: str = "explorer-demo-smoke.mjs",
+    turnstile_live: bool = False,
+    turnstile_test_keys: bool = False,
 ) -> int:
     test_root = staging / f"tuffite-explorer-smoke-{uuid.uuid4().hex}"
     profile = test_root / "profile"
@@ -166,6 +168,8 @@ def run_explorer_demo(
             environment["TUFFITE_PLAYGROUND_CDP_PORT"] = str(port)
             environment["TUFFITE_PLAYGROUND_COMMAND"] = json.dumps(command)
             environment["TUFFITE_PLAYGROUND_CWD"] = str(package)
+            environment["TUFFITE_TURNSTILE_LIVE"] = "1" if turnstile_live else "0"
+            environment["TUFFITE_TURNSTILE_TEST_KEYS"] = "1" if turnstile_test_keys else "0"
             subprocess.run(
                 ["bun", "run", f"../scripts/{script}"],
                 cwd=PLAYGROUND / "ui",
@@ -191,6 +195,10 @@ def run_explorer_demo(
         return 0
     except Exception as error:
         diagnostic = stderr_log.read_text(encoding="utf-8", errors="replace")[-8000:]
+        if script == "browser-compatibility-smoke.mjs":
+            # Public-service Console messages can contain challenge URLs/tokens.
+            # The JS runner reports only sanitized status and error codes.
+            diagnostic = "Native diagnostic log retained locally; omitted from public-service output."
         raise RuntimeError(
             f"Explorer demo smoke failed: {error}\n{diagnostic}"
         ) from error
@@ -220,10 +228,21 @@ def main() -> int:
                         help="Run native download, PDF, snapshot and PiP smoke.")
     parser.add_argument("--browser-contract", action="store_true",
                         help="Run browser language, dialogs and restart persistence smoke.")
+    parser.add_argument("--browser-compatibility", action="store_true",
+                        help="Compare standard browser API operations in Explorer and a top-level window.")
+    parser.add_argument("--turnstile-live", action="store_true",
+                        help="Require actual public Turnstile success with --browser-compatibility; never clicks the verification widget.")
+    parser.add_argument("--turnstile-test-keys", action="store_true",
+                        help="Check official Turnstile always-pass and always-fail test callbacks; does not establish real acceptance.")
     parser.add_argument("--explorer-webauthn", action="store_true",
                         help="Run WebAuthn resident credential and cancellation smoke.")
+    parser.add_argument("--explorer-ancestry", action="store_true",
+                        help="Run native parent/top, WindowProxy messages and reattachment smoke.")
     parser.add_argument("--explorer-transfer", action="store_true",
                         help="Run native detach/attach lifecycle and window transfer smoke.")
+    parser.add_argument("--explorer-events", action="store_true", help="Run Explorer request adoption, cancellation and event propagation smoke.")
+    parser.add_argument("--explorer-tabs", action="store_true",
+                        help="Run native find, zoom, audio, favicon and renderer recovery smoke.")
     parser.add_argument(
         "--cdp-port",
         type=int,
@@ -240,6 +259,8 @@ def main() -> int:
         help="Run Chromium in one process for restricted CI hosts.",
     )
     args = parser.parse_args()
+    if (args.turnstile_live or args.turnstile_test_keys) and not args.browser_compatibility:
+        parser.error("Turnstile checks require --browser-compatibility")
     package = (ROOT / args.package).resolve()
     bundle = package if package.suffix == ".app" else None
     if bundle:
@@ -272,7 +293,7 @@ def main() -> int:
         if public
         else Path(tempfile.gettempdir())
     )
-    if args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
+    if args.explorer_ancestry or args.explorer_events or args.explorer_tabs or args.browser_compatibility or args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
         return run_explorer_demo(
             package,
             application,
@@ -280,11 +301,17 @@ def main() -> int:
             args.timeout,
             args.keep_files,
             args.cdp_port,
+            "explorer-ancestry-smoke.mjs" if args.explorer_ancestry else
+            "explorer-event-smoke.mjs" if args.explorer_events else
+            "explorer-tab-smoke.mjs" if args.explorer_tabs else
+            "browser-compatibility-smoke.mjs" if args.browser_compatibility else
             "browser-contract-smoke.mjs" if args.browser_contract else
             "explorer-webauthn-smoke.mjs" if args.explorer_webauthn else
             "explorer-resources-smoke.mjs" if args.explorer_resources else
             "explorer-capabilities-smoke.mjs" if args.explorer_capabilities else
             "explorer-transfer-smoke.mjs" if args.explorer_transfer else "explorer-demo-smoke.mjs",
+            args.turnstile_live,
+            args.turnstile_test_keys,
         )
     test_root = staging / f"tuffite-smoke-{uuid.uuid4().hex}"
     server_root = test_root / "http"

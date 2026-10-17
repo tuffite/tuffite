@@ -13,8 +13,9 @@
 namespace tuffite::remoting {
 
 // The platform adapter supplies bounds in the injector's coordinate space:
-// macOS global logical points; Windows virtual-desktop-relative physical pixels.
-// Fractional input is independent of capture/encoder/Client display scaling.
+// macOS global logical points; Windows virtual-desktop-relative physical
+// pixels. Fractional input is independent of capture/encoder/Client display
+// scaling.
 struct PointerGeometry {
   int frame_width = 0;
   int frame_height = 0;
@@ -32,10 +33,9 @@ struct PointerGeometry {
   }
 
   std::optional<std::pair<int, int>> MapFractional(double x, double y) const {
-    if (!std::isfinite(x) || !std::isfinite(y) ||
-        !std::isfinite(left) || !std::isfinite(top) ||
-        !std::isfinite(width) || !std::isfinite(height) ||
-        width < 1 || height < 1 ||
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(left) ||
+        !std::isfinite(top) || !std::isfinite(width) ||
+        !std::isfinite(height) || width < 1 || height < 1 ||
         left < std::numeric_limits<int>::min() ||
         top < std::numeric_limits<int>::min() ||
         left + width - 1 > std::numeric_limits<int>::max() ||
@@ -44,8 +44,7 @@ struct PointerGeometry {
     }
     const auto axis = [](double fraction, double origin, double size) {
       const double offset = std::clamp(fraction, 0.0, 1.0) * size;
-      return static_cast<int>(std::round(
-          origin + std::min(offset, size - 1)));
+      return static_cast<int>(std::round(origin + std::min(offset, size - 1)));
     };
     return std::pair(axis(x, left, width), axis(y, top, height));
   }

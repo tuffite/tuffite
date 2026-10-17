@@ -27,8 +27,10 @@ class ExplorerSurfaceBindings final : public content::RenderFrameObserver,
   void WillReleaseScriptContext(v8::Local<v8::Context> context,
                                 int32_t world_id) override;
   void OnDestruct() override;
-  void DidReceiveMessage(const std::string& json,
-                         const std::string& from) override;
+  void DidFinishRequest(const std::string&, const std::string&, bool) override;
+  void DidChangeAncestors(const std::vector<blink::FrameToken>&,
+                          const std::optional<blink::FramePolicy>&,
+                          DidChangeAncestorsCallback) override;
   void DidReceiveOpen(const std::string& event_type,
                       const std::string& request_json) override;
   void DidReceiveDialog(uint64_t request_id,
@@ -47,13 +49,15 @@ class ExplorerSurfaceBindings final : public content::RenderFrameObserver,
   explicit ExplorerSurfaceBindings(content::RenderFrame* frame);
   ~ExplorerSurfaceBindings() override;
 
-  static void PostMessage(const v8::FunctionCallbackInfo<v8::Value>& info);
-  static void ResetMessageSink(const v8::FunctionCallbackInfo<v8::Value>& info);
+  static void RequestAction(const v8::FunctionCallbackInfo<v8::Value>&);
+  static void ResetRequestSink(const v8::FunctionCallbackInfo<v8::Value>&);
   static void ResetOpenSink(const v8::FunctionCallbackInfo<v8::Value>& info);
   static void ResetDialogSink(const v8::FunctionCallbackInfo<v8::Value>& info);
   static void RespondToDialog(const v8::FunctionCallbackInfo<v8::Value>& info);
-  void PostMessageImpl(const v8::FunctionCallbackInfo<v8::Value>& info);
-  void ResetMessageSinkImpl(const v8::FunctionCallbackInfo<v8::Value>& info);
+  void ApplyAncestors(std::vector<blink::FrameToken>,
+                      std::optional<blink::FramePolicy>,
+                      DidChangeAncestorsCallback,
+                      unsigned attempt);
   void ResetOpenSinkImpl(const v8::FunctionCallbackInfo<v8::Value>& info);
   void ResetDialogSinkImpl(const v8::FunctionCallbackInfo<v8::Value>& info);
   void RespondToDialogImpl(const v8::FunctionCallbackInfo<v8::Value>& info);
@@ -65,7 +69,7 @@ class ExplorerSurfaceBindings final : public content::RenderFrameObserver,
   mojo::Remote<mojom::ExplorerSurfaceHost> remote_;
   mojo::Receiver<mojom::ExplorerSurfaceClient> receiver_{this};
   v8::Global<v8::Context> context_;
-  v8::Global<v8::Function> message_sink_;
+  v8::Global<v8::Function> request_sink_;
   v8::Global<v8::Function> open_sink_;
   v8::Global<v8::Function> dialog_sink_;
   std::unordered_map<uint64_t, PendingPost> pending_posts_;

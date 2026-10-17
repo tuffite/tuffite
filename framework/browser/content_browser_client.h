@@ -64,6 +64,11 @@ class ContentBrowserClient final : public content::ContentBrowserClient {
   CreateNonNetworkNavigationURLLoaderFactory(
       const std::string& scheme,
       content::FrameTreeNodeId frame_tree_node_id) override;
+  void RegisterNonNetworkWorkerMainResourceURLLoaderFactories(
+      content::BrowserContext* browser_context,
+      const std::optional<url::Origin>& request_initiator,
+      network::mojom::RequestDestination request_destination,
+      NonNetworkURLLoaderFactoryMap* factories) override;
   void RegisterNonNetworkSubresourceURLLoaderFactories(
       int render_process_id,
       int render_frame_id,

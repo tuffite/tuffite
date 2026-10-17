@@ -3,8 +3,10 @@ __pycache__/
 
 # Rust and generated application output
 /target/
+/crates/spo/target/
 /dist/
 /playground/dist/
+/playground/target/
 /compile_commands.json
 /playground/ui/dist/
 /playground/ui/node_modules/

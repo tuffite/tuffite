@@ -23,7 +23,9 @@ void ContentClient::AddAdditionalSchemes(Schemes* schemes) {
   }
   schemes->standard_schemes.push_back(scheme);
   schemes->secure_schemes.push_back(scheme);
-  schemes->local_schemes.push_back(scheme);
+  // Application assets have normal tuple origins. Local-scheme file access
+  // restrictions would serialize their security origin as null and break
+  // standard Window messaging and Workers.
   schemes->cors_enabled_schemes.push_back(scheme);
 }
 

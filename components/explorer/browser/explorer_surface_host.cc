@@ -8,24 +8,32 @@
 #include <map>
 #include <vector>
 
+#include "base/barrier_callback.h"
 #include "base/functional/bind.h"
 #include "base/json/json_reader.h"
 #include "base/no_destructor.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
 #include "base/unguessable_token.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
+#include "mojo/public/cpp/bindings/callback_helpers.h"
+#include "third_party/blink/public/common/messaging/transferable_message.h"
+#include "tuffite/components/explorer/browser/content/explorer_isolation.h"
 #include "tuffite/components/explorer/browser/explorer_host.h"
 #include "tuffite/components/explorer/browser/explorer_policy_provider.h"
 #include "tuffite/components/explorer/browser/explorer_router.h"
 #include "tuffite/components/explorer/browser/explorer_surface_data.h"
+#include "tuffite/components/explorer/browser/explorer_transfer.h"
+#include "url/gurl.h"
+#include "url/origin.h"
 
 namespace tuffite {
 namespace {
 
-constexpr size_t kMaxMessageBytes = 1024 * 1024;
-constexpr size_t kMaxPendingMessages = 256;
 constexpr size_t kMaxPendingSurfaceEvents = 256;
 
 content::WebContents* ContentsFor(content::RenderFrameHost& frame) {
@@ -54,16 +62,13 @@ ExplorerSurfaceHost::ExplorerSurfaceHost(
       surface_ref_("surface:" + base::UnguessableToken::Create().ToString()) {
   ExplorerRouter& router = ExplorerRouter::Get(frame.GetBrowserContext());
   router.AddSurface(*this);
-  if (auto queued = router.TakePending(frame)) {
-    for (QueuedMessage& message : queued->messages) {
-      pending_messages_.push_back(
-          {std::move(message.json), std::move(message.from)});
-    }
-    pending_message_bytes_ = queued->message_bytes;
-  }
 }
 
 ExplorerSurfaceHost::~ExplorerSurfaceHost() {
+  auto windows = std::move(active_windows_);
+  for (const auto& token : windows) {
+    ExplorerTransferRecord::DiscardWindow(render_frame_host(), token, true);
+  }
   content::WebContents* contents = ContentsFor(render_frame_host());
   std::vector<uint64_t> unresolved_dialogs(active_dialogs_.begin(),
                                            active_dialogs_.end());
@@ -76,7 +81,7 @@ ExplorerSurfaceHost::~ExplorerSurfaceHost() {
       .RemoveSurface(*this);
   for (uint64_t request_id : unresolved_dialogs) {
     ExplorerHost::RespondToDialogForTree(contents, request_id, false,
-                                         std::string());
+                                         std::string(), true);
   }
 }
 
@@ -85,6 +90,88 @@ bool ExplorerSurfaceHost::IsCurrentPrimaryDocument() const {
   return contents && contents->GetPrimaryMainFrame() == &render_frame_host();
 }
 
+void ExplorerSurfaceHost::GetFrameAncestors(
+    GetFrameAncestorsCallback callback) {
+  std::move(callback).Run(ExplorerFrameAncestors(render_frame_host()),
+                          ExplorerFrameOwnerPolicy(render_frame_host()));
+}
+void ExplorerSurfaceHost::UpdateFrameAncestors(
+    content::WebContents* contents,
+    base::OnceCallback<void(bool)> callback,
+    unsigned attempt) {
+  std::vector<content::WebContents*> tree{contents};
+  for (size_t i = 0; i < tree.size(); ++i) {
+    for (auto* child : tree[i]->GetInnerWebContents()) {
+      tree.push_back(child);
+    }
+  }
+  std::vector<base::WeakPtr<ExplorerSurfaceHost>> targets;
+  for (auto* surface : ExplorerRouter::Get(contents).surfaces()) {
+    if (surface->IsCurrentPrimaryDocument() && surface->client_ &&
+        std::find(tree.begin(), tree.end(),
+                  ContentsFor(surface->render_frame_host())) != tree.end()) {
+      targets.push_back(surface->weak_factory_.GetWeakPtr());
+    }
+  }
+  auto barrier = base::BarrierCallback<bool>(
+      targets.size(),
+      base::BindOnce(
+          [](base::WeakPtr<content::WebContents> contents,
+             base::OnceCallback<void(bool)> callback, unsigned attempt,
+             std::vector<bool> results) {
+            const bool ready = std::all_of(results.begin(), results.end(),
+                                           [](bool value) { return value; });
+            if (!ready && contents && attempt < 8) {
+              base::SingleThreadTaskRunner::GetCurrentDefault()
+                  ->PostDelayedTask(
+                      FROM_HERE,
+                      base::BindOnce(
+                          [](base::WeakPtr<content::WebContents> contents,
+                             base::OnceCallback<void(bool)> callback,
+                             unsigned attempt) {
+                            if (!contents) {
+                              std::move(callback).Run(false);
+                              return;
+                            }
+                            UpdateFrameAncestors(contents.get(),
+                                                 std::move(callback), attempt);
+                          },
+                          contents, std::move(callback), attempt + 1),
+                      base::Milliseconds(5));
+              return;
+            }
+            std::move(callback).Run(ready);
+          },
+          contents->GetWeakPtr(), std::move(callback), attempt));
+  for (auto surface : targets) {
+    if (!surface || !surface->client_) {
+      barrier.Run(false);
+      continue;
+    }
+    surface->client_->DidChangeAncestors(
+        ExplorerFrameAncestors(surface->render_frame_host()),
+        ExplorerFrameOwnerPolicy(surface->render_frame_host()),
+        mojo::WrapCallbackWithDefaultInvokeIfNotRun(
+            base::BindOnce(
+                [](base::WeakPtr<content::WebContents> contents,
+                   content::WeakDocumentPtr document,
+                   base::RepeatingCallback<void(bool)> barrier, bool ready) {
+                  if (!ready && contents) {
+                    auto* frame = document.AsRenderFrameHostIfValid();
+                    // A popup may commit its requested document while being
+                    // attached. The replacement initializes native ancestry via
+                    // CreateView/context metadata; closing the old client is
+                    // not an attachment failure.
+                    ready = !frame || !frame->IsActive() ||
+                            contents->GetPrimaryMainFrame() != frame;
+                  }
+                  barrier.Run(ready);
+                },
+                ContentsFor(surface->render_frame_host())->GetWeakPtr(),
+                surface->render_frame_host().GetWeakDocumentPtr(), barrier),
+            false));
+  }
+}
 void ExplorerSurfaceHost::BindClient(
     mojo::PendingRemote<mojom::ExplorerSurfaceClient> client) {
   if (IsCurrentPrimaryDocument()) {
@@ -95,98 +182,73 @@ void ExplorerSurfaceHost::BindClient(
     client_.set_disconnect_handler(
         base::BindOnce(&ExplorerSurfaceHost::OnClientDisconnected,
                        weak_factory_.GetWeakPtr()));
-    FlushPendingMessages();
+    FlushPendingRequests();
   }
 }
 
-content::WebContents* ExplorerSurfaceHost::ResolveDestination(
-    const std::string& to) const {
-  content::WebContents* source = ContentsFor(render_frame_host());
-  if (!source) {
-    return nullptr;
+void ExplorerSurfaceHost::PostWindowMessage(int64_t id,
+                                            blink::TransferableMessage message,
+                                            const std::string& target_origin) {
+  if (!render_frame_host().IsActive() ||
+      !policy_provider_->IsOwnerAllowed(render_frame_host())) {
+    return;
   }
-  if (to == "parent") {
-    const ExplorerPolicy* policy =
-        ExplorerSurfaceData::GetExplorerPolicy(source);
-    return policy && policy->allow_parent_messages
-               ? source->GetOuterWebContents()
-               : nullptr;
-  }
-  if (to == "top") {
-    if (ExplorerRouter::Get(source).FindTransferForContents(
-            source->GetOutermostWebContents())) {
-      return nullptr;
+  const auto source = render_frame_host().GetLastCommittedOrigin();
+  std::optional<url::Origin> origin;
+  if (target_origin != "*") {
+    GURL url(target_origin);
+    if (!url.is_valid()) {
+      return;
     }
-    const ExplorerPolicy* policy =
-        ExplorerSurfaceData::GetExplorerPolicy(source);
-    return policy && policy->allow_top_messages
-               ? source->GetOutermostWebContents()
-               : nullptr;
+    origin = url::Origin::Create(url);
   }
-  ExplorerSurfaceHost* destination_surface =
-      ExplorerRouter::Get(source).FindSurfaceByRef(to);
-  if (!destination_surface) {
-    return nullptr;
-  }
-  content::WebContents* destination =
-      ContentsFor(destination_surface->render_frame_host());
-  const bool trusted_root = policy_provider_->IsApp(source) &&
-                            source == source->GetOutermostWebContents();
-  const bool direct_parent =
-      destination && destination->GetOuterWebContents() == source;
-  return destination &&
-                 destination->GetOutermostWebContents() ==
-                     source->GetOutermostWebContents() &&
-                 (trusted_root || direct_parent)
-             ? destination
-             : nullptr;
+  // Use browser-authenticated origins, never renderer-supplied identity.
+  message.sender_origin = source;
+  policy_provider_->ResolveMessageWindow(
+      render_frame_host(), id,
+      base::BindOnce(
+          [](url::Origin source, std::optional<url::Origin> origin,
+             blink::TransferableMessage message,
+             content::RenderFrameHost* target) {
+            if (!target || !target->IsActive() ||
+                (origin &&
+                 !origin->IsSameOriginWith(target->GetLastCommittedOrigin()))) {
+              return;
+            }
+            DeliverExplorerWindowMessage(*target, source,
+                                         origin ? &*origin : nullptr,
+                                         std::move(message));
+          },
+          source, std::move(origin), std::move(message)));
 }
-
-void ExplorerSurfaceHost::PostMessage(const std::string& json,
-                                      const std::string& to,
-                                      PostMessageCallback callback) {
-  const bool valid_json =
-      base::JSONReader::Read(json, base::JSON_PARSE_RFC).has_value();
-  content::WebContents* destination =
-      json.size() <= kMaxMessageBytes && valid_json ? ResolveDestination(to)
-                                                    : nullptr;
-  const bool accepted =
-      destination && DeliverToWebContents(destination, json, surface_ref_);
-  std::move(callback).Run(accepted);
-}
-
 void ExplorerSurfaceHost::RespondToDialog(uint64_t request_id,
                                           bool accept,
                                           const std::string& prompt_text,
                                           RespondToDialogCallback callback) {
-  std::move(callback).Run(ExplorerHost::RespondToDialogForTree(
-      ContentsFor(render_frame_host()), request_id, accept, prompt_text));
+  std::move(callback).Run(
+      active_dialogs_.contains(request_id) &&
+      ExplorerHost::RespondToDialogForTree(ContentsFor(render_frame_host()),
+                                           request_id, accept, prompt_text));
 }
 
-bool ExplorerSurfaceHost::Deliver(const std::string& json,
-                                  const std::string& from) {
-  if (!IsCurrentPrimaryDocument()) {
-    return false;
-  }
-  if (!client_) {
-    return QueueMessage(json, from);
-  }
-  client_->DidReceiveMessage(json, from);
-  return true;
+void ExplorerSurfaceHost::DiscardWindow(const std::string& token,
+                                        DiscardWindowCallback callback) {
+  std::move(callback).Run(
+      ExplorerTransferRecord::DiscardWindow(render_frame_host(), token));
 }
-
-bool ExplorerSurfaceHost::QueueMessage(const std::string& json,
-                                       const std::string& from) {
-  if (pending_messages_.size() >= kMaxPendingMessages ||
-      json.size() > kMaxMessageBytes - pending_message_bytes_) {
-    return false;
+void ExplorerSurfaceHost::CompleteDialog(uint64_t id, bool propagate) {
+  if (propagate && active_dialogs_.contains(id)) {
+    ExplorerHost::RespondToDialogForTree(ContentsFor(render_frame_host()), id,
+                                         false, "");
   }
-  pending_message_bytes_ += json.size();
-  pending_messages_.push_back({json, from});
-  return true;
 }
-
-void ExplorerSurfaceHost::FlushPendingMessages() {
+void ExplorerSurfaceHost::CompleteOpen(const std::string& token,
+                                       bool propagate) {
+  if (propagate) {
+    ExplorerTransferRecord::DiscardWindow(render_frame_host(), token);
+  }
+}
+void ExplorerSurfaceHost::FlushPendingRequests() {
   while (client_ && !pending_opens_.empty() && IsCurrentPrimaryDocument()) {
     PendingOpen request = std::move(pending_opens_.front());
     pending_opens_.pop_front();
@@ -200,16 +262,14 @@ void ExplorerSurfaceHost::FlushPendingMessages() {
                               request.default_value, request.is_reload,
                               request.from);
   }
-  while (client_ && !pending_messages_.empty() && IsCurrentPrimaryDocument()) {
-    PendingMessage message = std::move(pending_messages_.front());
-    pending_messages_.pop_front();
-    pending_message_bytes_ -= message.json.size();
-    client_->DidReceiveMessage(message.json, message.from);
-  }
 }
 
 void ExplorerSurfaceHost::OnClientDisconnected() {
   client_.reset();
+  auto windows = std::move(active_windows_);
+  for (const auto& token : windows) {
+    ExplorerTransferRecord::DiscardWindow(render_frame_host(), token, true);
+  }
   DismissActiveDialogs();
 }
 
@@ -220,27 +280,8 @@ void ExplorerSurfaceHost::DismissActiveDialogs() {
   active_dialogs_.clear();
   for (uint64_t request_id : request_ids) {
     ExplorerHost::RespondToDialogForTree(contents, request_id, false,
-                                         std::string());
+                                         std::string(), true);
   }
-}
-
-// static
-bool ExplorerSurfaceHost::DeliverToWebContents(
-    content::WebContents* destination,
-    const std::string& json,
-    const std::string& from) {
-  if (!destination) {
-    return false;
-  }
-  content::RenderFrameHost* destination_frame =
-      destination ? destination->GetPrimaryMainFrame() : nullptr;
-  if (!destination_frame) {
-    return false;
-  }
-  ExplorerRouter& router = ExplorerRouter::Get(destination);
-  ExplorerSurfaceHost* surface = router.FindSurfaceForContents(destination);
-  return surface ? surface->Deliver(json, from)
-                 : router.QueueForDocument(*destination_frame, json, from);
 }
 
 // static
@@ -266,6 +307,17 @@ bool ExplorerSurfaceHost::DeliverOpenToWebContents(
       ExplorerRouter::Get(destination).FindSurfaceForContents(destination);
   if (!surface || !surface->IsCurrentPrimaryDocument()) {
     return false;
+  }
+  if (event_type == "newwindow") {
+    auto data = base::JSONReader::ReadDict(request_json, base::JSON_PARSE_RFC);
+    auto* token = data ? data->FindString("token") : nullptr;
+    auto* record =
+        token ? ExplorerRouter::Get(destination).FindTransfer(*token) : nullptr;
+    if (!record || !record->pending()) {
+      return false;
+    }
+    record->OfferWindow(surface->render_frame_host());
+    surface->active_windows_.insert(*token);
   }
   if (!surface->client_) {
     if (surface->pending_opens_.size() >= kMaxPendingSurfaceEvents) {
@@ -311,7 +363,9 @@ bool ExplorerSurfaceHost::DeliverDialogToWebContents(
 
 // static
 void ExplorerSurfaceHost::ForgetDialog(content::BrowserContext* context,
-                                       uint64_t request_id) {
+                                       uint64_t request_id,
+                                       bool canceled) {
+  FinishRequest(context, "dialog", base::NumberToString(request_id), canceled);
   for (ExplorerSurfaceHost* host : ExplorerRouter::Get(context).surfaces()) {
     host->active_dialogs_.erase(request_id);
     std::erase_if(host->pending_dialogs_, [&](const PendingDialog& dialog) {
@@ -320,4 +374,27 @@ void ExplorerSurfaceHost::ForgetDialog(content::BrowserContext* context,
   }
 }
 
+void ExplorerSurfaceHost::FinishRequest(content::BrowserContext* context,
+                                        const std::string& kind,
+                                        const std::string& key,
+                                        bool canceled) {
+  auto& router = ExplorerRouter::Get(context);
+  for (auto* host : router.hosts()) {
+    host->FinishRequest(kind, key, canceled);
+  }
+  for (auto* surface : router.surfaces()) {
+    if (surface->client_) {
+      surface->client_->DidFinishRequest(kind, key, canceled);
+    }
+    if (kind == "newwindow") {
+      surface->active_windows_.erase(key);
+      std::erase_if(surface->pending_opens_, [&](const PendingOpen& open) {
+        auto data =
+            base::JSONReader::ReadDict(open.request_json, base::JSON_PARSE_RFC);
+        auto* token = data ? data->FindString("token") : nullptr;
+        return token && *token == key;
+      });
+    }
+  }
+}
 }  // namespace tuffite

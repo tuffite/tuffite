@@ -26,7 +26,6 @@
 #include "base/message_loop/message_pump_type.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/task/bind_post_task.h"
-#include "base/task/bind_post_task.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner_thread_mode.h"
 #include "base/task/task_traits.h"
@@ -698,8 +697,8 @@ class HostSession final : public protocol::ConnectionToClient::EventHandler,
           if (fractional.has_x() && fractional.has_y() &&
               (!fractional.has_screen_id() ||
                fractional.screen_id() == capture_screen_id_)) {
-            point = pointer_geometry_.MapFractional(fractional.x(),
-                                                   fractional.y());
+            point =
+                pointer_geometry_.MapFractional(fractional.x(), fractional.y());
           }
         } else {
           point = pointer_geometry_.Map(event.x(), event.y());

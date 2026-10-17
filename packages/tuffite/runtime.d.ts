@@ -32,9 +32,7 @@ export interface ChannelEvent extends Event {
   readonly detail: Readonly<{ channel: string; data: Uint8Array }>;
 }
 
-export interface ExplorerMessageEvent<T = unknown> extends Event {
-  readonly detail: Readonly<{ data: T; from: string }>;
-}
+export type ExplorerMessageEvent<T = unknown> = MessageEvent<T>;
 
 export interface ExplorerOpenEvent extends Event {
   readonly detail: Readonly<{
@@ -45,7 +43,12 @@ export interface ExplorerOpenEvent extends Event {
   }>;
 }
 
+export interface ExplorerNewWindowEvent extends Event {
+  readonly detail: import("./explorer.js").ExplorerNewWindowController;
+}
+
 export interface ExplorerDialogController {
+  readonly signal: AbortSignal;
   readonly type: "alert" | "confirm" | "prompt" | "beforeunload";
   readonly message: string;
   readonly defaultValue: string;
@@ -59,17 +62,14 @@ export interface ExplorerDialogEvent extends Event {
   readonly detail: ExplorerDialogController;
 }
 
-export type ExplorerSurfaceRef = string & {
-  readonly __tuffiteExplorerSurfaceRef: unique symbol;
-};
-export type ExplorerMessageTarget = "parent" | "top" | ExplorerSurfaceRef;
-
 export interface NativeBridge extends EventTarget {
+  addEventListener(type: "message" | "messageerror", listener: (event: MessageEvent) => void, options?: boolean | AddEventListenerOptions): void;
+  removeEventListener(type: "message" | "messageerror", listener: (event: MessageEvent) => void, options?: boolean | EventListenerOptions): void;
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions): void;
+  removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | EventListenerOptions): void;
   invoke(channel: string, payload: Uint8Array): Promise<Uint8Array>;
-  postMessage(
-    data: unknown,
-    options?: Readonly<{ to?: ExplorerMessageTarget }>,
-  ): Promise<boolean>;
+  postMessage(message: unknown, options?: import("./explorer").ExplorerWindowPostMessageOptions): void;
+  postMessage(message: unknown, targetOrigin: string, transfer?: import("./explorer").ExplorerTransferable[]): void;
   addEventListener(
     type: "channel",
     listener: (event: ChannelEvent) => void,
@@ -91,15 +91,17 @@ export interface NativeBridge extends EventTarget {
     options?: boolean | EventListenerOptions,
   ): void;
   addEventListener(
-    type: "open" | "popup" | "newwindow" | "navigation",
+    type: "navigation",
     listener: (event: ExplorerOpenEvent) => void,
     options?: boolean | AddEventListenerOptions,
   ): void;
   removeEventListener(
-    type: "open" | "popup" | "newwindow" | "navigation",
+    type: "navigation",
     listener: (event: ExplorerOpenEvent) => void,
     options?: boolean | EventListenerOptions,
   ): void;
+  addEventListener(type: "newwindow", listener: (event: ExplorerNewWindowEvent) => void, options?: boolean | AddEventListenerOptions): void;
+  removeEventListener(type: "newwindow", listener: (event: ExplorerNewWindowEvent) => void, options?: boolean | EventListenerOptions): void;
   addEventListener(
     type: "dialog",
     listener: (event: ExplorerDialogEvent) => void,
@@ -152,3 +154,11 @@ export function createFrameworkApi(
   entries: readonly FrameworkEntry[],
   constants?: readonly ConstantEntry[],
 ): object;
+
+// Window snapshots expose messaging outside the Shell codec. They are not transferable.
+declare module "./generated/window" {
+  interface WindowInfo {
+    postMessage(message: unknown, options?: import("./explorer").ExplorerWindowPostMessageOptions): void;
+    postMessage(message: unknown, targetOrigin: string, transfer?: import("./explorer").ExplorerTransferable[]): void;
+  }
+}

@@ -13,6 +13,7 @@ const pages = () => browser.contexts().flatMap((context) => context.pages());
 let app;
 await until(() => (app = pages().find((page) => page.url().includes("/index.html"))), "Playground main window is missing");
 const base = new URL("./", app.url()).href;
+const appOrigin = await app.evaluate(() => location.origin);
 const targetCount = async () => {
   const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
   return targets.filter((target) => /(?:history-[ab]|transfer-sample)\.html/.test(target.url)).length;
@@ -27,246 +28,209 @@ async function until(check, message) {
 }
 try {
   await app.goto(new URL("transfer.html", base).href);
-  await app.waitForFunction(() => window.transferDemo && typeof window.transferDemo.first.detach === "function");
+  await app.waitForFunction(() => window.transferDemo);
   const initial = await app.evaluate(() => window.transferDemo.load());
-  assert.ok(initial.state.documentId);
-  const liveRoot = pages().find((page) => page.url().includes("transfer-sample.html"));
-  assert.ok(liveRoot);
-  const nestedBefore = await liveRoot.evaluate(async () => {
-    const nested = document.createElement("explorer");
-    nested.id = "nested-transfer";
-    nested.navigation = "allow";
-    nested.style.cssText = "display:block;width:400px;height:100px";
-    const loaded = new Promise((resolve) => nested.addEventListener("loadstop", resolve, { once: true }));
-    nested.src = new URL("./history-b.html", location.href).href;
-    document.body.append(nested);
-    await loaded;
-    await nested.executeJavaScript("globalThis.nestedMarker = 'nested-unsaved'");
-    return nested.getNavigationState();
-  });
-  const baseline = await targetCount();
-  assert.equal(baseline, 2);
-  await app.evaluate(() => {
-    const deferred = document.createElement("explorer");
-    deferred.deferred = true;
-    deferred.navigation = "allow";
-    deferred.src = new URL("./history-a.html?deferred-check", document.baseURI).href;
-    document.body.append(deferred);
-    window.deferredCheck = deferred;
-  });
-  assert.equal(await targetCount(), baseline, "A deferred host must not create a page");
-  const configured = await app.evaluate(async () => {
-    const element = window.deferredCheck;
-    const loaded = new Promise((resolve) => element.addEventListener("loadstop", resolve, { once: true }));
-    element.deferred = false;
-    await loaded;
-    const state = await element.getNavigationState();
-    element.remove();
-    return state;
-  });
-  assert.ok(configured.url.includes("history-a.html?deferred-check"));
-  await until(async () => await targetCount() === baseline, "Deferred test retained an extra page");
-
-  // The standard same-document move must retain the element and its page.
-  const move = await app.evaluate(async () => {
+  console.log("handle phase: exclusive contract");
+  const contract = await app.evaluate(async () => {
     const demo = window.transferDemo;
-    const holder = document.createElement("div");
-    document.body.append(holder);
-    holder.moveBefore(demo.active, null);
-    const after = await demo.snapshot();
-    document.querySelector("#hosts").moveBefore(demo.active, null);
-    holder.remove();
-    return after;
-  });
-  assert.equal(move.state.documentId, initial.state.documentId);
-  assert.equal(move.marker, initial.marker);
-
-  const started = Date.now();
-  const stress = await app.evaluate(async () => {
-    const demo = window.transferDemo;
-    const before = await demo.snapshot();
-    const loads = demo.events.filter((event) => event.startsWith("load")).length;
-    for (let i = 0; i < 25; ++i) { await demo.detach(); await demo.attach(); }
-    return { before, after: await demo.snapshot(), loads, afterLoads: demo.events.filter((event) => event.startsWith("load")).length };
-  });
-  assert.equal(stress.before.state.documentId, stress.after.state.documentId);
-  assert.equal(stress.before.state.rendererProcess.id, stress.after.state.rendererProcess.id);
-  assert.equal(stress.before.marker, stress.after.marker);
-  assert.equal(stress.before.draft, stress.after.draft);
-  assert.equal(stress.before.historyLength, stress.after.historyLength);
-  assert.equal(stress.loads, stress.afterLoads, "Transfers must not emit load events");
-  assert.equal(await targetCount(), baseline, "Repeated transfers must not retain extra pages");
-  const nestedAfter = await liveRoot.evaluate(async () => {
-    const nested = document.querySelector("#nested-transfer");
-    return { state: await nested.getNavigationState(), marker: await nested.executeJavaScript("globalThis.nestedMarker") };
-  });
-  assert.equal(nestedAfter.state.documentId, nestedBefore.documentId);
-  assert.equal(nestedAfter.marker, "nested-unsaved");
-  const stressMs = Date.now() - started;
-  // The replacement host must also own the page's dialog delegate.
-  const dialog = await app.evaluate(async () => {
-    const element = window.transferDemo.active;
-    let seen = false;
-    element.addEventListener("dialog", (event) => {
-      seen = true;
-      event.stopPropagation();
-      void event.detail.dismiss();
-    }, { once: true });
-    const value = await element.executeJavaScript("confirm('after transfer')");
-    return { seen, value };
-  });
-  assert.deepEqual(dialog, { seen: true, value: false });
-
-  // Reject a mismatched policy without consuming the credential, then recover.
-  const rejected = await app.evaluate(async () => {
-    const demo = window.transferDemo;
-    const token = await demo.detach();
-    const wrong = document.createElement("explorer");
-    wrong.deferred = true;
-    wrong.navigation = "emit";
-    document.body.append(wrong);
-    let error;
-    try { await wrong.attach(token); } catch (failure) { error = failure.name; }
-    wrong.remove();
-    const after = await demo.attach();
-    wrong.navigation = "allow";
-    document.body.append(wrong);
+    await demo.detach();
+    const handle = demo.transfer;
+    let clone, forged;
+    try { structuredClone(handle); } catch (error) { clone = error.name; }
+    try { await demo.second.attach("forged-token"); } catch (error) { forged = error.name; }
+    const publicToken = "token" in handle;
+    const adopting = demo.attach();
+    let concurrent;
+    try { await demo.first.attach(handle); } catch (error) { concurrent = error.name; }
+    const after = await adopting;
     let duplicate;
-    try { await wrong.attach(token); } catch (failure) { duplicate = failure.name; }
-    wrong.remove();
-    return { error, duplicate, after };
-  });
-  assert.equal(rejected.error, "SecurityError");
-  assert.equal(rejected.duplicate, "InvalidStateError");
-  assert.equal(rejected.after.marker, initial.marker);
-
-  // Removing the empty source and GC of the wrapper must not release its page.
-  const pending = await app.evaluate(async () => {
-    const source = window.transferDemo.active;
-    let handle = await source.detach();
-    window.pendingToken = handle.token;
-    source.remove();
-    handle = undefined;
-    return window.pendingToken;
-  });
-  const session = await app.context().newCDPSession(app);
-  await session.send("HeapProfiler.collectGarbage");
-  await session.detach();
-  assert.equal(await targetCount(), baseline);
-  const retained = await app.evaluate(async (token) => {
-    const target = document.createElement("explorer");
-    target.deferred = true;
-    target.navigation = "allow";
-    target.dialogs = "emit";
-    document.querySelector("#hosts").append(target);
-    await target.attach(token);
-    const state = await target.getNavigationState();
-    const marker = await target.executeJavaScript("globalThis.transferMarker");
-    const handle = await target.detach();
+    try { await demo.first.attach(handle); } catch (error) { duplicate = error.name; }
     await handle.close();
-    await handle.close(); // idempotent
-    target.remove();
-    return { state, marker, closed: handle.state };
-  }, pending);
-  assert.equal(retained.state.documentId, initial.state.documentId);
-  assert.equal(retained.marker, initial.marker);
-  assert.equal(retained.closed, "closed");
-  await until(async () => await targetCount() === 0, "close() did not destroy the pending page");
-
-  // Cross-window transfer survives the original document's replacement.
-  await app.goto(new URL("transfer.html", base).href);
-  await app.waitForFunction(() => window.transferDemo);
-  await app.evaluate(() => window.transferDemo.load());
-  const independent = await app.evaluate(() => window.transferDemo.popout());
-  assert.equal(independent.before.state.documentId, independent.after.state.documentId);
-  assert.equal(independent.before.state.rendererProcess.id, independent.after.state.rendererProcess.id);
-  assert.equal(independent.before.marker, independent.after.marker);
-  assert.equal(independent.before.draft, independent.after.draft);
-  assert.equal(independent.before.historyLength, independent.after.historyLength);
-  await app.goto(new URL("window.html", base).href);
-  const child = pages().find((page) => page.url().includes("transfer.html?receive="));
-  assert.ok(child, "Independent target window is missing");
-  const live = await child.evaluate(() => window.transferDemo.snapshot());
-  assert.equal(live.marker, independent.before.marker);
-  assert.equal(await targetCount(), 1);
-  await child.evaluate(() => window.tuffite.window.close());
-  await until(async () => await targetCount() === 0, "Target window close retained a page");
-
-  // Source document teardown cleans an abandoned credential.
-  await app.goto(new URL("transfer.html", base).href);
-  await app.waitForFunction(() => window.transferDemo);
-  await app.evaluate(() => window.transferDemo.load());
-  const abandoned = await app.evaluate(() => window.transferDemo.detach());
-  await app.goto(new URL("transfer.html?fresh", base).href);
-  await app.waitForFunction(() => window.transferDemo);
-  await until(async () => await targetCount() === 0, "Source document teardown retained a page");
-  const expired = await app.evaluate(async (token) => {
-    try { await window.transferDemo.first.attach(token); return "accepted"; }
-    catch (error) { return error.name; }
-  }, abandoned);
-  assert.equal(expired, "InvalidStateError");
-  // An ordinary iframe can also be the owner document.
-  const iframeUrl = new URL("transfer.html?iframe-owner", base).href;
-  await app.evaluate(async (url) => {
-    const frame = document.createElement("iframe");
-    frame.id = "transfer-owner-frame";
-    // The App scheme uses opaque origins. srcdoc inherits the parent's origin,
-    // allowing the parent to retain the handle after this document navigates.
-    frame.srcdoc = (await (await fetch(url)).text()).replace(
-      "<head>", `<head><base href="${url}">`,
-    );
-    document.body.append(frame);
-  }, iframeUrl);
-  await until(() => app.frames().some((frame) => frame.url() === "about:srcdoc"), "Iframe owner missing");
-  const iframeOwner = app.frames().find((frame) => frame.url() === "about:srcdoc");
-  await iframeOwner.waitForFunction(() => window.transferDemo);
-  await iframeOwner.evaluate(() => window.transferDemo.load());
-  const iframeToken = await app.evaluate(async () => {
-    const source = document.querySelector("#transfer-owner-frame").contentWindow.transferDemo.active;
-    window.iframeTransfer = await source.detach();
-    return window.iframeTransfer.token;
+    return {publicToken, className: handle.constructor.name, clone, forged, concurrent, duplicate, state: handle.state, src: demo.active.getAttribute("src"), after};
   });
-  await iframeOwner.goto(new URL("window.html", base).href);
-  await until(async () => await targetCount() === 0, "Iframe owner navigation retained a pending page");
-  assert.equal(await app.evaluate(() => window.iframeTransfer.state), "closed");
-  const iframeState = await app.evaluate(async (token) => {
-    try { await window.transferDemo.first.attach(token); return "accepted"; }
-    catch (error) { return error.name; }
-  }, iframeToken);
-  assert.equal(iframeState, "InvalidStateError");
-  await app.evaluate(() => document.querySelector("#transfer-owner-frame").remove());
-  const sourceWindow = await app.evaluate(async (url) => {
-    const child = await window.tuffite.window.create({
-      url, title: "Pending transfer owner", bounds: { x: 120, y: 120, width: 800, height: 600 },
-    });
-    return child.id.toString();
-  }, new URL("transfer.html?source-window", base).href);
-  await until(() => pages().some((page) => page.url().includes("?source-window")), "Source window missing");
-  const owner = pages().find((page) => page.url().includes("?source-window"));
-  await owner.waitForFunction(() => window.transferDemo);
-  await owner.evaluate(() => window.transferDemo.load());
-  const orphan = await owner.evaluate(() => window.transferDemo.detach());
-  await app.evaluate((id) => window.tuffite.window.close(BigInt(id)), sourceWindow);
-  await until(async () => await targetCount() === 0, "Source window close retained a pending page");
-  const orphanState = await app.evaluate(async (token) => {
-    try { await window.transferDemo.first.attach(token); return "accepted"; }
-    catch (error) { return error.name; }
-  }, orphan);
-  assert.equal(orphanState, "InvalidStateError");
-  // A renderer crash leaves its browser-side document object alive. The
-  // document registry must still release its pending page immediately.
-  await app.goto(new URL("transfer.html?crash-owner", base).href);
-  await app.waitForFunction(() => window.transferDemo);
+  assert.equal(contract.publicToken, false);
+  assert.equal(contract.className, "ExplorerHandle");
+  assert.equal(contract.clone, "DataCloneError");
+  assert.equal(contract.forged, "TypeError");
+  assert.equal(contract.concurrent, "InvalidStateError");
+  assert.equal(contract.duplicate, "InvalidStateError");
+  assert.equal(contract.state, "transferred");
+  assert.equal(contract.src, null);
+  assert.equal(contract.after.state.documentId, initial.state.documentId);
+  assert.equal(contract.after.marker, initial.marker);
+  const started = Date.now();
+  await app.evaluate(async () => { for (let i=0;i<25;i++) { await window.transferDemo.detach(); await window.transferDemo.attach(); } });
+  const stressMs = Date.now()-started;
+
+  const replacement = await app.evaluate(async () => {
+    const demo = window.transferDemo;
+    const target = document.createElement("explorer");
+    target.navigation="allow"; target.dialogs="emit";
+    const loaded = new Promise(resolve => target.addEventListener("loadstop", resolve, {once:true}));
+    target.src = new URL("history-a.html?replacement", location.href).href;
+    document.querySelector("#hosts").append(target); await loaded;
+    await target.executeJavaScript("globalThis.replacementMarker='old-page'");
+    const original = await target.getNavigationState();
+    const declared = target.getAttribute("src");
+    const incompatible = document.createElement("explorer");
+    incompatible.navigation="emit"; incompatible.dialogs="emit";
+    const ready = new Promise(resolve => incompatible.addEventListener("loadstop", resolve, {once:true}));
+    incompatible.src=new URL("history-b.html",location.href).href;
+    document.querySelector("#hosts").append(incompatible); await ready;
+    const wrongHandle=await incompatible.detach();
+    let failure;
+    try { await target.attach(wrongHandle); } catch (error) { failure=error.name; }
+    const restored = await target.getNavigationState();
+    const restoredMarker = await target.executeJavaScript("globalThis.replacementMarker");
+    const preservedSrc=target.getAttribute("src")===declared;
+    const pending=wrongHandle.state;
+    await wrongHandle.close(); incompatible.remove();
+    await demo.detach(); await target.attach(demo.transfer);
+    const adopted=await target.getNavigationState();
+    const cleared=target.getAttribute("src");
+    target.src=new URL("history-b.html?after-attach",location.href).href;
+    await new Promise(resolve => target.addEventListener("loadstop",resolve,{once:true}));
+    const navigated=await target.getNavigationState();
+    target.remove();
+    return {failure, original, restored, restoredMarker, preservedSrc, pending, adopted, cleared, navigated};
+  });
+  assert.equal(replacement.failure,"SecurityError");
+  assert.equal(replacement.original.documentId,replacement.restored.documentId);
+  assert.equal(replacement.restoredMarker,"old-page");
+  assert.equal(replacement.preservedSrc,true);
+  assert.equal(replacement.pending,"pending");
+  assert.equal(replacement.adopted.documentId,initial.state.documentId);
+  assert.equal(replacement.cleared,null);
+  assert.ok(replacement.navigated.url.includes("after-attach"));
+  console.log("handle phase: replacement and rollback passed");
+
+  await app.evaluate(async () => {
+    await window.transferDemo.load();
+    const abandoned = await window.transferDemo.active.detach();
+    if (abandoned.state !== "pending") throw new Error("Expected a pending handle");
+  });
+  const gc = await app.context().newCDPSession(app);
+  await gc.send("HeapProfiler.collectGarbage");
+  await gc.detach();
+  await until(async()=>await targetCount()===0,"Garbage collection retained an unreachable handle");
+  console.log("handle phase: GC passed, early delivery");
+
   await app.evaluate(() => window.transferDemo.load());
-  await app.evaluate(() => window.transferDemo.detach());
-  const crashSession = await app.context().newCDPSession(app);
-  const crashed = app.waitForEvent("crash", { timeout: 10000 });
-  void crashSession.send("Page.crash").catch(() => {});
-  await crashed;
-  await until(async () => await targetCount() === 0, "Source renderer crash retained a pending page");
-  // A crashed renderer cannot acknowledge session teardown.
-  void crashSession.detach().catch(() => {});
-  console.log(JSON.stringify({ explorerTransfer: "ok", stressTransfers: 25, stressMs, meanTransferMs: stressMs / 25, remainingSamplePages: await targetCount() }));
-} finally {
-  await browser.close();
-}
+  const nativeClone = await app.evaluate(async () => {
+    await window.transferDemo.detach();
+    const handle = window.transferDemo.transfer;
+    let failed, duplicate, broadcast;
+    try { structuredClone({handle,bad:()=>{}},{transfer:[handle]}); } catch(e) { failed=e.name; }
+    const preserved = handle.state;
+    try { structuredClone(handle,{transfer:[handle,handle]}); } catch(e) { duplicate=e.name; }
+    const channel = new BroadcastChannel("no-handle-clones");
+    try { channel.postMessage(handle); } catch(e) { broadcast=e.name; }
+    channel.close();
+    const received = structuredClone({handle},{transfer:[handle]}).handle;
+    const state = handle.state;
+    await window.transferDemo.active.attach(received);
+    return {failed,preserved,duplicate,broadcast,state,receiverState:received.state,
+      snapshot:await window.transferDemo.snapshot()};
+  });
+  assert.equal(nativeClone.failed,"DataCloneError");
+  assert.equal(nativeClone.preserved,"pending");
+  assert.equal(nativeClone.duplicate,"DataCloneError");
+  assert.equal(nativeClone.broadcast,"DataCloneError");
+  assert.equal(nativeClone.state,"transferred");
+  assert.equal(nativeClone.receiverState,"transferred");
+  const portTransfer = await app.evaluate(async () => {
+    const handle = await window.transferDemo.active.detach();
+    const channel = new MessageChannel();
+    const result = new Promise((resolve,reject) => {
+      channel.port2.onmessage = async event => {
+        try {
+          const received = event.data.handle;
+          const pending = received.state;
+          await window.transferDemo.active.attach(received);
+          resolve({standard:event instanceof MessageEvent,pending,source:handle.state,
+            same:received === handle,snapshot:await window.transferDemo.snapshot()});
+        } catch(error) {reject(error);} finally {channel.port1.close();channel.port2.close();}
+      };
+    });
+    channel.port1.postMessage({handle},{transfer:[handle]});
+    return result;
+  });
+  assert.equal(portTransfer.standard,true);
+  assert.equal(portTransfer.pending,"pending");
+  assert.equal(portTransfer.source,"transferred");
+  assert.equal(portTransfer.same,false);
+  console.log("handle phase: structured clone and MessagePort transfer passed");
+  const windowMessages = await app.evaluate(async () => {
+    const win = await window.tuffite.window.current();
+    const id = win.id;
+    win.id = 0n;
+    const buffer = new Uint8Array([1,2,3]).buffer;
+    const cyclic = {big:42n, date:new Date(0), map:new Map([["key", "value"]]), buffer};
+    cyclic.self = cyclic;
+    const channel = new MessageChannel();
+    const received = new Promise(resolve => {
+      const listener = event => {
+        if (event.data?.type !== "window-message-probe") return;
+        window.removeEventListener("message",listener);
+        event.ports[0].postMessage("ack");
+        event.ports[0].close();
+        resolve({standard:event instanceof MessageEvent, trusted:event.isTrusted,
+          source:event.source, origin:event.origin, ports:event.ports.length,
+          big:event.data.cyclic.big.toString(), date:event.data.cyclic.date.getTime(),
+          map:event.data.cyclic.map.get("key"), self:event.data.cyclic.self === event.data.cyclic,
+          bytes:Array.from(new Uint8Array(event.data.cyclic.buffer))});
+      };
+      window.addEventListener("message",listener);
+    });
+    const ack = new Promise(resolve => {channel.port1.onmessage=event=>resolve(event.data);});
+    const returned = win.postMessage({type:"window-message-probe",cyclic}, {transfer:[buffer,channel.port2]});
+    const value = await received;
+    const reply = await ack;
+    channel.port1.close();
+    let clone;
+    try {structuredClone(win,{transfer:[win]});}catch(error){clone=error.name;}
+    return {...value,reply,clone,detached:buffer.byteLength,returned:returned === undefined,id:id.toString()};
+  });
+  assert.equal(windowMessages.standard,true); assert.equal(windowMessages.trusted,true);
+  assert.equal(windowMessages.source,null); assert.equal(windowMessages.ports,1);
+  assert.equal(windowMessages.origin,appOrigin);
+  assert.equal(windowMessages.big,"42"); assert.equal(windowMessages.date,0);
+  assert.equal(windowMessages.map,"value"); assert.equal(windowMessages.self,true);
+  assert.deepEqual(windowMessages.bytes,[1,2,3]); assert.equal(windowMessages.detached,0);
+  assert.equal(windowMessages.reply,"ack"); assert.equal(windowMessages.clone,"DataCloneError");
+  assert.equal(windowMessages.returned,true);
+  const originFailure = await app.evaluate(async () => {
+    const handle = await window.transferDemo.active.detach();
+    const win = await window.tuffite.window.current();
+    let invalid;
+    try {win.postMessage({handle},{targetOrigin:"not-an-origin",transfer:[handle]});}catch(error){invalid=error.name;}
+    const retained = handle.state;
+    win.postMessage({handle},{targetOrigin:"https://unrelated.example",transfer:[handle]});
+    return {invalid,retained,consumed:handle.state};
+  });
+  assert.equal(originFailure.invalid,"SyntaxError");
+  assert.equal(originFailure.retained,"pending");
+  assert.equal(originFailure.consumed,"transferred");
+  await until(async()=>await targetCount()===0,"Dropped origin-mismatched message retained its page");
+  await app.evaluate(() => window.transferDemo.load());
+  console.log("handle phase: window MessageEvent, structured data, ports and origin checks passed");
+  const late=await app.evaluate(() => window.transferDemo.popout());
+  assert.equal(late.before.state.documentId,late.after.state.documentId);
+  assert.equal(late.before.state.rendererProcess.id,late.after.state.rendererProcess.id);
+  assert.equal(late.before.marker,late.after.marker);
+  assert.equal(late.before.draft,late.after.draft);
+  assert.equal(late.before.historyLength,late.after.historyLength);
+  let receivedPage;
+  await until(()=> (receivedPage=pages().find(page=>page.url().includes("receive="))),"Receiver missing");
+  const message = await receivedPage.evaluate(()=>window.lastTransferMessage);
+  assert.equal(message.standard,true); assert.equal(message.trusted,true);
+  assert.equal(message.source,null); assert.equal(message.ports,1);
+  assert.equal(message.origin,appOrigin);
+  await app.goto(new URL("transfer.html?sender-left",base).href);
+  let receiver;
+  await until(()=> (receiver=pages().find(page=>page.url().includes("receive="))),"Transferred receiver missing");
+  assert.equal((await receiver.evaluate(()=>window.transferDemo.snapshot())).state.documentId,late.after.state.documentId);
+  await receiver.evaluate(()=>window.tuffite.window.close());
+  await until(async()=> await targetCount()===0,"Closing the receiver retained its page");
+  console.log(JSON.stringify({explorerHandle:"ok",stressTransfers:25,stressMs,exclusive:true,structuredTransfer:true,replaceRollback:true}));
+} finally { await browser.close(); }

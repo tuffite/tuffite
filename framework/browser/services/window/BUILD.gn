@@ -6,6 +6,22 @@ import("//tuffite/tuffite_in_chromium.gni")
 
 assert(tuffite_in_chromium)
 
+source_set("interfaces") {
+  sources = [
+    "window_service.cc",
+    "window_service.h",
+    "window_service_factory.h",
+    "window_types.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+    "//content/public/browser",
+    "//ui/gfx",
+  ]
+}
+
 source_set("window") {
   public = [
     "platform.h",
@@ -31,6 +47,7 @@ source_set("window") {
     "window_types.h",
   ]
   public_deps = [
+    ":interfaces",
     "//base",
     "//components/keyed_service/content",
     "//components/keyed_service/core",

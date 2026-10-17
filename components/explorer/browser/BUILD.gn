@@ -21,6 +21,7 @@ source_set("browser") {
     "explorer_partition_snapshot.cc",
     "explorer_partition_snapshot.h",
     "explorer_policy.h",
+    "explorer_policy_provider.cc",
     "explorer_policy_provider.h",
     "explorer_router.cc",
     "explorer_router.h",
@@ -28,6 +29,7 @@ source_set("browser") {
     "explorer_surface_data.h",
     "explorer_surface_host.cc",
     "explorer_surface_host.h",
+    "explorer_tab_support.cc",
     "explorer_transfer.cc",
     "explorer_transfer.h",
   ]

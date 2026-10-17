@@ -13,10 +13,8 @@ std::string_view ExplorerOpenEventType(WindowOpenDisposition disposition,
   switch (disposition) {
     case WindowOpenDisposition::CURRENT_TAB:
       return "navigation";
-    case WindowOpenDisposition::NEW_POPUP:
-      return "popup";
     default:
-      return is_window_open ? "open" : "newwindow";
+      return "newwindow";
   }
 }
 

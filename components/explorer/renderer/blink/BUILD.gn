@@ -1,0 +1,9 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+source_set("bridge") {
+  sources = [ "explorer_handle_bridge.h" ]
+  public_deps = [
+    "//third_party/blink/public:blink_headers",
+    "//v8",
+  ]
+}

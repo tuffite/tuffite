@@ -18,9 +18,6 @@
 namespace tuffite {
 namespace {
 const char kRouterKey = 0;
-constexpr size_t kMaxMessageBytes = 1024 * 1024;
-constexpr size_t kMaxPendingMessages = 256;
-constexpr size_t kMaxPendingDocuments = 64;
 struct RouterRef : base::SupportsUserData::Data {
   explicit RouterRef(ExplorerRouter& router) : router(router) {}
   raw_ref<ExplorerRouter> router;
@@ -32,6 +29,7 @@ ExplorerRouter::ExplorerRouter(content::BrowserContext& context)
   context.SetUserData(&kRouterKey, std::make_unique<RouterRef>(*this));
 }
 ExplorerRouter::~ExplorerRouter() {
+  held_transfers_.clear();
   CHECK(hosts_.empty());
   CHECK(transfers_.empty());
   CHECK(surfaces_.empty());
@@ -46,6 +44,14 @@ ExplorerRouter& ExplorerRouter::Get(content::BrowserContext* context) {
 ExplorerRouter& ExplorerRouter::Get(content::WebContents* contents) {
   CHECK(contents);
   return Get(contents->GetBrowserContext());
+}
+void ExplorerRouter::HoldTransfer(
+    std::unique_ptr<ExplorerTransferRecord> record) {
+  std::string token = record->token();
+  held_transfers_.emplace(token, std::move(record));
+}
+void ExplorerRouter::DropHeldTransfer(const std::string& token) {
+  held_transfers_.erase(token);
 }
 void ExplorerRouter::AddTransfer(ExplorerTransferRecord& record) {
   CHECK(transfers_.emplace(record.token(), &record).second);
@@ -99,44 +105,5 @@ ExplorerSurfaceHost* ExplorerRouter::FindSurfaceForContents(
         return &surface->render_frame_host() == primary_frame;
       });
   return found == surfaces_.end() ? nullptr : *found;
-}
-ExplorerSurfaceHost* ExplorerRouter::FindSurfaceByRef(
-    std::string_view surface_ref) const {
-  const auto found = std::ranges::find(surfaces_, surface_ref,
-                                       &ExplorerSurfaceHost::surface_ref_);
-  return found == surfaces_.end() ? nullptr : *found;
-}
-void ExplorerRouter::PrunePendingQueues() {
-  std::erase_if(pending_, [](const auto& entry) {
-    return !entry.second.document.AsRenderFrameHostIfValid();
-  });
-}
-bool ExplorerRouter::QueueForDocument(content::RenderFrameHost& frame,
-                                      const std::string& json,
-                                      const std::string& from) {
-  PrunePendingQueues();
-  auto found = pending_.find(frame.GetGlobalId());
-  if (found == pending_.end()) {
-    if (pending_.size() >= kMaxPendingDocuments) {
-      return false;
-    }
-    found = pending_.try_emplace(frame.GetGlobalId()).first;
-  }
-  PendingQueue& queue = found->second;
-  queue.document = frame.GetWeakDocumentPtr();
-  if (queue.messages.size() >= kMaxPendingMessages ||
-      json.size() > kMaxMessageBytes - queue.message_bytes) {
-    return false;
-  }
-  queue.message_bytes += json.size();
-  queue.messages.push_back({json, from});
-  return true;
-}
-std::optional<PendingQueue> ExplorerRouter::TakePending(
-    content::RenderFrameHost& frame) {
-  PrunePendingQueues();
-  auto node = pending_.extract(frame.GetGlobalId());
-  return node.empty() ? std::nullopt
-                      : std::optional<PendingQueue>(std::move(node.mapped()));
 }
 }  // namespace tuffite

@@ -7,22 +7,57 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "base/check_op.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/supports_user_data.h"
 #include "content/common/content_export.h"
+#include "content/public/browser/weak_document_ptr.h"
+#include "third_party/blink/public/common/frame/frame_policy.h"
+#include "third_party/blink/public/common/tokens/tokens.h"
 
 class GURL;
 
+namespace blink {
+struct TransferableMessage;
+}
+namespace url {
+class Origin;
+}
 namespace content {
+class RenderFrameHost;
 class BrowserContext;
 class SiteInstance;
+class SiteInstanceGroup;
 class StoragePartitionConfig;
 class WebContents;
 }  // namespace content
 
 namespace tuffite {
+CONTENT_EXPORT void SetExplorerOwner(content::WebContents*,
+                                     content::RenderFrameHost*,
+                                     bool,
+                                     const blink::FramePolicy& = {});
+CONTENT_EXPORT std::optional<blink::FramePolicy> ExplorerFrameOwnerPolicy(
+    content::RenderFrameHost&);
+CONTENT_EXPORT void SetExplorerFramePolicy(content::WebContents*,
+                                           const blink::FramePolicy&);
+CONTENT_EXPORT std::vector<blink::FrameToken> ExplorerFrameAncestors(
+    content::RenderFrameHost&,
+    content::SiteInstanceGroup* group = nullptr);
+CONTENT_EXPORT bool ExplorerWindowMessageAllowed(content::RenderFrameHost*,
+                                                 content::RenderFrameHost*);
+CONTENT_EXPORT bool EnsureExplorerMessageSourceProxy(
+    content::RenderFrameHost&,
+    content::SiteInstanceGroup*);
+CONTENT_EXPORT bool ExplorerAttachWouldCycle(content::WebContents*,
+                                             content::RenderFrameHost&);
+
+CONTENT_EXPORT void DeliverExplorerWindowMessage(content::RenderFrameHost&,
+                                                 const url::Origin&,
+                                                 const url::Origin*,
+                                                 blink::TransferableMessage);
 
 // Detaches only Tuffite-owned, non-Guest inner contents, preserving the page.
 std::unique_ptr<content::WebContents> DetachExplorerWebContents(

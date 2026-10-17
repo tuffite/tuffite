@@ -20,7 +20,7 @@ const partitionExplorers = new Map();
 const nestedStorageProofs = new Map();
 const nestedStorageWaiters = new Map();
 const nestedBubbleWaiters = new Map();
-let nestedSurfaceRef;
+let nestedWindow;
 const explorerV2Output = document.querySelector("#explorer-v2");
 const explorerSuiteStatus = document.querySelector("#explorer-suite-status");
 const explorerCommandResult = document.querySelector(
@@ -81,23 +81,50 @@ function createExplorer() {
   return element;
 }
 
+function trackPendingDialog(dialog) {
+  pendingDialog = dialog;
+  dialog.signal.addEventListener(
+    "abort",
+    () => {
+      if (pendingDialog !== dialog) return;
+      pendingDialog = undefined;
+      setDialogButtons(false);
+      explorerDialogResult.textContent = `Cancelled ${dialog.type}: source or handler exited`;
+      logExplorerEvent("dialog:cancelled", {
+        type: dialog.type,
+        from: dialog.from,
+      });
+    },
+    { once: true },
+  );
+}
+
 function bindExplorerEvents(element) {
   for (const name of ["loadstart", "loadstop", "loaderror", "loadcommit"]) {
     element.addEventListener(name, (event) =>
       logExplorerEvent(name, event.detail),
     );
   }
-  for (const name of ["navigation", "open", "popup", "newwindow"]) {
+  for (const name of ["navigation", "newwindow"]) {
     element.addEventListener(name, (event) => {
       openEventsSeen.add(name);
-      logExplorerEvent(name, event.detail);
+      logExplorerEvent(name, {
+        url: event.detail.url,
+        disposition: event.detail.disposition,
+        userGesture: event.detail.userGesture,
+        from: event.detail.from,
+      });
       markExplorerCheck(`${name}-event`);
-      if (openEventsSeen.size === 4) markExplorerCheck("open-events");
+      if (openEventsSeen.size === 2) markExplorerCheck("open-events");
     });
   }
   element.addEventListener("dialog", async (event) => {
+    // Leave the nested fixture's request unclaimed so the top fallback can
+    // demonstrate handling a request after both Explorer boundaries.
+    if (event.detail.message === "Dialog emitted by the nested Explorer") return;
+    event.preventDefault();
     const dialog = event.detail;
-    pendingDialog = dialog;
+    trackPendingDialog(dialog);
     explorerDialogResult.textContent = formatValue({
       type: dialog.type,
       message: dialog.message,
@@ -200,8 +227,10 @@ async function finishExplorerSuite() {
   }
 }
 
-window.tuffite.addEventListener("message", async (event) => {
-  const { data, from } = event.detail;
+window.addEventListener("message", async (event) => {
+  const { data, source } = event;
+  if (event.origin !== location.origin) return;
+  const from = source === explorer.contentWindow ? "child" : "nested";
   if (data?.type === "explorer-ready" && data.storage === "shared-from-app") {
     markExplorerCheck("shared-partition");
     return;
@@ -224,18 +253,18 @@ window.tuffite.addEventListener("message", async (event) => {
     return;
   }
   if (data?.type === "notification-request") {
-    nestedSurfaceRef = from;
+    nestedWindow = source;
     explorerNotification.hidden = false;
     explorerNotification.textContent = `${data.notification.title}: ${data.notification.body}`;
     setTimeout(() => (explorerNotification.hidden = true), 3500);
     logExplorerEvent("message:notification-request", { from, data });
-    await window.tuffite.postMessage(
+    source.postMessage(
       {
         type: "notification-result",
         requestId: data.requestId,
         shown: true,
       },
-      { to: from },
+      { targetOrigin: event.origin },
     );
     return;
   }
@@ -265,14 +294,15 @@ window.tuffite.addEventListener("message", async (event) => {
   }
 });
 
-for (const type of ["navigation", "open", "popup", "newwindow"]) {
+for (const type of ["navigation", "newwindow"]) {
   window.tuffite.addEventListener(type, (event) => {
     logExplorerEvent(`top:${type}`, event.detail);
   });
 }
 window.tuffite.addEventListener("dialog", (event) => {
+  event.preventDefault();
   const dialog = event.detail;
-  pendingDialog = dialog;
+  trackPendingDialog(dialog);
   setDialogButtons(true);
   explorerDialogResult.textContent = formatValue({
     layer: "top",
@@ -396,7 +426,10 @@ async function checkPlatformApis() {
   const output = document.querySelector("#platform");
   try {
     const directories = await window.tuffite.path.directories();
-    const dataFile = await window.tuffite.path.resolve("data", "playground.bin");
+    const dataFile = await window.tuffite.path.resolve(
+      "data",
+      "playground.bin",
+    );
     const value = new TextEncoder().encode("persistent playground value");
     await window.tuffite.fs.writeFile("data", "playground.bin", value);
     const read = await window.tuffite.fs.readFile("data", "playground.bin");
@@ -497,16 +530,25 @@ async function runExplorerCommand(label, operation) {
   if (explorerCommandRunning) {
     // Keep Stop available while a navigation is waiting for completion.
     if (label === "stop") {
-      try { return await operation(); }
-      catch (error) { setExplorerActionStatus(`Stop failed: ${error.message}`, "failed"); }
+      try {
+        return await operation();
+      } catch (error) {
+        setExplorerActionStatus(`Stop failed: ${error.message}`, "failed");
+      }
     }
     return;
   }
   explorerCommandRunning = true;
-  const controls = [...document.querySelectorAll('.explorer-toolbar button:not(#explorer-stop), #explorer-execute, #explorer-state, #explorer-message, #explorer-recreate, #explorer-stress')];
-  const disabled = controls.map(control => control.disabled);
-  controls.forEach(control => { control.disabled = true; });
-  explorerCommandResult.setAttribute('aria-busy', 'true');
+  const controls = [
+    ...document.querySelectorAll(
+      ".explorer-toolbar button:not(#explorer-stop), #explorer-execute, #explorer-state, #explorer-message, #explorer-recreate, #explorer-stress",
+    ),
+  ];
+  const disabled = controls.map((control) => control.disabled);
+  controls.forEach((control) => {
+    control.disabled = true;
+  });
+  explorerCommandResult.setAttribute("aria-busy", "true");
   setExplorerActionStatus(`${label} …`, "running");
   explorerCommandResult.textContent = `${label}: running…`;
   try {
@@ -521,8 +563,10 @@ async function runExplorerCommand(label, operation) {
     logExplorerEvent(`api:${label}:error`, { message: error.message });
     return undefined;
   } finally {
-    controls.forEach((control, index) => { control.disabled = disabled[index]; });
-    explorerCommandResult.setAttribute('aria-busy', 'false');
+    controls.forEach((control, index) => {
+      control.disabled = disabled[index];
+    });
+    explorerCommandResult.setAttribute("aria-busy", "false");
     explorerCommandRunning = false;
   }
 }
@@ -926,12 +970,11 @@ async function runNestedBubbleDemo(type, stop) {
     stopType: stop ? type : null,
   });
   await configured;
-  if (!nestedSurfaceRef) throw new Error("Nested Explorer ref is unavailable");
-  const accepted = await window.tuffite.postMessage(
+  if (!nestedWindow) throw new Error("Nested Explorer window is unavailable");
+  nestedWindow.postMessage(
     { type: "trigger-request", eventType: type },
-    { to: nestedSurfaceRef },
+    { targetOrigin: location.origin },
   );
-  if (!accepted) throw new Error("Nested Explorer request was not delivered");
   setExplorerActionStatus(
     `${stop ? "Stopped" : "Bubbling"} nested ${type} requested`,
     "success",
@@ -939,19 +982,22 @@ async function runNestedBubbleDemo(type, stop) {
 }
 function runNestedBubbleDemoFromControl(type, stop) {
   void runNestedBubbleDemo(type, stop).catch((error) => {
-    setExplorerActionStatus(`Nested ${type} failed: ${error.message}`, "failed");
+    setExplorerActionStatus(
+      `Nested ${type} failed: ${error.message}`,
+      "failed",
+    );
     logExplorerEvent(`nested:${type}:error`, { message: error.message });
   });
 }
 document
   .querySelector("#explorer-nested-open-bubble")
   .addEventListener("click", () =>
-    runNestedBubbleDemoFromControl("open", false),
+    runNestedBubbleDemoFromControl("newwindow", false),
   );
 document
   .querySelector("#explorer-nested-open-stop")
   .addEventListener("click", () =>
-    runNestedBubbleDemoFromControl("open", true),
+    runNestedBubbleDemoFromControl("newwindow", true),
   );
 document
   .querySelector("#explorer-nested-dialog-bubble")
@@ -1094,7 +1140,7 @@ async function checkExplorerV2() {
       throw new Error("forward did not restore history B");
     }
     markExplorerCheck("history");
-    if (openEventsSeen.size !== 4) {
+    if (openEventsSeen.size !== 2) {
       throw new Error(
         `request events were not emitted independently: ${[...openEventsSeen].sort().join(",")}`,
       );

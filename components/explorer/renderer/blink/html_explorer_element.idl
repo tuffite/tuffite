@@ -4,15 +4,30 @@
 
 [Exposed=Window, RuntimeEnabled=TuffiteExplorer] interface HTMLExplorerElement : HTMLElement {
     [CEReactions, Reflect, URL] attribute USVString src;
+    [CEReactions, Reflect] attribute DOMString allow;
+    readonly attribute Window? contentWindow;
     [CEReactions] attribute DOMString partition;
     [CEReactions] attribute DOMString navigation;
     [CEReactions] attribute DOMString dialogs;
     attribute boolean contextMenuEnabled;
-    [CEReactions] attribute boolean deferred;
-    [CallWith=ScriptState] Promise<ExplorerTransfer> detach();
-    [CallWith=ScriptState] Promise<undefined> attach(DOMString token);
+    [CallWith=ScriptState] Promise<ExplorerHandle> detach();
+    [CallWith=ScriptState] Promise<undefined> attach(ExplorerHandle handle);
     attribute EventHandler ondetached;
     attribute EventHandler onattached;
+    attribute EventHandler onloadstop;
+    attribute EventHandler onloadcommit;
+    attribute EventHandler onloaderror;
+    attribute EventHandler ontitlechange;
+    attribute EventHandler ondownload;
+    attribute EventHandler onfindresult;
+    attribute EventHandler onzoomchange;
+    attribute EventHandler onaudiostatechange;
+    attribute EventHandler onfaviconchange;
+    attribute EventHandler onrenderprocessgone;
+    attribute EventHandler onpictureinpicturechange;
+    attribute EventHandler onnavigation;
+    attribute EventHandler onnewwindow;
+    attribute EventHandler ondialog;
     void load(USVString url);
     [CallWith=ScriptState] Promise<boolean> cancelDownload(unsigned long id);
     [CallWith=ScriptState] Promise<boolean> download(USVString url);
@@ -25,8 +40,15 @@
     [CallWith=ScriptState] Promise<boolean> reload(optional ExplorerReloadOptions options = {});
     [CallWith=ScriptState] Promise<boolean> stop();
     [CallWith=ScriptState] Promise<any> getNavigationState();
+    [CallWith=ScriptState] Promise<long> findInPage(
+        DOMString text, optional ExplorerFindOptions options = {});
+    [CallWith=ScriptState] Promise<boolean> stopFindInPage(optional DOMString action = "clear");
+    [CallWith=ScriptState] Promise<boolean> setZoomFactor(double factor);
+    [CallWith=ScriptState] Promise<double> getZoomFactor();
+    [CallWith=ScriptState] Promise<boolean> setAudioMuted(boolean muted);
     [CallWith=ScriptState] Promise<any> executeJavaScript(
         DOMString source,
         optional ExplorerExecuteJavaScriptOptions options = {});
-    [CallWith=ScriptState] Promise<boolean> postMessage(any data);
+    [CallWith=ScriptState, RaisesException] undefined postMessage(any message, optional WindowPostMessageOptions options = {});
+    [CallWith=ScriptState, RaisesException] undefined postMessage(any message, USVString targetOrigin, optional sequence<object> transfer = []);
 };

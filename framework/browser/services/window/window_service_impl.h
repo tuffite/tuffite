@@ -57,6 +57,10 @@ class WindowServiceImpl final : public WindowService {
 
   void Register(Window* window, std::string label) override;
   void CloseById(int64_t id) override;
+  void ResolveMessageTarget(
+      int64_t,
+      content::RenderFrameHost&,
+      base::OnceCallback<void(content::RenderFrameHost*)>) override;
 
  private:
   struct Entry {

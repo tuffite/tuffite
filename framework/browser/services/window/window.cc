@@ -458,6 +458,34 @@ void Window::CloseContents(content::WebContents*) {
   Close();
 }
 
+void Window::ActivateContents(content::WebContents* contents) {
+  if (!widget_ || !contents ||
+      contents->GetOutermostWebContents() != web_contents_.get()) {
+    return;
+  }
+  widget_->Activate();
+  contents->Focus();
+}
+
+bool Window::HandleKeyboardEvent(content::WebContents* source,
+                                 const input::NativeWebKeyboardEvent& event) {
+  return widget_ && source &&
+         source->GetOutermostWebContents() == web_contents_.get() &&
+         unhandled_keyboard_event_handler_.HandleKeyboardEvent(
+             event, widget_->GetFocusManager());
+}
+
+std::optional<gfx::Rect> Window::GetWindowBoundsInScreen() {
+  return widget_ ? std::optional<gfx::Rect>(widget_->GetWindowBoundsInScreen())
+                 : std::nullopt;
+}
+
+void Window::RequestKeyboardLock(content::WebContents* contents,
+                                 bool esc_key_locked) {
+  // Content's default accepts this request, but Tuffite has no lock consent UI.
+  contents->GotResponseToKeyboardLockRequest(false);
+}
+
 void Window::RunFileChooser(content::RenderFrameHost* frame,
                             scoped_refptr<content::FileSelectListener> listener,
                             const blink::mojom::FileChooserParams& params) {

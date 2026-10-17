@@ -2,6 +2,11 @@
 
 ## Standard browser tab compatibility
 
+The current systematic review and suitable native tab additions are recorded in
+[the Explorer tab audit](../docs/explorer-tab-parity.md). It includes find,
+isolated zoom, native audio state, favicon metadata, error presentation,
+renderer recovery and window/keyboard delegate routing.
+
 The compatibility target for remote web content is a normal Chromium browser
 tab's web-platform behavior, not content_shell's test defaults. Chrome layers
 site permission prompts, profile settings, native UI and capability services on
@@ -26,7 +31,7 @@ verification rejection.
 | File System Access | No embedder permission context; Content permits picker-authorized reads and denies writes by default | Implement origin-scoped grants, sensitive-directory checks, write consent and handle restoration before claiming full writable support. OPFS is a separate origin-sandboxed facility. |
 | Network profile policy | Encrypted persistent cookies and HTTP cache exist; language/compression preferences are configured | Add site cookie controls and explicit persisted HTTP server properties / transport security state where needed. Memory partitions are not a full incognito BrowserContext. |
 | HTTP authentication / client certificates | Default login delegate and client certificate store/UI are absent | Add HTTP/proxy auth dialogs with request cancellation and client certificate selection; preserve strict TLS checks. |
-| Browser presentation | JavaScript dialogs, context menus, download handling, fullscreen and picture-in-picture exist | Add color chooser, printing integration, browser shortcut/focus routing, load-error presentation and renderer-crash recovery. Downloads currently use profile-private destinations instead of a normal browser download UI. |
+| Browser presentation | JavaScript dialogs, context menus, downloads, fullscreen and PiP exist; the tab audit adds find, isolated zoom, audio/favicons, keyboard routing and error/crash handling | Printing, EyeDropper and app-specific browser UI still need integration. Desktop color inputs use Blink's popup path; the mobile color-chooser delegate is not a desktop requirement. Downloads currently use profile-private destinations instead of a normal browser download UI. |
 | Device APIs | No WebUSB/WebHID/WebSerial/WebBluetooth selection delegates | Add device-specific chooser and origin permission services as supported product capabilities. |
 | Origin trials | No `ContentClient::GetOriginTrialPolicy` implementation or persisted trial controller | Choose and implement a legitimate trial-key/persistence policy; content_shell uses test keys, which are not a production replacement. |
 | Optional BrowserContext delegates | Guest manager, special storage policy and SSL host-state delegate are null | These are permitted defaults. Their absence alone does not prove broken frames, storage or TLS. |

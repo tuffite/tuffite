@@ -1,8 +1,0 @@
-// Copyright 2026 The Tuffite Authors
-// SPDX-License-Identifier: MIT OR Apache-2.0
-[Exposed=Window, RuntimeEnabled=TuffiteExplorer] interface ExplorerTransfer : EventTarget {
-    readonly attribute DOMString token;
-    readonly attribute DOMString state;
-    [CallWith=ScriptState] Promise<undefined> close();
-    attribute EventHandler onstatechange;
-};

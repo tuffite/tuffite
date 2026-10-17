@@ -18,6 +18,7 @@
 #include "tuffite/framework/browser/services/window/window_types.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
+#include "ui/views/controls/webview/unhandled_keyboard_event_handler.h"
 #include "ui/views/widget/widget_delegate.h"
 #include "ui/views/widget/widget_observer.h"
 
@@ -107,6 +108,12 @@ class Window final : public views::WidgetDelegate,
       const content::OpenURLParams& params,
       base::OnceCallback<void(content::NavigationHandle&)> callback) override;
   void CloseContents(content::WebContents* source) override;
+  void ActivateContents(content::WebContents* contents) override;
+  bool HandleKeyboardEvent(content::WebContents* source,
+                           const input::NativeWebKeyboardEvent& event) override;
+  std::optional<gfx::Rect> GetWindowBoundsInScreen() override;
+  void RequestKeyboardLock(content::WebContents* contents,
+                           bool esc_key_locked) override;
   void DraggableRegionsChanged(
       const std::vector<blink::mojom::DraggableRegionPtr>& regions,
       content::WebContents* contents) override;
@@ -140,6 +147,7 @@ class Window final : public views::WidgetDelegate,
   bool web_contents_shown_ = false;
   base::WeakPtr<content::WebContents> picture_in_picture_contents_;
   base::WeakPtr<window::WindowService> owner_;
+  views::UnhandledKeyboardEventHandler unhandled_keyboard_event_handler_;
 };
 
 }  // namespace tuffite

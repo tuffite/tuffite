@@ -15,9 +15,12 @@ try {
   document.title = "Explorer Wire Validation Failed";
 } catch {
   document.title =
-    mode === "complete" ? "Explorer v2 Ready" : "Explorer Wire Validation Passed";
+    mode === "complete"
+      ? "Explorer v2 Ready"
+      : "Explorer Wire Validation Passed";
   const status = document.querySelector("#role-status");
-  if (status) status.textContent = "origin-scoped native APIs · malformed wire rejected";
+  if (status)
+    status.textContent = "origin-scoped native APIs · malformed wire rejected";
 }
 
 document.querySelector("#window-open-button")?.addEventListener("click", () => {
@@ -45,12 +48,12 @@ if (partitionMode !== "shared") {
       type: `${partitionMode}-ready`,
       storage: localStorage.getItem("explorer-v2-storage"),
     },
-    { to: "top" },
+    { targetOrigin: "*" },
   );
 } else {
-  window.tuffite.addEventListener("message", async (event) => {
-    if (event.detail.data?.type === "configure-nested-bubble") {
-      const { requestId, stopType } = event.detail.data;
+  window.addEventListener("message", async (event) => {
+    if (event.data?.type === "configure-nested-bubble") {
+      const { requestId, stopType } = event.data;
       stopNextNestedType = stopType;
       await nestedReady;
       await window.tuffite.postMessage(
@@ -58,14 +61,14 @@ if (partitionMode !== "shared") {
           type: "nested-bubble-configured",
           requestId,
         },
-        { to: "top" },
+        { targetOrigin: "*" },
       );
       return;
     }
-    if (event.detail.data?.type === "parent-probe") {
+    if (event.data?.type === "parent-probe") {
       await window.tuffite.postMessage(
-        { type: "parent-message-ack", echo: event.detail.data.payload ?? null },
-        { to: "top" },
+        { type: "parent-message-ack", echo: event.data.payload ?? null },
+        { targetOrigin: "*" },
       );
     }
   });
@@ -74,17 +77,18 @@ if (partitionMode !== "shared") {
       type: "explorer-ready",
       storage: localStorage.getItem("explorer-v2-storage"),
     },
-    { to: "top" },
+    { targetOrigin: "*" },
   );
 }
 
 const nested = document.querySelector("#nested");
-for (const type of ["navigation", "open", "popup", "newwindow", "dialog"]) {
+for (const type of ["navigation", "newwindow", "dialog"]) {
   nested.addEventListener(type, (event) => {
     const stopped = stopNextNestedType === type;
     if (stopped) {
       stopNextNestedType = undefined;
-      event.stopPropagation();
+      event.preventDefault();
+      if (type === "newwindow") void event.detail.discard();
       if (type === "dialog") void event.detail.dismiss();
     }
     void window.tuffite.postMessage(
@@ -94,7 +98,7 @@ for (const type of ["navigation", "open", "popup", "newwindow", "dialog"]) {
         layer: "level-1-element",
         stopped,
       },
-      { to: "top" },
+      { targetOrigin: "*" },
     );
   });
 }
@@ -117,7 +121,7 @@ const reportNestedStorage = async () => {
       partition: state.storagePartition,
       storage,
     },
-    { to: "top" },
+    { targetOrigin: "*" },
   );
   resolveNestedReady();
 };

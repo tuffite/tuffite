@@ -15,6 +15,12 @@ class ContentRendererClient final : public content::ContentRendererClient {
 
   void RenderThreadStarted() override;
   void RenderFrameCreated(content::RenderFrame* render_frame) override;
+  void PrepareErrorPage(content::RenderFrame* render_frame,
+                        const blink::WebURLError& error,
+                        const std::string& http_method,
+                        content::mojom::AlternativeErrorPageOverrideInfoPtr
+                            alternative_error_page_info,
+                        std::string* error_html) override;
 };
 
 }  // namespace tuffite

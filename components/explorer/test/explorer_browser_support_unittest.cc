@@ -12,16 +12,16 @@
 namespace tuffite {
 namespace {
 
-TEST(ExplorerOpenKindTest, KeepsBrowserOpenEventsDistinct) {
+TEST(ExplorerOpenKindTest, UnifiesNewWindowsAndKeepsNavigationDistinct) {
   EXPECT_EQ("navigation",
             ExplorerOpenEventType(WindowOpenDisposition::CURRENT_TAB, false));
-  EXPECT_EQ("open", ExplorerOpenEventType(
-                        WindowOpenDisposition::NEW_FOREGROUND_TAB, true));
+  EXPECT_EQ("newwindow", ExplorerOpenEventType(
+                             WindowOpenDisposition::NEW_FOREGROUND_TAB, true));
   EXPECT_EQ("newwindow", ExplorerOpenEventType(
                              WindowOpenDisposition::NEW_BACKGROUND_TAB, false));
-  EXPECT_EQ("popup",
+  EXPECT_EQ("newwindow",
             ExplorerOpenEventType(WindowOpenDisposition::NEW_POPUP, true));
-  EXPECT_EQ("open",
+  EXPECT_EQ("newwindow",
             ExplorerOpenEventType(WindowOpenDisposition::NEW_WINDOW, true));
   EXPECT_EQ("newwindow",
             ExplorerOpenEventType(WindowOpenDisposition::NEW_WINDOW, false));

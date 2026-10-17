@@ -17,27 +17,35 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_explorer_dialog.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_explorer_execute_java_script_options.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_explorer_find_options.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_explorer_handle.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_explorer_new_window.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_explorer_reload_options.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_explorer_transfer.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_window_post_message_options.h"
+#include "third_party/blink/renderer/core/dom/abort_controller.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
 #include "third_party/blink/renderer/core/dom/events/custom_event.h"
+#include "third_party/blink/renderer/core/events/message_event.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/html_names.h"
+#include "third_party/blink/renderer/core/inspector/console_message.h"
 #include "third_party/blink/renderer/core/layout/layout_iframe.h"
+#include "third_party/blink/renderer/core/messaging/message_port.h"
+#include "third_party/blink/renderer/core/permissions_policy/permissions_policy_parser.h"
 #include "third_party/blink/renderer/platform/bindings/script_forbidden_scope.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "tuffite/components/explorer/renderer/blink/explorer_dialog.h"
-#include "tuffite/components/explorer/renderer/blink/explorer_event_propagation_monitor.h"
-#include "tuffite/components/explorer/renderer/blink/explorer_transfer.h"
+#include "tuffite/components/explorer/renderer/blink/explorer_handle.h"
+#include "tuffite/components/explorer/renderer/blink/explorer_message_serialization.h"
+#include "tuffite/components/explorer/renderer/blink/explorer_new_window.h"
 #include "v8/include/v8-json.h"
 
 namespace blink {
 namespace {
 
 constexpr char kExplorerOriginsSwitch[] = "tuffite-explorer-origins";
-constexpr size_t kMaxMessageBytes = 1024 * 1024;
 
 const QualifiedName& ExplorerTagName() {
   DEFINE_STATIC_LOCAL(
@@ -52,7 +60,9 @@ void DispatchExplorerEvent(HTMLExplorerElement& element,
       ScriptForbiddenScope::IsScriptForbidden()) {
     return;
   }
-  element.DispatchEvent(*Event::Create(type));
+  auto* event = Event::CreateBubble(type);
+  event->SetComposed(true);
+  element.DispatchEvent(*event);
 }
 
 template <typename Callback>
@@ -102,8 +112,12 @@ bool HTMLExplorerElement::IsEnabled(const Document& document) {
 }
 
 void HTMLExplorerElement::Trace(Visitor* visitor) const {
+  visitor->Trace(dialogs_pending_);
+  visitor->Trace(windows_pending_);
   visitor->Trace(detach_resolver_);
   visitor->Trace(attach_resolver_);
+  visitor->Trace(attaching_handle_);
+  visitor->Trace(replaced_handle_);
   visitor->Trace(host_);
   visitor->Trace(client_receiver_);
   HTMLFrameOwnerElement::Trace(visitor);
@@ -159,34 +173,24 @@ void HTMLExplorerElement::load(const String& value) {
   }
   detached_empty_ = false;
   setSrc(value);
-  setDeferred(false);
 }
 
-bool HTMLExplorerElement::deferred() const {
-  return FastHasAttribute(QualifiedName(AtomicString("deferred")));
-}
-void HTMLExplorerElement::setDeferred(bool value) {
-  SetBooleanAttribute(QualifiedName(AtomicString("deferred")), value);
-}
-
-ScriptPromise<ExplorerTransfer> HTMLExplorerElement::detach(
-    ScriptState* state) {
+ScriptPromise<ExplorerHandle> HTMLExplorerElement::detach(ScriptState* state) {
   if (!attached_ || !host_.is_bound() || create_pending_ || detach_resolver_ ||
       attach_resolver_) {
-    return ScriptPromise<ExplorerTransfer>::RejectWithDOMException(
+    return ScriptPromise<ExplorerHandle>::RejectWithDOMException(
         state, MakeGarbageCollected<DOMException>(
                    DOMExceptionCode::kInvalidStateError,
                    "Explorer is not available to detach"));
   }
-  auto* transfer =
-      MakeGarbageCollected<ExplorerTransfer>(GetExecutionContext());
+  auto* transfer = MakeGarbageCollected<ExplorerHandle>(GetExecutionContext());
   detach_resolver_ =
-      MakeGarbageCollected<ScriptPromiseResolver<ExplorerTransfer>>(state);
+      MakeGarbageCollected<ScriptPromiseResolver<ExplorerHandle>>(state);
   auto promise = detach_resolver_->Promise();
   host_->Detach(
       transfer->BindClient(),
       BindOnce(
-          [](HTMLExplorerElement* element, ExplorerTransfer* transfer,
+          [](HTMLExplorerElement* element, ExplorerHandle* transfer,
              const String& token,
              mojo::PendingRemote<tuffite::mojom::blink::ExplorerTransferControl>
                  control,
@@ -215,55 +219,149 @@ ScriptPromise<ExplorerTransfer> HTMLExplorerElement::detach(
   return promise;
 }
 
-ScriptPromise<IDLUndefined> HTMLExplorerElement::attach(ScriptState* state,
-                                                        const String& token) {
-  if (attached_ || create_pending_ || detach_resolver_ || attach_resolver_ ||
-      (!detached_empty_ && FastHasAttribute(html_names::kSrcAttr)) ||
-      !PrepareHost()) {
+ScriptPromise<IDLUndefined> HTMLExplorerElement::attach(
+    ScriptState* state,
+    ExplorerHandle* handle) {
+  if (!isConnected() || create_pending_ || detach_resolver_ ||
+      attach_resolver_ || !handle->BeginAttach()) {
     return ScriptPromise<IDLUndefined>::RejectWithDOMException(
         state, MakeGarbageCollected<DOMException>(
                    DOMExceptionCode::kInvalidStateError,
-                   "Explorer target must be connected and empty"));
+                   "Explorer or handle is unavailable"));
+  }
+  attaching_handle_ = handle;
+  auto promise = AttachToken(state, handle->token());
+  return promise;
+}
+ScriptPromise<IDLUndefined> HTMLExplorerElement::AttachToken(
+    ScriptState* state,
+    const String& token) {
+  if (!isConnected() || create_pending_ || detach_resolver_ ||
+      attach_resolver_) {
+    if (attaching_handle_) {
+      attaching_handle_->RestorePending();
+      attaching_handle_.Clear();
+    }
+    return ScriptPromise<IDLUndefined>::RejectWithDOMException(
+        state,
+        MakeGarbageCollected<DOMException>(DOMExceptionCode::kInvalidStateError,
+                                           "Explorer target is unavailable"));
   }
   attach_resolver_ =
       MakeGarbageCollected<ScriptPromiseResolver<IDLUndefined>>(state);
   auto promise = attach_resolver_->Promise();
+  if (attached_ && host_.is_bound()) {
+    auto* previous =
+        MakeGarbageCollected<ExplorerHandle>(GetExecutionContext());
+    host_->Detach(
+        previous->BindClient(),
+        BindOnce(
+            [](HTMLExplorerElement* element, ExplorerHandle* previous,
+               String token, const String& old_token,
+               mojo::PendingRemote<
+                   tuffite::mojom::blink::ExplorerTransferControl> control,
+               const String& error) {
+              if (!element->attach_resolver_) {
+                return;
+              }
+              if (!error.empty() || !control.is_valid()) {
+                element->FinishAttach("InvalidStateError");
+                return;
+              }
+              previous->Initialize(old_token, std::move(control));
+              element->replaced_handle_ = previous;
+              element->attached_ = false;
+              element->host_.reset();
+              element->client_receiver_.reset();
+              element->DisconnectContentFrame();
+              element->BeginAttach(token);
+            },
+            WrapPersistent(this), WrapPersistent(previous), token));
+  } else {
+    BeginAttach(token);
+  }
+  return promise;
+}
+void HTMLExplorerElement::BeginAttach(const String& token) {
+  if (!PrepareHost()) {
+    FinishAttach("AbortError");
+    return;
+  }
   client_receiver_.reset();
   auto client = client_receiver_.BindNewPipeAndPassRemote(
       GetExecutionContext()->GetTaskRunner(TaskType::kInternalLoading));
-  host_->Attach(token, CreateParams(), std::move(client),
-                BindOnce(
-                    [](HTMLExplorerElement* element, const String& error) {
-                      if (!element->attach_resolver_) {
-                        return;
-                      }
-                      auto* resolver = element->attach_resolver_.Get();
-                      element->attach_resolver_.Clear();
-                      if (!error.empty()) {
-                        element->client_receiver_.reset();
-                        element->host_.reset();
-                        // Preparation reserves the placeholder frame for inner
-                        // contents. Remove it so a retry uses a fresh frame.
-                        element->DisconnectContentFrame();
-                        auto code = error == "SecurityError"
-                                        ? DOMExceptionCode::kSecurityError
-                                    : error == "AbortError"
-                                        ? DOMExceptionCode::kAbortError
-                                        : DOMExceptionCode::kInvalidStateError;
-                        resolver->RejectWithDOMException(
-                            code, "Explorer attach failed: " + error);
-                        return;
-                      }
-                      element->attached_ = true;
-                      element->detached_empty_ = false;
-                      element->setDeferred(false);
-                      element->host_->SetContextMenuEnabled(
-                          element->context_menu_enabled_);
-                      DispatchExplorerEvent(*element, AtomicString("attached"));
-                      resolver->Resolve();
-                    },
-                    WrapPersistent(this)));
-  return promise;
+  host_->Attach(
+      token, CreateParams(), std::move(client),
+      BindOnce(&HTMLExplorerElement::FinishAttach, WrapPersistent(this)));
+}
+void HTMLExplorerElement::FinishAttach(const String& error) {
+  if (!attach_resolver_) {
+    return;
+  }
+  auto* script_state = attach_resolver_->GetScriptState();
+  if (!script_state->ContextIsValid()) {
+    return;
+  }
+  ScriptState::Scope scope(script_state);
+  if (!error.empty()) {
+    if (!attached_) {
+      host_.reset();
+      client_receiver_.reset();
+      DisconnectContentFrame();
+    }
+    if (replaced_handle_ && !restoring_attachment_) {
+      attach_error_ = error;
+      restoring_attachment_ = true;
+      BeginAttach(replaced_handle_->token());
+      return;
+    }
+  }
+  auto* resolver = attach_resolver_.Get();
+  attach_resolver_.Clear();
+  auto* requested = attaching_handle_.Get();
+  auto* previous = replaced_handle_.Get();
+  String failure = restoring_attachment_ ? attach_error_ : error;
+  if (error.empty()) {
+    attached_ = true;
+    detached_empty_ = false;
+    if (!restoring_attachment_) {
+      clearing_src_ = true;
+      removeAttribute(html_names::kSrcAttr);
+      clearing_src_ = false;
+      if (previous) {
+        previous->close(resolver->GetScriptState());
+      }
+    }
+    host_->SetContextMenuEnabled(context_menu_enabled_);
+  }
+  attaching_handle_.Clear();
+  replaced_handle_.Clear();
+  restoring_attachment_ = false;
+  attach_error_ = String();
+  // Only dispatch handle notifications after completing native/DOM updates.
+  if (requested) {
+    if (failure.empty()) {
+      requested->Consume();
+    } else {
+      requested->RestorePending();
+    }
+  }
+  if (previous && !failure.empty() && error.empty()) {
+    previous->Consume();
+  }
+  if (previous && !error.empty()) {
+    previous->close(resolver->GetScriptState());
+  }
+  if (failure.empty()) {
+    resolver->Resolve();
+    DispatchExplorerEvent(*this, AtomicString("attached"));
+  } else {
+    resolver->RejectWithDOMException(
+        failure == "SecurityError" ? DOMExceptionCode::kSecurityError
+        : failure == "AbortError"  ? DOMExceptionCode::kAbortError
+                                   : DOMExceptionCode::kInvalidStateError,
+        "Explorer attach failed: " + failure);
+  }
 }
 
 ScriptPromise<IDLBoolean> HTMLExplorerElement::back(ScriptState* state) {
@@ -380,6 +478,78 @@ ScriptPromise<IDLAny> HTMLExplorerElement::getNavigationState(
   return promise;
 }
 
+ScriptPromise<IDLLong> HTMLExplorerElement::findInPage(
+    ScriptState* state,
+    const String& text,
+    const ExplorerFindOptions* options) {
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver<IDLLong>>(state);
+  auto promise = resolver->Promise();
+  if (!host_.is_bound()) {
+    resolver->RejectWithTypeError("Explorer is not attached");
+    return promise;
+  }
+  host_->FindInPage(
+      text, !options || options->forward(), options && options->matchCase(),
+      options && options->findNext(),
+      BindOnce(
+          [](ScriptPromiseResolver<IDLLong>* resolver, int32_t id) {
+            if (id < 0) {
+              resolver->RejectWithTypeError("Invalid find request");
+            } else {
+              resolver->Resolve(id);
+            }
+          },
+          WrapPersistent(resolver)));
+  return promise;
+}
+
+ScriptPromise<IDLBoolean> HTMLExplorerElement::stopFindInPage(
+    ScriptState* state,
+    const String& action) {
+  return BooleanOperation(state, host_, [&](auto callback) {
+    host_->StopFindInPage(action, std::move(callback));
+  });
+}
+
+ScriptPromise<IDLBoolean> HTMLExplorerElement::setZoomFactor(ScriptState* state,
+                                                             double factor) {
+  return BooleanOperation(state, host_, [&](auto callback) {
+    host_->SetZoomFactor(factor, std::move(callback));
+  });
+}
+
+ScriptPromise<IDLDouble> HTMLExplorerElement::getZoomFactor(
+    ScriptState* state) {
+  auto* resolver =
+      MakeGarbageCollected<ScriptPromiseResolver<IDLDouble>>(state);
+  auto promise = resolver->Promise();
+  if (!host_.is_bound()) {
+    resolver->RejectWithTypeError("Explorer is not attached");
+    return promise;
+  }
+  host_->GetZoomFactor(
+      BindOnce([](ScriptPromiseResolver<IDLDouble>* resolver,
+                  double factor) { resolver->Resolve(factor); },
+               WrapPersistent(resolver)));
+  return promise;
+}
+
+ScriptPromise<IDLBoolean> HTMLExplorerElement::setAudioMuted(ScriptState* state,
+                                                             bool muted) {
+  return BooleanOperation(state, host_, [&](auto callback) {
+    host_->SetAudioMuted(muted, std::move(callback));
+  });
+}
+
+void HTMLExplorerElement::DidChangePageState(const String& type,
+                                             const String& json) {
+  DispatchJsonEvent(AtomicString(type), json);
+}
+
+void HTMLExplorerElement::DidFindResult(const String& json) {
+  DispatchJsonEvent(AtomicString("findresult"), json);
+}
+
 ScriptPromise<IDLAny> HTMLExplorerElement::executeJavaScript(
     ScriptState* state,
     const String& source,
@@ -428,22 +598,25 @@ ScriptPromise<IDLBoolean> HTMLExplorerElement::RespondToDialog(
   });
 }
 
-ScriptPromise<IDLBoolean> HTMLExplorerElement::postMessage(ScriptState* state,
-                                                           ScriptValue data) {
-  v8::Local<v8::String> json;
-  if (!v8::JSON::Stringify(state->GetContext(), data.V8Value())
-           .ToLocal(&json)) {
-    return ToResolvedPromise<IDLBoolean>(state, false);
+void HTMLExplorerElement::postMessage(ScriptState* state,
+                                      ScriptValue value,
+                                      const String& origin,
+                                      HeapVector<ScriptObject> transfer,
+                                      ExceptionState& exception) {
+  auto* options = WindowPostMessageOptions::Create();
+  options->setTargetOrigin(origin);
+  options->setTransfer(std::move(transfer));
+  postMessage(state, value, options, exception);
+}
+void HTMLExplorerElement::postMessage(ScriptState* state,
+                                      ScriptValue value,
+                                      const WindowPostMessageOptions* options,
+                                      ExceptionState& exception) {
+  if (!attached_ || !ContentFrame()) {
+    return;
   }
-  const String serialized =
-      ToBlinkString<String>(state->GetIsolate(), json, kDoNotExternalize);
-  if (serialized == "undefined" ||
-      serialized.Utf8().size() > kMaxMessageBytes) {
-    return ToResolvedPromise<IDLBoolean>(state, false);
-  }
-  return BooleanOperation(state, host_, [&](auto callback) {
-    host_->PostMessage(serialized, std::move(callback));
-  });
+  ContentFrame()->DomWindow()->postMessage(state->GetIsolate(), value, options,
+                                           exception);
 }
 
 FrameOwnerElementType HTMLExplorerElement::OwnerType() const {
@@ -473,13 +646,15 @@ void HTMLExplorerElement::RemovedFrom(ContainerNode& insertion_point) {
 }
 void HTMLExplorerElement::ParseAttribute(
     const AttributeModificationParams& params) {
-  if (params.name == QualifiedName(AtomicString("deferred"))) {
-    if (params.new_value.IsNull()) {
-      EnsureAttached();
-    }
-    return;
-  }
   if (params.name == html_names::kSrcAttr) {
+    if (clearing_src_) {
+      return;
+    }
+    UpdateContainerPolicy();
+    if (host_.is_bound()) {
+      host_->SetFramePolicy(GetFramePolicy());
+    }
+    detached_empty_ = false;
     if (attached_ && host_.is_bound()) {
       const String target =
           params.new_value.empty()
@@ -488,6 +663,13 @@ void HTMLExplorerElement::ParseAttribute(
       host_->Navigate(target, base::DoNothing());
     } else {
       EnsureAttached();
+    }
+    return;
+  }
+  if (params.name == html_names::kAllowAttr) {
+    UpdateContainerPolicy();
+    if (host_.is_bound()) {
+      host_->SetFramePolicy(GetFramePolicy());
     }
     return;
   }
@@ -505,7 +687,37 @@ bool HTMLExplorerElement::IsInteractiveContent() const {
 }
 network::ParsedPermissionsPolicy HTMLExplorerElement::ConstructContainerPolicy()
     const {
-  return GetLegacyFramePolicies();
+  auto* context = GetExecutionContext();
+  if (!context) {
+    return {};
+  }
+  PolicyParserMessageBuffer logger;
+  auto policy = PermissionsPolicyParser::ParseAttribute(
+      FastGetAttribute(html_names::kAllowAttr), *context->GetSecurityOrigin(),
+      *MakeOriginForPermissionsPolicy(), logger, context);
+  for (const auto& declaration : GetLegacyFramePolicies()) {
+    if (std::ranges::none_of(policy, [&](const auto& item) {
+          return item.feature == declaration.feature;
+        })) {
+      policy.push_back(declaration);
+    }
+  }
+  for (const auto& message : logger.GetMessages()) {
+    context->AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
+        mojom::blink::ConsoleMessageSource::kSecurity, message.level,
+        message.content));
+  }
+  return policy;
+}
+scoped_refptr<const SecurityOrigin>
+HTMLExplorerElement::MakeOriginForPermissionsPolicy() const {
+  if (!src().empty()) {
+    return SecurityOrigin::Create(GetDocument().CompleteURL(src()));
+  }
+  if (attached_ && ContentFrame()) {
+    return ContentFrame()->GetSecurityContext()->GetSecurityOrigin();
+  }
+  return GetExecutionContext()->GetSecurityOrigin();
 }
 
 bool HTMLExplorerElement::PrepareHost() {
@@ -541,12 +753,16 @@ HTMLExplorerElement::CreateParams() const {
   params->navigation = navigation();
   params->dialogs = dialogs();
   params->context_menu_enabled = context_menu_enabled_;
+  params->frame_policy = GetFramePolicy();
   return params;
 }
 
 void HTMLExplorerElement::EnsureAttached() {
-  if (!isConnected() || create_pending_ || attached_ || deferred() ||
-      detached_empty_ || attach_resolver_ || !GetDocument().GetFrame()) {
+  if (!isConnected() || create_pending_ || attached_ || detached_empty_ ||
+      attach_resolver_ || !GetDocument().GetFrame()) {
+    return;
+  }
+  if (!FastHasAttribute(html_names::kSrcAttr)) {
     return;
   }
   if (!PrepareHost()) {
@@ -585,11 +801,39 @@ void HTMLExplorerElement::OnCreateComplete(bool accepted) {
 }
 
 void HTMLExplorerElement::OnConnectionError() {
+  if (auto* frame = GetDocument().GetFrame()) {
+    auto* state = ToScriptStateForMainWorld(frame);
+    if (state && state->ContextIsValid() &&
+        !ScriptForbiddenScope::IsScriptForbidden()) {
+      ScriptState::Scope scope(state);
+      // Copy before abort dispatch: listeners can synchronously remove this
+      // element.
+      auto dialogs = std::move(dialogs_pending_);
+      auto windows = std::move(windows_pending_);
+      for (const auto& item : dialogs) {
+        if (item.value) {
+          item.value->Finish(state, true);
+        }
+      }
+      for (const auto& item : windows) {
+        if (item.value) {
+          item.value->Finish(state, true);
+        }
+      }
+    }
+  }
+  dialogs_pending_.clear();
+  windows_pending_.clear();
   if (detach_resolver_) {
     detach_resolver_->RejectWithDOMException(
         DOMExceptionCode::kAbortError, "Explorer disconnected during detach");
     detach_resolver_.Clear();
   }
+  if (attaching_handle_) {
+    attaching_handle_->RestorePending();
+    attaching_handle_.Clear();
+  }
+  replaced_handle_.Clear();
   if (attach_resolver_) {
     attach_resolver_->RejectWithDOMException(
         DOMExceptionCode::kAbortError, "Explorer disconnected during attach");
@@ -615,8 +859,9 @@ void HTMLExplorerElement::DispatchJsonEvent(const AtomicString& type,
   ScriptState::Scope scope(state);
   CustomEvent* event = CustomEvent::Create();
   event->initCustomEvent(
-      state, type, false, false,
+      state, type, true, false,
       ScriptValue(state->GetIsolate(), FromJSONString(state, json)));
+  event->SetComposed(true);
   DispatchEvent(*event);
 }
 
@@ -653,8 +898,9 @@ void HTMLExplorerElement::DidFailLoad(int32_t error_code,
             V8String(state->GetIsolate(), error_description))
       .Check();
   CustomEvent* event = CustomEvent::Create();
-  event->initCustomEvent(state, AtomicString("loaderror"), false, false,
+  event->initCustomEvent(state, AtomicString("loaderror"), true, false,
                          ScriptValue(state->GetIsolate(), detail));
+  event->SetComposed(true);
   DispatchEvent(*event);
 }
 void HTMLExplorerElement::DidCommitNavigation(const String& state_json) {
@@ -678,15 +924,36 @@ void HTMLExplorerElement::DidRequestOpen(uint64_t request_id,
     return;
   }
   ScriptState::Scope scope(state);
+  auto parsed = FromJSONString(state, request_json);
+  ExplorerNewWindow* request = nullptr;
+  if (event_type == "newwindow" && parsed->IsObject()) {
+    auto obj = parsed.As<v8::Object>();
+    auto field = [&](const char* key) {
+      return ToCoreString(
+          state->GetIsolate(),
+          obj->Get(state->GetContext(), V8String(state->GetIsolate(), key))
+              .ToLocalChecked()
+              .As<v8::String>());
+    };
+    auto token = field("token");
+    request = MakeGarbageCollected<ExplorerNewWindow>(
+        state, *this, token, field("url"), field("disposition"), field("from"),
+        obj->Get(state->GetContext(),
+                 V8String(state->GetIsolate(), "userGesture"))
+            .ToLocalChecked()
+            ->IsTrue());
+    windows_pending_.Set(token, request);
+    parsed = ToV8Traits<ExplorerNewWindow>::ToV8(state, request);
+  }
   CustomEvent* event = CustomEvent::Create();
-  event->initCustomEvent(
-      state, AtomicString(event_type), true, false,
-      ScriptValue(state->GetIsolate(), FromJSONString(state, request_json)));
+  event->initCustomEvent(state, AtomicString(event_type), true, true,
+                         ScriptValue(state->GetIsolate(), parsed));
   event->SetComposed(true);
-  TuffiteEventPropagationMonitor propagation_monitor(*event);
+  event->SetComposed(true);
   DispatchEvent(*event);
   if (host_.is_bound()) {
-    host_->CompleteOpen(request_id, !propagation_monitor.WasStopped());
+    host_->CompleteOpen(request_id, !event->defaultPrevented() &&
+                                        (!request || !request->responded()));
   }
 }
 void HTMLExplorerElement::DidRequestDialog(uint64_t request_id,
@@ -711,23 +978,57 @@ void HTMLExplorerElement::DidRequestDialog(uint64_t request_id,
   }
   ScriptState::Scope scope(state);
   auto* detail = MakeGarbageCollected<ExplorerDialog>(
-      *this, request_id, type, message, default_value, is_reload, from);
+      state, *this, request_id, type, message, default_value, is_reload, from);
+  dialogs_pending_.Set(String::Number(request_id), detail);
   CustomEvent* event = CustomEvent::Create();
   event->initCustomEvent(
-      state, AtomicString("dialog"), true, false,
+      state, AtomicString("dialog"), true, true,
       ScriptValue(state->GetIsolate(),
                   ToV8Traits<ExplorerDialog>::ToV8(state, detail)));
   event->SetComposed(true);
-  TuffiteEventPropagationMonitor propagation_monitor(*event);
+  event->SetComposed(true);
   DispatchEvent(*event);
   if (host_.is_bound()) {
-    host_->CompleteDialog(request_id, !propagation_monitor.WasStopped());
+    host_->CompleteDialog(request_id,
+                          !event->defaultPrevented() && !detail->responded());
   }
 }
-void HTMLExplorerElement::DidReceiveMessage(const String& json,
-                                            const String& from) {
-  (void)from;
-  DispatchJsonEvent(AtomicString("message"), json);
+ScriptPromise<IDLBoolean> HTMLExplorerElement::DiscardWindow(
+    ScriptState* state,
+    const String& token) {
+  return BooleanOperation(state, host_, [&](auto callback) {
+    host_->DiscardWindow(token, std::move(callback));
+  });
 }
-
+void HTMLExplorerElement::DidFinishRequest(const String& kind,
+                                           const String& key,
+                                           bool canceled) {
+  if (!GetDocument().GetFrame()) {
+    return;
+  }
+  auto* state = ToScriptStateForMainWorld(GetDocument().GetFrame());
+  if (!state || !state->ContextIsValid()) {
+    return;
+  }
+  ScriptState::Scope scope(state);
+  if (kind == "dialog") {
+    auto it = dialogs_pending_.find(key);
+    if (it != dialogs_pending_.end()) {
+      auto* request = it->value.Get();
+      dialogs_pending_.erase(it);
+      if (request) {
+        request->Finish(state, canceled);
+      }
+    }
+  } else {
+    auto it = windows_pending_.find(key);
+    if (it != windows_pending_.end()) {
+      auto* request = it->value.Get();
+      windows_pending_.erase(it);
+      if (request) {
+        request->Finish(state, canceled);
+      }
+    }
+  }
+}
 }  // namespace blink

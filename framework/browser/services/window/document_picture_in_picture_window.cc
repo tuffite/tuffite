@@ -17,6 +17,7 @@
 #include "content/public/browser/web_contents_user_data.h"
 #include "third_party/blink/public/mojom/picture_in_picture_window_options/picture_in_picture_window_options.mojom.h"
 #include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
+#include "tuffite/components/explorer/browser/explorer_host.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
 #include "ui/views/controls/webview/webview.h"
@@ -81,6 +82,7 @@ class DocumentPipWindow final
     widget_->GetContentsView()->InvalidateLayout();
     widget_->GetContentsView()->DeprecatedLayoutImmediately();
     child_->WasShown();
+    ExplorerHost::NotifyPictureInPicture(source, "document", true);
     return child_.get();
   }
 
@@ -88,6 +90,11 @@ class DocumentPipWindow final
     if (widget_) {
       widget_->Close();
     }
+  }
+
+  void RequestKeyboardLock(content::WebContents* contents,
+                           bool esc_key_locked) override {
+    contents->GotResponseToKeyboardLockRequest(false);
   }
 
   std::optional<gfx::Rect> GetWindowBoundsInScreen() override {
@@ -118,6 +125,10 @@ class DocumentPipWindow final
   explicit DocumentPipWindow(content::WebContents* source)
       : WebContentsUserData(*source), WebContentsObserver(source) {}
   void Reset() {
+    if (child_) {
+      ExplorerHost::NotifyPictureInPicture(
+          content::WebContentsObserver::web_contents(), "document", false);
+    }
     weak_.InvalidateWeakPtrs();
     if (view_) {
       view_->SetWebContents(nullptr);

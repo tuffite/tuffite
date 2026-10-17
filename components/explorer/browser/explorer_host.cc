@@ -48,6 +48,7 @@
 #include "content/public/common/isolated_world_ids.h"
 #include "content/public/common/javascript_dialog_type.h"
 #include "net/base/net_errors.h"
+#include "third_party/blink/public/common/messaging/transferable_message.h"
 #include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
 #include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
 #include "tuffite/components/explorer/browser/content/explorer_isolation.h"
@@ -67,7 +68,6 @@ namespace tuffite {
 namespace {
 
 constexpr size_t kMaxScriptBytes = 1024 * 1024;
-constexpr size_t kMaxMessageBytes = 1024 * 1024;
 constexpr size_t kMaxPendingBubbleRequests = 256;
 constexpr int32_t kExplorerIsolatedWorldId =
     content::ISOLATED_WORLD_ID_CONTENT_END;
@@ -82,9 +82,12 @@ int64_t NextExplorerIsolationId() {
 
 }  // namespace
 
-class ExplorerDialogManager final : public content::JavaScriptDialogManager {
+class ExplorerDialogManager final : public content::JavaScriptDialogManager,
+                                    public content::WebContentsObserver {
  public:
-  explicit ExplorerDialogManager(ExplorerHost& host) : host_(host) {}
+  explicit ExplorerDialogManager(ExplorerHost& host)
+      : WebContentsObserver(host.WebContentsObserver::web_contents()),
+        host_(host) {}
   ~ExplorerDialogManager() override = default;
 
   void RunJavaScriptDialog(content::WebContents* web_contents,
@@ -100,6 +103,7 @@ class ExplorerDialogManager final : public content::JavaScriptDialogManager {
     } else if (dialog_type == content::JAVASCRIPT_DIALOG_TYPE_PROMPT) {
       kind = "prompt";
     }
+    source_document_ = render_frame_host->GetWeakDocumentPtr();
     host_->RequestDialog(kind, message_text, default_prompt_text, false,
                          std::move(callback), did_suppress_message);
   }
@@ -108,6 +112,7 @@ class ExplorerDialogManager final : public content::JavaScriptDialogManager {
                              content::RenderFrameHost* render_frame_host,
                              bool is_reload,
                              DialogClosedCallback callback) override {
+    source_document_ = render_frame_host->GetWeakDocumentPtr();
     host_->RequestDialog("beforeunload", std::u16string(), std::u16string(),
                          is_reload, std::move(callback), nullptr);
   }
@@ -131,13 +136,19 @@ class ExplorerDialogManager final : public content::JavaScriptDialogManager {
 
   bool Respond(uint64_t request_id,
                bool accept,
-               const std::u16string& prompt_text) {
+               const std::u16string& prompt_text,
+               bool canceled = false) {
     if (!state_.has_pending_dialog() ||
         request_id != state_.pending_request_id()) {
       return false;
     }
+    auto* source = source_document_.AsRenderFrameHostIfValid();
+    if (!source || !source->IsActive()) {
+      CancelDialogs(nullptr, true);
+      return false;
+    }
     ExplorerSurfaceHost::ForgetDialog(
-        host_->render_frame_host().GetBrowserContext(), request_id);
+        host_->render_frame_host().GetBrowserContext(), request_id, canceled);
     return state_.Respond(request_id, accept, prompt_text);
   }
 
@@ -153,6 +164,29 @@ class ExplorerDialogManager final : public content::JavaScriptDialogManager {
   }
 
  private:
+  void RenderFrameDeleted(content::RenderFrameHost* frame) override {
+    if (state_.has_pending_dialog() &&
+        (!source_document_.AsRenderFrameHostIfValid() ||
+         source_document_.AsRenderFrameHostIfValid() == frame)) {
+      CancelDialogs(nullptr, true);
+    }
+  }
+  void RenderFrameHostChanged(content::RenderFrameHost* old_frame,
+                              content::RenderFrameHost*) override {
+    if (state_.has_pending_dialog() &&
+        (!source_document_.AsRenderFrameHostIfValid() ||
+         source_document_.AsRenderFrameHostIfValid() == old_frame)) {
+      CancelDialogs(nullptr, true);
+    }
+  }
+  void DidFinishNavigation(content::NavigationHandle* navigation) override {
+    if (navigation->HasCommitted() && !navigation->IsSameDocument() &&
+        state_.has_pending_dialog() &&
+        !source_document_.AsRenderFrameHostIfValid()) {
+      CancelDialogs(nullptr, true);
+    }
+  }
+  content::WeakDocumentPtr source_document_;
   raw_ref<ExplorerHost> host_;
   ExplorerDialogState state_;
 };
@@ -177,6 +211,15 @@ ExplorerHost::ExplorerHost(content::RenderFrameHost& render_frame_host,
 }
 
 ExplorerHost::~ExplorerHost() {
+  auto windows = std::move(offered_windows_);
+  for (const auto& token : windows) {
+    ExplorerTransferRecord::DiscardWindow(render_frame_host(), token, true);
+  }
+  auto dialogs = std::move(offered_dialogs_);
+  for (auto id : dialogs) {
+    RespondToDialogForTree(WebContentsObserver::web_contents(), id, false, "",
+                           true);
+  }
   if (attaching_transfer_) {
     attaching_transfer_->SetState("pending");
   }
@@ -225,18 +268,34 @@ void ExplorerHost::Detach(
     dialog_manager_->CancelDialogs(nullptr, true);
   }
   dialog_manager_.reset();
+  active_find_request_id_ = -1;
+  find_text_.clear();
+  contents->StopFinding(content::STOP_FIND_ACTION_CLEAR_SELECTION);
   pending_open_bubbles_.clear();
   pending_dialog_bubbles_.clear();
   Observe(nullptr);
   contents->SetDelegate(nullptr);
   client_.reset();
+  SetExplorerOwner(contents, nullptr, false);
   auto owned = DetachExplorerWebContents(contents);
   auto& record =
       ExplorerTransferStore::GetOrCreateForCurrentDocument(&render_frame_host())
-          ->Add(std::move(owned), *policy_, document_id_, std::move(client));
+          ->Add(std::move(owned), *policy_, document_id_, std::move(client),
+                &*policy_provider_);
   policy_.reset();
   document_id_.clear();
-  std::move(callback).Run(record.token(), record.BindControl(), "");
+  auto token = record.token();
+  auto control = record.BindControl();
+  ExplorerSurfaceHost::UpdateFrameAncestors(
+      record.contents(),
+      base::BindOnce(
+          [](DetachCallback callback, std::string token,
+             mojo::PendingRemote<mojom::ExplorerTransferControl> control,
+             bool ready) {
+            std::move(callback).Run(token, std::move(control),
+                                    ready ? "" : "AbortError");
+          },
+          std::move(callback), token, std::move(control)));
 }
 
 void ExplorerHost::Attach(const std::string& token,
@@ -248,6 +307,10 @@ void ExplorerHost::Attach(const std::string& token,
   if (!render_frame_host().IsActive() || !record || !record->pending() ||
       !params || WebContentsObserver::web_contents() || client_.is_bound() ||
       pending_inner_web_contents_ || attaching_transfer_) {
+    std::move(callback).Run("InvalidStateError");
+    return;
+  }
+  if (ExplorerAttachWouldCycle(record->contents(), render_frame_host())) {
     std::move(callback).Run("InvalidStateError");
     return;
   }
@@ -279,7 +342,11 @@ void ExplorerHost::Attach(const std::string& token,
   // Exact policy equality keeps existing nested-tree grants valid.
   // A page cannot use a transfer to elevate capabilities or change partitions.
   if (policy != record->policy() ||
-      record->owner_origin() != render_frame_host().GetLastCommittedOrigin()) {
+      (record->is_window()
+           ? !record->OfferedTo(render_frame_host())
+           : !record->transferred_handle() &&
+                 record->owner_origin() !=
+                     render_frame_host().GetLastCommittedOrigin())) {
     LOG(ERROR) << "Explorer transfer policy mismatch: navigation="
                << static_cast<int>(policy.navigation) << "/"
                << static_cast<int>(record->policy().navigation)
@@ -329,12 +396,13 @@ void ExplorerHost::Attach(const std::string& token,
   attaching_transfer_ = record->GetWeakPtr();
   record->SetState("attaching");
   client_.Bind(std::move(client));
-  child->PrepareForInnerWebContentsAttach(
-      base::BindOnce(&ExplorerHost::AttachTransferred,
-                     weak_factory_.GetWeakPtr(), std::move(callback)));
+  child->PrepareForInnerWebContentsAttach(base::BindOnce(
+      &ExplorerHost::AttachTransferred, weak_factory_.GetWeakPtr(),
+      params->frame_policy, std::move(callback)));
 }
 
-void ExplorerHost::AttachTransferred(AttachCallback callback,
+void ExplorerHost::AttachTransferred(blink::FramePolicy frame_policy,
+                                     AttachCallback callback,
                                      content::RenderFrameHost* frame) {
   if (!attaching_transfer_ || !render_frame_host().IsActive() || !frame ||
       !frame->IsActive() || frame->GetParent() != &render_frame_host()) {
@@ -348,6 +416,8 @@ void ExplorerHost::AttachTransferred(AttachCallback callback,
   }
   auto record = attaching_transfer_;
   auto owned = record->TakeContents();
+  SetExplorerOwner(owned.get(), &render_frame_host(),
+                   record->policy().allow_parent_messages, frame_policy);
   policy_ = record->policy();
   document_id_ = record->document_id();
   primary_navigation_error_.reset();
@@ -369,9 +439,21 @@ void ExplorerHost::AttachTransferred(AttachCallback callback,
   WebContentsObserver::web_contents()->UpdateWebContentsVisibility(
       outer->GetVisibility());
   attaching_transfer_.reset();
-  record->SetState("transferred");
-  record->Remove();
-  std::move(callback).Run("");
+  WebContentsObserver::web_contents()->ResumeLoadingCreatedWebContents();
+  ExplorerSurfaceHost::UpdateFrameAncestors(
+      WebContentsObserver::web_contents(),
+      base::BindOnce(
+          [](base::WeakPtr<ExplorerHost> host,
+             base::WeakPtr<ExplorerTransferRecord> record,
+             AttachCallback callback, bool ready) {
+            if (record) {
+              record->SetState(ready ? "transferred" : "closed");
+              record->Remove();
+            }
+            std::move(callback).Run(host && ready ? "" : "AbortError");
+          },
+          weak_factory_.GetWeakPtr(), record->GetWeakPtr(),
+          std::move(callback)));
 }
 
 void ExplorerHost::Create(mojom::ExplorerCreateParamsPtr params,
@@ -499,6 +581,8 @@ void ExplorerHost::Create(mojom::ExplorerCreateParamsPtr params,
   pending_frame_token_ = params->frame_to_replace;
   pending_create_callback_ = std::move(callback);
   client_.Bind(std::move(client));
+  SetExplorerOwner(pending_inner_web_contents_.get(), &render_frame_host(),
+                   policy_->allow_parent_messages, params->frame_policy);
   Observe(pending_inner_web_contents_.get());
   pending_inner_web_contents_->SetDelegate(this);
   dialog_manager_ = std::make_unique<ExplorerDialogManager>(*this);
@@ -575,12 +659,20 @@ void ExplorerHost::BeginAttachAfterInitialNavigation() {
 void ExplorerHost::Navigate(const std::string& url, NavigateCallback callback) {
   std::move(callback).Run(LoadURL(GURL(url)));
 }
+content::WebContents* ExplorerHost::OwnerContents() const {
+  return render_frame_host().IsActive()
+             ? content::WebContents::FromRenderFrameHost(&render_frame_host())
+             : nullptr;
+}
 
 void ExplorerHost::Go(int32_t offset, GoCallback callback) {
   content::WebContents* contents = WebContentsObserver::web_contents();
   const bool accepted = contents && offset != 0 &&
                         contents->GetController().CanGoToOffset(offset);
   if (accepted) {
+    if (dialog_manager_) {
+      dialog_manager_->CancelDialogs(contents, true);
+    }
     contents->GetController().GoToOffset(offset);
   }
   std::move(callback).Run(accepted);
@@ -589,6 +681,9 @@ void ExplorerHost::Go(int32_t offset, GoCallback callback) {
 void ExplorerHost::Reload(bool bypass_cache, ReloadCallback callback) {
   content::WebContents* contents = WebContentsObserver::web_contents();
   if (contents) {
+    if (dialog_manager_) {
+      dialog_manager_->CancelDialogs(contents, true);
+    }
     contents->GetController().Reload(bypass_cache
                                          ? content::ReloadType::BYPASSING_CACHE
                                          : content::ReloadType::NORMAL,
@@ -654,11 +749,40 @@ void ExplorerHost::RespondToDialog(uint64_t request_id,
                                    bool accept,
                                    const std::string& prompt_text,
                                    RespondToDialogCallback callback) {
-  const bool accepted = RespondToDialogForTree(
-      WebContentsObserver::web_contents(), request_id, accept, prompt_text);
+  const bool accepted =
+      offered_dialogs_.contains(request_id) &&
+      RespondToDialogForTree(WebContentsObserver::web_contents(), request_id,
+                             accept, prompt_text);
   std::move(callback).Run(accepted);
 }
 
+void ExplorerHost::DiscardWindow(const std::string& token,
+                                 DiscardWindowCallback callback) {
+  std::move(callback).Run(
+      ExplorerTransferRecord::DiscardWindow(render_frame_host(), token));
+}
+void ExplorerHost::FinishRequest(const std::string& kind,
+                                 const std::string& key,
+                                 bool canceled) {
+  if (client_) {
+    client_->DidFinishRequest(kind, key, canceled);
+  }
+  if (kind == "dialog") {
+    uint64_t id = 0;
+    if (base::StringToUint64(key, &id)) {
+      offered_dialogs_.erase(id);
+      pending_dialog_bubbles_.erase(id);
+    }
+  } else {
+    offered_windows_.erase(key);
+    std::erase_if(pending_open_bubbles_, [&](const auto& item) {
+      auto data = base::JSONReader::ReadDict(item.second.request_json,
+                                             base::JSON_PARSE_RFC);
+      return data && data->FindString("token") &&
+             *data->FindString("token") == key;
+    });
+  }
+}
 void ExplorerHost::CompleteOpen(uint64_t request_id, bool propagate) {
   auto pending = pending_open_bubbles_.find(request_id);
   if (pending == pending_open_bubbles_.end()) {
@@ -666,6 +790,20 @@ void ExplorerHost::CompleteOpen(uint64_t request_id, bool propagate) {
   }
   PendingOpenBubble bubble = std::move(pending->second);
   pending_open_bubbles_.erase(pending);
+  auto data =
+      base::JSONReader::ReadDict(bubble.request_json, base::JSON_PARSE_RFC);
+  auto* token = data ? data->FindString("token") : nullptr;
+  if (token) {
+    auto* record = ExplorerRouter::Get(render_frame_host().GetBrowserContext())
+                       .FindTransfer(*token);
+    if (!record || !record->pending() ||
+        !record->OfferedTo(render_frame_host())) {
+      return;
+    }
+    if (propagate) {
+      offered_windows_.erase(*token);
+    }
+  }
   if (propagate) {
     ContinueOpenBubble(WebContentsObserver::web_contents(), bubble.event_type,
                        bubble.request_json);
@@ -680,21 +818,11 @@ void ExplorerHost::CompleteDialog(uint64_t request_id, bool propagate) {
   PendingDialogBubble bubble = std::move(pending->second);
   pending_dialog_bubbles_.erase(pending);
   if (propagate) {
+    offered_dialogs_.erase(request_id);
     ContinueDialogBubble(WebContentsObserver::web_contents(),
                          bubble.dialog_request_id, bubble.kind, bubble.message,
                          bubble.default_value, bubble.is_reload, bubble.from);
   }
-}
-
-void ExplorerHost::PostMessage(const std::string& json,
-                               PostMessageCallback callback) {
-  content::WebContents* contents = WebContentsObserver::web_contents();
-  const ExplorerPolicy* policy =
-      ExplorerSurfaceData::GetExplorerPolicy(contents);
-  const bool accepted = json.size() <= kMaxMessageBytes && policy &&
-                        policy->allow_parent_messages &&
-                        DeliverMessageToOwner(contents, json, "parent");
-  std::move(callback).Run(accepted);
 }
 
 std::string ExplorerHost::DownloadDetail(const download::DownloadItem& item) {
@@ -866,6 +994,12 @@ void ExplorerHost::CapturePreviewWhenReady(CapturePreviewCallback callback,
           std::move(callback)));
 }
 
+void ExplorerHost::SetFramePolicy(const blink::FramePolicy& policy) {
+  if (auto* contents = WebContentsObserver::web_contents()) {
+    SetExplorerFramePolicy(contents, policy);
+    ExplorerSurfaceHost::UpdateFrameAncestors(contents, base::DoNothing());
+  }
+}
 void ExplorerHost::SetContextMenuEnabled(bool enabled) {
   if (content::WebContents* contents = WebContentsObserver::web_contents()) {
     ExplorerSurfaceData::SetExplorerContextMenuEnabled(contents, enabled);
@@ -882,6 +1016,11 @@ bool ExplorerHost::LoadURL(const GURL& url) {
     return false;
   }
   content::NavigationController::LoadURLParams params(url);
+  // An application navigation must dismiss a held guest dialog before asking
+  // the renderer to leave its document; otherwise that renderer is blocked.
+  if (dialog_manager_) {
+    dialog_manager_->CancelDialogs(WebContentsObserver::web_contents(), true);
+  }
   params.transition_type = ui::PAGE_TRANSITION_LINK;
   WebContentsObserver::web_contents()->GetController().LoadURLWithParams(
       params);
@@ -913,6 +1052,16 @@ std::string ExplorerHost::NavigationStateJson() const {
   state.Set("canGoBack", contents->GetController().CanGoBack());
   state.Set("canGoForward", contents->GetController().CanGoForward());
   state.Set("isLoading", contents->IsLoading());
+  state.Set("zoomFactor", ExplorerSurfaceData::GetZoomFactor(contents));
+  state.Set("audioMuted", contents->IsAudioMuted());
+  state.Set("audible", contents->IsCurrentlyAudible());
+  state.Set("crashed", contents->IsCrashed());
+  state.Set("fullscreen", contents->IsFullscreen());
+  state.Set("pictureInPicture",
+            contents->HasPictureInPictureDocument() ? "document"
+            : contents->HasPictureInPictureVideo()  ? "video"
+                                                    : "none");
+  state.Set("favicons", ExplorerSurfaceData::GetFavicons(contents));
   const int renderer_process_id =
       contents->GetPrimaryMainFrame()->GetProcess()->GetDeprecatedID();
   state.Set(
@@ -986,6 +1135,19 @@ void ExplorerHost::EmitOpenBubble(const std::string& event_type,
                        request_json);
     return;
   }
+  if (event_type == "newwindow") {
+    auto data = base::JSONReader::ReadDict(request_json, base::JSON_PARSE_RFC);
+    const auto* token = data ? data->FindString("token") : nullptr;
+    auto* record =
+        token ? ExplorerRouter::Get(render_frame_host().GetBrowserContext())
+                    .FindTransfer(*token)
+              : nullptr;
+    if (!record || !record->pending()) {
+      return;
+    }
+    record->OfferWindow(render_frame_host());
+    offered_windows_.insert(*token);
+  }
   const uint64_t request_id = NextExplorerRequestId();
   pending_open_bubbles_.insert_or_assign(
       request_id, PendingOpenBubble{event_type, request_json});
@@ -1010,6 +1172,7 @@ void ExplorerHost::EmitDialogBubble(uint64_t request_id,
                          message, default_value, is_reload, from);
     return;
   }
+  offered_dialogs_.insert(request_id);
   pending_dialog_bubbles_.insert_or_assign(
       request_id, PendingDialogBubble{request_id, kind, message, default_value,
                                       is_reload, from});
@@ -1035,8 +1198,30 @@ content::WebContents* ExplorerHost::OpenURLFromTab(
     const content::OpenURLParams& params,
     base::OnceCallback<void(content::NavigationHandle&)>
         navigation_handle_callback) {
-  if (params.disposition != WindowOpenDisposition::CURRENT_TAB ||
-      (policy_ && policy_->navigation == ExplorerNavigationPolicy::kEmit)) {
+  if (params.disposition != WindowOpenDisposition::CURRENT_TAB) {
+    if (!source || !policy_ || !CanNavigateTo(params.url)) {
+      return nullptr;
+    }
+    auto* instance = source->GetPrimaryMainFrame()->GetSiteInstance();
+    content::WebContents::CreateParams create(source->GetBrowserContext(),
+                                              instance);
+    auto owned = content::WebContents::Create(create);
+    auto* created = owned.get();
+    WebContentsCreated(source, {}, "", params.url, created);
+    bool blocked = false;
+    auto* result = AddNewContents(
+        source, std::move(owned), params.url, params.disposition,
+        blink::mojom::WindowFeatures(), params.user_gesture, &blocked);
+    if (result) {
+      auto navigation = result->GetController().LoadURLWithParams(
+          content::NavigationController::LoadURLParams(params));
+      if (navigation_handle_callback && navigation) {
+        std::move(navigation_handle_callback).Run(*navigation);
+      }
+    }
+    return result;
+  }
+  if ((policy_ && policy_->navigation == ExplorerNavigationPolicy::kEmit)) {
     NotifyRequestedOpen(ExplorerOpenEventType(params.disposition, false).data(),
                         params.url, params.disposition, params.user_gesture);
     return nullptr;
@@ -1061,7 +1246,7 @@ bool ExplorerHost::IsWebContentsCreationOverridden(
     const GURL& opener_url,
     const std::string& frame_name,
     const GURL& target_url) {
-  return !target_url.IsAboutBlank();
+  return !CanNavigateTo(target_url);
 }
 
 content::WebContents* ExplorerHost::CreateCustomWebContents(
@@ -1075,10 +1260,6 @@ content::WebContents* ExplorerHost::CreateCustomWebContents(
     const blink::mojom::WindowFeatures& window_features,
     const content::StoragePartitionConfig& partition_config,
     content::SessionStorageNamespace* session_storage_namespace) {
-  NotifyRequestedOpen(
-      ExplorerOpenEventType(disposition, window_features.tuffite_window_open)
-          .data(),
-      target_url, disposition, true);
   return nullptr;
 }
 
@@ -1091,6 +1272,7 @@ content::WebContents* ExplorerHost::AddNewContents(
     bool user_gesture,
     bool* was_blocked) {
   if (disposition == WindowOpenDisposition::NEW_PICTURE_IN_PICTURE) {
+    new_contents->ResumeLoadingCreatedWebContents();
     auto* owner =
         content::WebContents::FromRenderFrameHost(&render_frame_host());
     if (owner && owner->GetDelegate() && owner->GetDelegate() != this) {
@@ -1099,16 +1281,61 @@ content::WebContents* ExplorerHost::AddNewContents(
           window_features, user_gesture, was_blocked);
     }
   }
-  NotifyRequestedOpen(
-      ExplorerOpenEventType(disposition, window_features.tuffite_window_open)
-          .data(),
-      target_url, disposition, user_gesture);
-  if (was_blocked) {
-    *was_blocked = true;
+  auto* source_frame = ExplorerSurfaceData::GetWindowSource(new_contents.get());
+  if (!source_frame || !source_frame->IsActive() || !policy_ ||
+      !CanNavigateTo(target_url) ||
+      ExplorerRouter::Get(source).transfer_count() >=
+          kMaxPendingBubbleRequests) {
+    if (was_blocked) {
+      *was_blocked = true;
+    }
+    return nullptr;
   }
-  return nullptr;
+  auto* contents = new_contents.get();
+  contents->WasHidden();
+  auto& record =
+      ExplorerTransferStore::GetOrCreateForCurrentDocument(source_frame)
+          ->Add(std::move(new_contents), *policy_,
+                base::UnguessableToken::Create().ToString(), {});
+  record.OfferWindow(render_frame_host());
+  base::DictValue request;
+  request.Set("token", record.token());
+  request.Set("url", target_url.spec());
+  request.Set("disposition", ExplorerDispositionName(disposition));
+  request.Set("userGesture", user_gesture);
+  request.Set("from", ExplorerSurfaceHost::RefForWebContents(source));
+  EmitOpenBubble("newwindow", base::WriteJson(request).value_or("{}"));
+  if (was_blocked) {
+    *was_blocked = false;
+  }
+  return contents;
 }
 
+bool ExplorerHost::ShouldResumeRequestsForCreatedWindow() {
+  // Complete Chromium's renderer initialization before offering the hidden
+  // page. Otherwise an immediate discard can strand window.open's synchronous
+  // creation handshake, especially when reusing a related renderer.
+  return true;
+}
+void ExplorerHost::WebContentsCreated(
+    content::WebContents* source,
+    const content::GlobalRenderFrameHostId& opener_id,
+    const std::string&,
+    const GURL& target_url,
+    content::WebContents* created) {
+  if (policy_) {
+    ExplorerSurfaceData::SetExplorerPolicy(created, *policy_);
+  }
+  auto* opener = content::RenderFrameHost::FromID(opener_id);
+  ExplorerSurfaceData::SetWindowSource(
+      created, opener ? opener : source->GetPrimaryMainFrame());
+  if (!target_url.IsAboutBlank()) {
+    ExplorerSurfaceData::MarkInitialWindowNavigation(created);
+  }
+  if (auto isolation = GetExplorerIsolationId(source)) {
+    SetExplorerIsolationId(created, *isolation);
+  }
+}
 content::JavaScriptDialogManager* ExplorerHost::GetJavaScriptDialogManager(
     content::WebContents* source) {
   return dialog_manager_.get();
@@ -1245,6 +1472,8 @@ void ExplorerHost::DidFinishNavigation(
                                   ? std::optional<int>(error_code)
                                   : std::nullopt;
   if (!navigation_handle->IsSameDocument()) {
+    active_find_request_id_ = -1;
+    find_text_.clear();
     document_id_ = base::UnguessableToken::Create().ToString();
     if (dialog_manager_) {
       dialog_manager_->CancelDialogs(nullptr, true);
@@ -1268,31 +1497,17 @@ void ExplorerHost::DidFinishNavigation(
 
 void ExplorerHost::TitleWasSet(content::NavigationEntry* entry) {
   if (client_) {
-    client_->DidCommitNavigation(NavigationStateJson());
+    client_->DidChangePageState("titlechange", NavigationStateJson());
   }
-}
-
-// Implemented by the surface-router compilation unit. Keeping this call in the
-// host lets explorer.postMessage() share exactly the same browser-owned route.
-bool ExplorerHost::DeliverMessageToOwner(content::WebContents* inner,
-                                         const std::string& json,
-                                         const std::string& from) {
-  if (!inner) {
-    return false;
-  }
-  return ExplorerSurfaceHost::DeliverToWebContents(
-      inner, json,
-      ExplorerSurfaceHost::RefForWebContents(inner->GetOuterWebContents())
-              .empty()
-          ? from
-          : ExplorerSurfaceHost::RefForWebContents(
-                inner->GetOuterWebContents()));
 }
 
 // static
 bool ExplorerHost::MaybeEmitNavigation(content::WebContents* contents,
                                        const GURL& url,
                                        bool user_gesture) {
+  if (ExplorerSurfaceData::IsInitialWindowNavigation(contents)) {
+    return false;
+  }
   ExplorerHost* host =
       ExplorerRouter::Get(contents).FindHostForContents(contents);
   // Detached pages have no UI to handle emitted navigation requests.
@@ -1326,8 +1541,16 @@ void ExplorerHost::ContinueOpenBubble(content::WebContents* source,
     host->EmitOpenBubble(event_type, request_json);
     return;
   }
-  ExplorerSurfaceHost::DeliverOpenToWebContents(owner, event_type,
-                                                request_json);
+  if (!ExplorerSurfaceHost::DeliverOpenToWebContents(owner, event_type,
+                                                     request_json)) {
+    auto data = base::JSONReader::ReadDict(request_json, base::JSON_PARSE_RFC);
+    auto* token = data ? data->FindString("token") : nullptr;
+    auto* record =
+        token ? ExplorerRouter::Get(source).FindTransfer(*token) : nullptr;
+    if (record && record->pending()) {
+      record->Remove();
+    }
+  }
 }
 
 // static
@@ -1362,7 +1585,8 @@ void ExplorerHost::ContinueDialogBubble(content::WebContents* source,
 bool ExplorerHost::RespondToDialogForTree(content::WebContents* requester,
                                           uint64_t request_id,
                                           bool accept,
-                                          const std::string& prompt_text) {
+                                          const std::string& prompt_text,
+                                          bool canceled) {
   if (!requester) {
     return false;
   }
@@ -1371,8 +1595,8 @@ bool ExplorerHost::RespondToDialogForTree(content::WebContents* requester,
     content::WebContents* contents = host->WebContentsObserver::web_contents();
     if (contents && contents->GetOutermostWebContents() == root &&
         host->dialog_manager_ &&
-        host->dialog_manager_->Respond(request_id, accept,
-                                       base::UTF8ToUTF16(prompt_text))) {
+        host->dialog_manager_->Respond(
+            request_id, accept, base::UTF8ToUTF16(prompt_text), canceled)) {
       return true;
     }
   }
@@ -1380,3 +1604,5 @@ bool ExplorerHost::RespondToDialogForTree(content::WebContents* requester,
 }
 
 }  // namespace tuffite
+
+namespace tuffite {}  // namespace tuffite

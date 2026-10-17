@@ -5,6 +5,8 @@
 module tuffite.mojom;
 
 import "third_party/blink/public/mojom/tokens/tokens.mojom";
+import "third_party/blink/public/mojom/frame/frame_policy.mojom";
+import "third_party/blink/public/mojom/messaging/transferable_message.mojom";
 
 struct ExplorerCreateParams {
   blink.mojom.LocalFrameToken frame_to_replace;
@@ -13,6 +15,7 @@ struct ExplorerCreateParams {
   string navigation;
   string dialogs;
   bool context_menu_enabled;
+  blink.mojom.FramePolicy frame_policy;
 };
 
 interface ExplorerClient {
@@ -24,10 +27,12 @@ interface ExplorerClient {
   DidFailLoad(int32 error_code, string error_description,
               string state_json);
   DidCommitNavigation(string state_json);
+  DidChangePageState(string event_type, string state_json);
+  DidFindResult(string detail_json);
   DidRequestOpen(uint64 request_id, string event_type, string request_json);
   DidRequestDialog(uint64 request_id, string type, string message,
                    string default_value, bool is_reload, string from);
-  DidReceiveMessage(string json, string from);
+  DidFinishRequest(string kind, string key, bool canceled);
 };
 
 // A document-scoped bridge used to replace an about:blank child frame with a
@@ -41,6 +46,8 @@ interface ExplorerTransferControl {
   // not leave a resource that the application has no credential to release.
   Accept();
   Close() => (string error);
+  BeginTransfer();
+  RebindClient(pending_remote<ExplorerTransferClient> client);
 };
 
 interface ExplorerHost {
@@ -56,15 +63,22 @@ interface ExplorerHost {
   Reload(bool bypass_cache) => (bool accepted);
   Stop() => (bool accepted);
   GetNavigationState() => (string state_json);
+  FindInPage(string text, bool forward, bool match_case, bool find_next)
+      => (int32 request_id);
+  StopFindInPage(string action) => (bool accepted);
+  SetZoomFactor(double factor) => (bool accepted);
+  GetZoomFactor() => (double factor);
+  SetAudioMuted(bool muted) => (bool accepted);
   ExecuteJavaScript(string source, bool main_world,
                     string expected_document_id)
       => (bool success, string json_result, string error);
   RespondToDialog(uint64 request_id, bool accept, string prompt_text)
       => (bool accepted);
+  DiscardWindow(string token) => (bool accepted);
   CompleteOpen(uint64 request_id, bool propagate);
   CompleteDialog(uint64 request_id, bool propagate);
-  PostMessage(string json) => (bool accepted);
   SetContextMenuEnabled(bool enabled);
+  SetFramePolicy(blink.mojom.FramePolicy frame_policy);
   Download(string url) => (bool accepted);
   GetDownloads() => (string detail_json);
   CancelDownload(uint32 id) => (bool accepted);
@@ -72,19 +86,23 @@ interface ExplorerHost {
   CapturePreview() => (string data_url);
 };
 
-// Main-frame surface bus. It is available to trusted App documents and to
-// Explorer documents whose immutable policy permits the requested direction.
-// `to` is parent, top, or a browser-issued opaque SurfaceRef.
+// Main-document request controllers, native ancestry updates, and WindowInfo
+// message delivery. WindowProxy messages use Chromium's normal frame IPC.
 interface ExplorerSurfaceClient {
-  DidReceiveMessage(string json, string from);
+  DidChangeAncestors(array<blink.mojom.FrameToken> ancestors, blink.mojom.FramePolicy? frame_policy) => (bool ready);
+  DidFinishRequest(string kind, string key, bool canceled);
   DidReceiveOpen(string event_type, string request_json);
   DidReceiveDialog(uint64 request_id, string type, string message,
                    string default_value, bool is_reload, string from);
 };
 
 interface ExplorerSurfaceHost {
+  [Sync] GetFrameAncestors() => (array<blink.mojom.FrameToken> ancestors, blink.mojom.FramePolicy? frame_policy);
+  PostWindowMessage(int64 window_id, blink.mojom.TransferableMessage message, string target_origin);
   BindClient(pending_remote<ExplorerSurfaceClient> client);
-  PostMessage(string json, string to) => (bool accepted);
+  DiscardWindow(string token) => (bool accepted);
+  CompleteDialog(uint64 request_id, bool propagate);
+  CompleteOpen(string token, bool propagate);
   RespondToDialog(uint64 request_id, bool accept, string prompt_text)
       => (bool accepted);
 };

@@ -16,6 +16,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "tuffite/framework/browser/services/window/platform.h"
@@ -181,6 +182,9 @@ void WindowServiceImpl::DestroyWindow(Window* window) {
   windows_.erase(found);
 }
 void WindowServiceImpl::Unregister(Window* window) {
+  auto entry = std::ranges::find(entries_, window, &Entry::window);
+  if (entry != entries_.end()) {
+  }
   closing_.erase(window);
   std::erase_if(entries_,
                 [window](const Entry& e) { return e.window == window; });
@@ -298,5 +302,17 @@ bool WindowServiceImpl::Close(Window* window) {
   }
   window->Close();
   return true;
+}
+}  // namespace tuffite::window
+
+namespace tuffite::window {
+void WindowServiceImpl::ResolveMessageTarget(
+    int64_t id,
+    content::RenderFrameHost& source,
+    base::OnceCallback<void(content::RenderFrameHost*)> callback) {
+  auto* window = stopped_ || !source.IsActive() ? nullptr : FindById(id);
+  auto* frame =
+      window ? window->web_contents()->GetPrimaryMainFrame() : nullptr;
+  std::move(callback).Run(frame && frame->IsActive() ? frame : nullptr);
 }
 }  // namespace tuffite::window

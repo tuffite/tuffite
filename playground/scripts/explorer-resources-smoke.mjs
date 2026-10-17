@@ -45,6 +45,7 @@ try {
     document.body.append(host);
     const source = document.createElement("explorer");
     source.navigation = "allow";
+    source.allow = "fullscreen *; picture-in-picture *";
     source.dialogs = "emit";
     source.contextMenuEnabled = true;
     source.style.cssText = "display:block;width:100%;height:100%";
@@ -70,7 +71,7 @@ try {
   const data = await app.evaluate((id) => resourceSource.readDownload(id), item.id);
   assert.deepEqual(Buffer.from(data, "base64"), pdf);
   assert.equal(await app.evaluate(() => resourceSource.download("javascript:alert(1)")), false);
-  assert.ok(item.path.includes("/Downloads/"), "Framework delegate must choose the download destination");
+  assert.ok(item.path.replaceAll("\\", "/").includes("/Downloads/"), "Framework delegate must choose the download destination");
   console.log("PDF download, cookies and bytes passed");
   // An unrelated receiver must not be able to read or cancel another page's item.
   const unowned = await app.evaluate(async ({ url, id }) => {
@@ -89,13 +90,13 @@ try {
   const transferred = await app.evaluate(async (id) => {
     const source = resourceSource;
     const target = document.createElement("explorer");
-    target.deferred = true;
     target.navigation = "allow";
+    target.allow = source.allow;
     target.dialogs = "emit";
     target.style.cssText = source.style.cssText;
     source.parentElement.append(target);
     const transfer = await source.detach();
-    await target.attach(transfer.token);
+    await target.attach(transfer);
     const items = await target.getDownloads();
     const data = await target.readDownload(id);
     source.remove();
@@ -114,9 +115,25 @@ try {
   await app.evaluate((url) => resourceSource.load(url), url);
   const guest = await until(() => pages().find((page) => page.url() === `${url}/`), "Video fixture missing");
   await guest.waitForFunction(() => video.readyState >= 2);
+  await app.evaluate(() => {
+    window.resourcePageEvents = [];
+    for (const type of ['fullscreenchange', 'pictureinpicturechange']) {
+      resourceSource.addEventListener(type, event => resourcePageEvents.push({type, detail:event.detail, bubbles:event.bubbles, composed:event.composed, cancelable:event.cancelable}));
+    }
+  });
+  await app.evaluate(() => resourceSource.focus());
+  await guest.bringToFront();
+  await guest.locator("h1").click();
+  await guest.evaluate(() => video.requestFullscreen());
+  await until(() => app.evaluate(() => resourcePageEvents.some(event => event.type === 'fullscreenchange' && event.detail.entered)), 'Fullscreen enter event missing');
+  assert.equal(await app.evaluate(async () => (await resourceSource.getNavigationState()).fullscreen), true);
+  await guest.evaluate(() => document.exitFullscreen());
+  await until(() => app.evaluate(() => resourcePageEvents.some(event => event.type === 'fullscreenchange' && !event.detail.entered)), 'Fullscreen exit event missing');
+  console.log('Fullscreen state and enter/exit events passed');
   await guest.evaluate(async () => { await video.requestPictureInPicture(); });
   assert.equal(await guest.evaluate(() => document.pictureInPictureElement === video), true);
   await guest.evaluate(() => document.exitPictureInPicture());
+  await until(() => app.evaluate(() => resourcePageEvents.filter(event => event.type === 'pictureinpicturechange' && event.detail.type === 'video').length >= 2), 'Video PiP events missing');
   console.log("Video PiP enter and exit passed");
   for (let attempt = 0; attempt < 2; attempt++) {
     const result = await guest.evaluate(async () => {
@@ -134,6 +151,8 @@ try {
     assert.equal(result.related, true);
     console.log(`Document PiP open/close ${attempt + 1} passed`);
   }
+  await until(() => app.evaluate(() => resourcePageEvents.filter(event => event.type === 'pictureinpicturechange' && event.detail.type === 'document').length >= 4), 'Document PiP enter/exit events missing');
+  assert.ok(await app.evaluate(() => resourcePageEvents.every(event => event.bubbles && event.composed && !event.cancelable)));
   await app.evaluate(() => resourceSource.remove());
   await app.evaluate((url) => {
     const direct = document.createElement("explorer");

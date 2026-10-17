@@ -286,7 +286,7 @@ const value = await explorer.executeJavaScript(source, {
   world: 'isolated',
   expectedDocumentId: state.documentId,
 });
-await explorer.postMessage(data);
+explorer.postMessage(data, { targetOrigin: location.origin });
 ```
 
 Creation-time `partition`, `navigation`, and `dialogs` values are
@@ -295,31 +295,71 @@ conversation session. `contextMenuEnabled` remains mutable.
 
 ## Events and dialogs
 
-The owner receives `error`, `loadstart`, `loadcommit`, `loadstop`, `loaderror`,
-`navigation`, `open`, `popup`, `newwindow`, and `dialog`. Structured data is in
-`event.detail`. `error` is an
-initial create/attach failure; `loaderror` is a failed navigation after the
-Explorer exists.
+The request events are `navigation`, `newwindow`, and `dialog`. All are
+`bubbles: true`, `composed: true`, `cancelable: true`. Each owner document uses
+ordinary DOM capture, target, and bubble phases, including shadow-root retargeting.
+After that dispatch, the browser offers an unclaimed request at the next outer
+Explorer. The final fallback dispatches on the top app's `window.tuffite`.
+This is a new dispatch in each document, not a DOM event path through guest DOMs.
+Guest input events never automatically cross the document boundary.
 
-Request event names carry their specific meaning: `navigation` is an
-intercepted current-surface navigation, `open` is an ordinary `window.open()`,
-`popup` is a popup-feature request, and `newwindow` is a new-window/tab request
-from links or browser gestures. Their detail is
-`{url, disposition, userGesture, from}`. `loadcommit` is the separate state
-event for a committed navigation or title update.
+Call `preventDefault()` synchronously to claim a request before asynchronous UI
+work. `stopPropagation()` and `stopImmediatePropagation()` only affect that
+document's DOM listeners. A response initiated during dispatch also consumes the
+request, so it is not offered outward. Passive listeners cannot claim a request.
+Synthetic events have no browser request behind them.
 
-These five request events (`dialog` included) bubble through the owner
-document and then across nested Explorer boundaries. `stopPropagation()` at
-any layer prevents continuation to outer layers. An unhandled event reaches
-the outermost app as `window.tuffite.addEventListener(type, listener)`.
+`navigation.detail` contains `{url, disposition, userGesture, from}`; it reports an
+intercepted current-page navigation. `newwindow.detail` adds `signal`,
+`attach(targetExplorer)`, and `discard()`. It covers window.open, popup features,
+target=_blank and browser gestures; `disposition` retains the native classification.
+Attach adopts the original WebContents, preserving opener, POST, sessionStorage
+and its actual partition. It requires a connected target with matching
+immutable policy and partition. It never replays the URL. Successful attach and
+discard return true; duplicate or stale responses return false. Invalid attach
+targets reject with a DOMException. The old `open` and `popup` event names are
+replaced by `newwindow`.
 
-When `dialogs="emit"` is authorized, `dialog.detail` is an
-`ExplorerDialog` containing `type`, `message`, `defaultValue`, `isReload`,
-`from`, and
-one-shot `accept()` / `dismiss()` methods. Responding does not implicitly stop
-propagation; call `event.stopPropagation()` separately when that layer owns the
-request. The parent completes the synchronous
-renderer operation with the controller that originated the event:
+`dialog.detail` contains `{type, message, defaultValue, isReload, from, signal,
+accept(), dismiss()}`. A dialog event means the guest invoked alert, confirm,
+prompt or beforeunload; native UI has not already been shown. The application may
+show its own UI and return the JavaScript result using accept/dismiss.
+
+Requests are browser-owned and one-shot. Source navigation/destruction cancels
+pending requests and aborts their signals. Destruction of the current claimant
+also releases its pending requests. Completion retires all previously offered
+controllers. Unhandled top-level new windows are discarded and dialogs dismissed.
+Normal completion does not abort the signal; cancellation does. Keeping a JS
+wrapper alive does not keep a native pending page alive after its source exits.
+
+State events bubble and are composed, but are not cancelable and are not forwarded
+across documents. `loadcommit` describes a committed navigation; `titlechange`
+reports title updates. `zoomchange` includes `oldFactor` and `newFactor`.
+`fullscreenchange` has `{entered}`; `pictureinpicturechange` has
+`{type: "video" | "document", entered}`. `renderprocessgone` includes a stable
+`reason` plus the diagnostic native terminationStatus. Other state events are
+loadstart/loadstop/loaderror, attached/detached/error, download, findresult,
+audiostatechange and faviconchange. Both element and surface message events use
+`{data, from}`; explicit message routing is independent of DOM propagation.
+
+```js
+window.tuffite.addEventListener('newwindow', event => {
+  event.preventDefault();
+  const target = document.createElement('explorer');
+    target.navigation = 'allow'; // match the source's immutable policy
+  document.querySelector('#tabs').append(target);
+  void event.detail.attach(target);
+});
+explorer.addEventListener('dialog', event => {
+  event.preventDefault();
+  const request = event.detail;
+  showConfirm(request.message, {signal: request.signal}).then(yes => {
+    if (yes) void request.accept(); else void request.dismiss();
+  });
+});
+```
+
+Playground `events.html` and `smoke.py --explorer-events` exercise this contract.
 
 ```js
 explorer.addEventListener('dialog', async ({detail: dialog}) => {
@@ -337,22 +377,36 @@ or `beforeunload`; a second response resolves to `false`.
 
 ## Nested communication
 
-App and Explorer main documents receive the framework messaging API directly on
-`window.tuffite`:
+Explorer documents expose their real embedding windows through `window.parent`
+and `window.top`. Ordinary iframes inside an Explorer follow the same composed
+ancestry. Detached documents have no embedding parent; attaching an existing
+page updates its ancestry without reloading it.
 
 ```js
-window.tuffite.postMessage(data, {to: 'parent'});
-window.tuffite.addEventListener('message', ({detail: {data, from}}) => {
-  // Handle an Explorer-tree message using the standard EventTarget model.
+window.parent.postMessage(data, { targetOrigin: location.origin });
+window.top.postMessage(data, location.origin, [port]);
+window.addEventListener('message', event => {
+  if (event.origin !== location.origin) return;
+  // event.source is the sender's native WindowProxy.
+  event.source?.postMessage({ type: 'reply' }, event.origin);
 });
 ```
 
-`to` is `parent`, `top`, or an opaque browser-issued ref received as
-`event.detail.from`. There is no separate `requestApp()` or `.surface` object.
-Deep descendants can reach the top app surface without relying on intermediate
-JavaScript. Browser checks enforce tree membership, direction, and nesting
-depth. Request/response is an application protocol made from ordinary message
-types and IDs; the Explorer bridge does not define RPC or timeouts.
+`explorer.contentWindow` exposes the guest WindowProxy.
+`explorer.postMessage(...)` delegates to that window, while
+`window.tuffite.postMessage(...)` delegates to `window.top.postMessage(...)`.
+Both accept the standard positional `(message, targetOrigin, transfer)` and
+`(message, { targetOrigin, transfer })` forms, return `undefined`, and use native
+structured clone. Omitted targetOrigin defaults to `/` (the sender's origin).
+Invalid target origins and uncloneable data throw synchronously. A target origin
+is a delivery filter, not an address.
+
+Messages arrive on the receiving `window`, without DOM bubbling. The
+`message` and `messageerror` listeners on `window.tuffite` delegate to that
+window. To identify a direct guest, compare `event.source` with
+`explorer.contentWindow`; reply through `event.source`. Explorer request events
+such as `dialog` and `newwindow` retain their separate bubbling/capture model.
+
 ShellAPI/dispatch events share the root EventTarget but use the fixed event
 type `channel`, so business channel names do not share the Explorer tree
 `message` event space:
@@ -365,18 +419,21 @@ window.tuffite.addEventListener('channel', ({detail}) => {
 ```
 
 This keeps the Web-standard `message` event for `postMessage` while allowing a
-business dispatch channel literally named `message` without collision. The
-There is no public `tuffite.channel` object; application facades such as
+business dispatch channel literally named `message` without collision. There is no public `tuffite.channel` object; application facades such as
 `window.myapp.channel` remain available to generated business APIs.
 
 The generated typed ShellAPI remains on the application namespace such as
 `window.myapp`. Its low-level binary transport is
 `window.tuffite.invoke(route, Uint8Array)`, whereas Explorer communication is
-`window.tuffite.postMessage(data, {to})`; the distinct verbs and payload types
+`window.tuffite.postMessage(data, {targetOrigin})`; the distinct verbs and payload types
 avoid a Proxy collision. `shellApi: true` can enable ShellAPI for an Explorer
 only when normal origin authorization also allows it.
 
 ## Architecture and security
+
+See [the Chromium tab audit](explorer-tab-parity.md) for native find, zoom, audio,
+favicon and crash-state controls, their Playground lab and the remaining browser
+capabilities that require complete services.
 
 Blink creates an `about:blank` child-frame placeholder. A document-scoped Mojo
 request reaches the browser, which validates the direct-child frame and policy,
@@ -386,6 +443,15 @@ then follows `WebContentsViewChildFrame`; GuestView is not used.
 
 Each Explorer receives a Chromium `FrameworkIsolationInfo::kUniqueInstance`
 domain. Sharing storage therefore never requires sharing the app renderer.
+The composed frame ancestry uses Chromium RemoteFrame/WindowProxy objects.
+Page main-frame and widget ownership remain scoped to the inner WebContents so
+moving an existing page does not destroy its document or rendering surface.
+Ancestor origins and inherited Permissions Policy update when the page moves.
+
+Application asset schemes are standard, secure, CORS-enabled schemes, not local
+file schemes. They retain tuple security origins for standard messaging and
+Workers without granting file-origin access.
+
 Normal origin security still applies, and an Explorer does not receive ShellAPI
 unless its committed origin is granted ShellAPI commands in `app.security.capabilities`.
 
@@ -421,76 +487,133 @@ A same-document DOM move preserves the existing element and page:
 sidebar.moveBefore(explorer, null);
 ```
 
-Use explicit ownership transfer when replacing the element or moving its page
-into another application window. Prepare an empty, connected receiver first:
+Use an exclusive native handle to move an existing page between elements:
 
 ```js
-const target = document.createElement('explorer');
-target.deferred = true;
-target.navigation = source.navigation;
-target.dialogs = source.dialogs;
-if (source.partition) target.partition = source.partition;
-container.append(target);
-
-const transfer = await source.detach();
+const handle = await source.detach();
 try {
-  await target.attach(transfer.token);
-  source.remove();
+  await target.attach(handle);
 } catch (error) {
-  await source.attach(transfer.token);
+  await source.attach(handle);
   throw error;
 }
 ```
 
-`deferred` delays initial WebContents creation. Clearing it starts the configured
-page; `load()` explicitly starts a page even on a deferred element. A new attach
-target must have no `src` attribute and no existing page. A detached source can
-receive its original page back even though its old `src` attribute remains
-present.
+`ExplorerHandle` is a native EventTarget with readonly `state`, `statechange`,
+and asynchronous `close()`. It exposes no token or serializable credential.
+States are `pending`, `attaching`, `transferred`, and `closed`. An
+attach reserves the handle synchronously, preventing concurrent reuse.
+Success clears its internal credential and consumes ownership; repeated use
+rejects with `InvalidStateError`. Closing a consumed or closed handle is harmless.
+Handles are transferable, but not cloneable. A transfer list is required for
+`structuredClone()`, `Window.postMessage()` and `MessagePort.postMessage()`.
+Successful serialization synchronously invalidates the sender and gives the
+receiver a new, exclusive native handle. Duplicate transfer-list entries,
+unavailable handles, and ordinary cloning throw `DataCloneError`. Serialization
+failure preserves handle ownership. BroadcastChannel does not accept handles.
 
-`detach()` returns a native `ExplorerTransfer` EventTarget with readonly
-`token` and `state` properties and an asynchronous `close()` method. States are
-`pending`, `attaching`, `transferred`, and `closed`; `statechange` reports
-transitions. Closing an already transferred or closed handle is harmless;
-closing an attaching handle rejects with `InvalidStateError`.
+`attach(handle)` accepts a connected target with or without `src` or an existing
+page. A successful attach removes the `src` attribute and adopts the original
+page without reloading it. A failed attach preserves the declaration and restores
+the previous page. Setting `src` afterward starts a new load. There is no additional
+`url` property: read the current address from `getNavigationState()`.
+An element with no `src` starts empty and can receive a handle directly.
 
-The browser holds pending pages in a source-document registry. There is no
-expiry and no dependency on JavaScript garbage collection. Removing the empty
-source element does not destroy its pending page. Explicit `close()`, source
-cross-document navigation, source window closure, or source renderer teardown
-releases pending pages. Applications should close abandoned transfers in
-long-lived documents. Undelivered detach replies are automatically cleaned up.
+For a new application window, wait for its ready announcement, then send the
+handle using the window reference's `postMessage()`:
 
-Successful attach consumes the credential and transfers ownership to the target
-document. Subsequent source document destruction or handle closure cannot affect
-the target page. A second attach with the same token rejects. The source emits
-`detached` when detachment completes, the target emits `attached` when it takes
-ownership; the handle reports `transferred` independently of source element
-lifetime. These operations themselves emit no loading or navigation events.
+```js
+// Install the ready listener before creating the receiver window.
+const readyChannel = new BroadcastChannel(`viewer:${session}`);
+const ready = new Promise(resolve => {
+  readyChannel.onmessage = event => {
+    if (event.data?.type === 'ready') resolve();
+  };
+});
+const win = await window.tuffite.window.create({ url: viewerUrl });
+await ready;
+readyChannel.close();
+const handle = await source.detach();
+win.postMessage({ type: 'attach-explorer', handle }, {
+  targetOrigin: new URL(viewerUrl).origin,
+  transfer: [handle],
+});
+```
 
-A token is a one-use credential, not a navigable URL or a serializable page.
-Send only the token through application window communication; the handle is not
-a structured-clone Transferable. Cross-window targets must have the same owner
-origin and BrowserContext, effective partition, and complete resolved policy.
-Existing page, history, document ID, process-isolation domain, and
-storage remain intact. Detached pages are hidden and cannot open windows or
-host dialogs; emitted navigation requests have no destination while detached.
+```js
+// viewer.html: the target has no src and starts empty.
+window.addEventListener('message', async event => {
+  if (event.origin !== expectedOrigin || event.data?.type !== 'attach-explorer') return;
+  const handle = event.data.handle;
+  try { await target.attach(handle); }
+  catch (error) { await handle.close(); throw error; }
+});
+const readyChannel = new BroadcastChannel(`viewer:${session}`);
+readyChannel.postMessage({ type: 'ready' });
+readyChannel.close();
+```
 
-`attach()` rejects with `InvalidStateError` for unavailable credentials or
-occupied/disconnected targets, `SecurityError` for incompatible hosts, and
-`AbortError` if preparation loses the target or source. A failed transaction
-returns a surviving credential to `pending` so it can be attached back to the
-source. Browser-side ownership commits before the attach promise resolves.
+BroadcastChannel is used only for ready notification; it does not carry the
+handle or attachment acknowledgements. For acknowledged delivery, include a
+MessagePort in the transfer list and reply through `event.ports[0]` after attach,
+as the Playground and Ovule implementations do. A ready timeout occurs before
+detach, so the source remains attached.
 
-The Playground transfer lab (`transfer.html`) demonstrates both host and
-independent-window transfers, preservation of unsaved input, history and a
-JavaScript marker, and explicit cleanup. Run the native lifecycle smoke with:
+`win.postMessage(message, options)` returns undefined and follows structured
+serialization and `targetOrigin` semantics. The default target origin is the
+sender's origin; `"*"` permits any origin. Invalid origin syntax throws before
+transfer. The browser validates sender identity and application permissions,
+then dispatches a trusted standard MessageEvent on the receiving `window`, with
+`data`, `origin` and `ports`. These independent application windows have no
+WindowProxy relationship, so `event.source` is null; use a transferred port for
+replies. Origin mismatch, closed windows and absent listeners can drop messages;
+successful serialization is not a delivery or attach acknowledgement. Dropped
+messages release their unconsumed handle through native pipe disconnection.
+
+Window references target the current document, like normal window messaging,
+and do not retain an initial-document resource registry. WindowInfo itself is
+not transferable. Its messaging method is bound to the original window identity;
+editing the snapshot's id cannot retarget the method. `win.transfer()`, named
+`explorer:` sources, and the resource-waiting `defer` attribute are removed.
+
+Attach still requires compatible resolved policy and storage partition. History,
+script state, form input, document ID, renderer isolation and storage remain
+intact. Transferred handles survive sender navigation. An unreachable receiver
+handle releases its page when its control pipe is garbage-collected; close
+abandoned handles explicitly for deterministic cleanup. Detached pages are
+hidden and cannot open windows or host dialogs.
+
+The source emits `detached`, and the receiver emits `attached` after ownership
+commits. Moves themselves do not reload or emit navigation events. Attach failure
+uses `InvalidStateError` for unavailable handles, `SecurityError` for incompatible
+hosts, and `AbortError` for interrupted preparation.
+
+The Playground `transfer.html` lab demonstrates direct attachment and window
+messaging. Its native smoke covers exclusive ownership, declaration removal,
+replacement rollback, structuredClone and MessagePort transfer, clone rejection,
+standard MessageEvent delivery, and sender navigation after handoff:
 
 ```sh
 python3 playground/scripts/smoke.py --explorer-transfer
 ```
 
 ## WebAuthn and passkeys
+
+Cross-origin Explorer pages inherit their embedding document's Permissions Policy,
+like iframes. Delegate supported web features with the standard `allow` attribute:
+
+```html
+<explorer src="https://example.com/"
+  allow="publickey-credentials-get *; publickey-credentials-create *; fullscreen *">
+</explorer>
+```
+
+An `allow` declaration cannot override a parent or response header's denial.
+It grants web feature delegation, independently of native ShellAPI capabilities.
+Cookie SameSite rules also reflect the embedding ancestry: cross-site Strict
+cookies are blocked; cookies intended for cross-site use need appropriate
+SameSite and Secure attributes. Storage partition selection remains explicit.
+
 
 Explorer uses Chromium's WebAuthn origin and relying-party validation. Requests
 are handled by the Framework's application-scoped WebAuthenticationService, without
@@ -753,15 +876,92 @@ notifications also have a separate denied fast path when no platform service is
 installed. A supported capability must implement its backend, consent and
 revocation semantics together before exposing a different permission state.
 
-The tab integration build passed the native browser contract suite (language,
-JavaScript dialogs, encrypted cookie restart, partition isolation and HTTP cache
-restart), plus Explorer input, Client Hints, clipboard and WebAuthn regressions.
-Native file chooser selection and cancellation still require platform UI
-validation; successful compilation does not establish those behaviors. Windows
-and Linux validation remain outstanding.
+The October 11 tab integration build passed the native browser contract suite
+(language, JavaScript dialogs, encrypted cookie restart, partition isolation
+and HTTP cache restart), plus Explorer input, Client Hints, clipboard and
+WebAuthn regressions. Native file chooser selection and cancellation still
+require platform UI validation; successful compilation does not establish
+those behaviors. Windows and Linux validation of that suite remained pending.
 
+The manual retry on the permission-trace build returned `600010` after
+interaction; its four basic diagnostics passed on both attempts. This did not
+validate a permission-policy fix.
 
-The latest manual retry on the permission-trace build still returned `600010`
-after interaction; its four basic diagnostics passed on both attempts. This does
-not validate a permission-policy fix, and the tab compatibility work is not a
-confirmed solution to the verification rejection.
+### Playground compatibility regression
+
+The Explorer lab links to `compatibility.html`. Its local report executes
+Canvas and WebGL pixel readback, SHA-256, IndexedDB write/read, localStorage,
+CacheStorage, Client Hints, Worker metadata, native legacy navigation timing
+and permission queries. Permission
+queries do not request or grant access. Test storage uses unique fixture names
+and is removed after each probe; the report does not read existing cookies or
+authentication data.
+
+Run the standard-origin comparison in an isolated packaged Playground:
+
+```sh
+python3 playground/scripts/smoke.py --browser-compatibility --package PATH
+```
+
+The runner serves a loopback HTTP fixture and compares an Explorer with a
+separate top-level window using the same Framework. It verifies actual Worker
+execution and HTTP navigation headers as well as the local API operations.
+Application-scheme Workers also use the native asset loader and normal tuple
+origins. The runner checks both the application and HTTP(S) contexts.
+CacheStorage entries use synthetic HTTPS request keys without issuing network
+requests, because CacheStorage rejects custom-scheme request keys.
+
+For separate real-service acceptance, add `--turnstile-live`. The test requires
+the diagnostic page's actual `Turnstile Status: success`; local checks never
+substitute for it. The runner does not click the verification widget and fails
+if the result is still loading or unsuccessful after 90 seconds. It keeps the
+challenge visible when the troubleshooter automatically scrolls to a warning.
+It reads only
+the public status and issue title, excluding diagnostic session IDs, IPs and
+challenge tokens.
+
+Add `--turnstile-test-keys` to check the official always-pass and always-fail
+test-key callbacks in an HTTP Explorer fixture. These are client-side
+integration checks only, without Siteverify or a real production challenge.
+See Cloudflare's [testing documentation](https://developers.cloudflare.com/turnstile/troubleshooting/testing/).
+
+The Framework installs `chrome.loadTimes()` and `chrome.csi()` in document
+contexts through `framework/renderer`. The implementation
+adapts Chromium's renderer bindings and returns the current frame's actual Blink
+navigation timings and negotiated transport information. The local regression
+checks consistency with `performance.timeOrigin` and elapsed wall time.
+
+On October 14, 2026, the Windows release candidate using Chromium
+`154.0.8019.0` passed the standard-origin comparison, both official test-key
+callbacks and the UI production build. A persistent Explorer reached real
+Turnstile success without clicking the widget. A second isolated-profile run
+also reached real success within the 90-second acceptance test while keeping
+the widget visible. Both retained the Microsoft Basic Render Driver privacy
+warning; the warning did not prevent successful verification.
+
+The earlier build had returned `600010` after an authorized manual click.
+The candidate adds the missing native timing APIs, but the repeat test also
+corrects viewport handling: the first automated candidate run remained loading
+after the troubleshooter scrolled to its warning. These observations validate
+the candidate's actual Windows acceptance, without proving that timing API
+presence alone explains every rejection. macOS acceptance of this candidate
+has not been tested.
+
+### Composed ancestry validation (October 15, 2026)
+
+The Windows release candidate passed native parent/top, trusted MessageEvent
+source/reply, nested iframe/Explorer messaging and detach/attach ancestry tests.
+It also passed strong-exclusive handle transfer through structured clone,
+MessagePort and independent-window postMessage, event capture/bubbling and
+one-shot request handling, and Ovule's production independent-window promotion
+without reloading the moved document.
+
+The final packaged Playground passed the complete Explorer demo and resource
+regressions, including fullscreen with explicit `allow` delegation, downloads,
+video PiP and repeated document PiP. WebAuthn tests covered delegated and denied
+Permissions Policy, dynamic allow changes, response-header restrictions and
+native request cancellation. The compatibility comparison and both official
+Turnstile test keys passed. The final package's real Cloudflare diagnostic page
+returned `Turnstile Status: success` without a verification click; it retained
+the graphics privacy warning. This result validates this Windows candidate;
+macOS has not been revalidated with the composed ancestry implementation.

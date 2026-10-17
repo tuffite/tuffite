@@ -387,6 +387,18 @@ export function createFrameworkApi(entries, constants = []) {
         const reader = new BinaryReader(payload);
         const value = decodeValue(reader, response);
         reader.finish();
+        if (path.startsWith("window.")) {
+          const enrich = info => {
+            if (info && typeof info.id === "bigint") {
+              const id = info.id;
+              Object.defineProperty(info, "postMessage", {
+                value: (...args) => native.postWindowMessage(id, ...args),
+              });
+            }
+            return info;
+          };
+          return Array.isArray(value) ? value.map(enrich) : enrich(value);
+        }
         return value;
       };
       return [path, Object.freeze({invoke, request, response})];

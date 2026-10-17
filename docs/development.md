@@ -94,6 +94,17 @@ Compare the output path, `args.gn`, compiler/Windows SDK versions and sccache
 version before assuming a service edit invalidated the entire cache. Moving a
 checkout, changing profile or target CPU, or updating toolchains can affect a
 much larger graph than an implementation-only edit.
+When validating a different target CPU, use a separate `--chromium-out`
+directory so the check does not replace the normal build's arguments and outputs.
+
+After renaming a checkout or output directory, a long-running sccache server
+can retain the compiler's old absolute path even when Ninja invokes it through
+the same relative path. A fatal spawn error naming the removed directory is
+resolved by restarting the server with `mise exec -- sccache --stop-server`
+and `mise exec -- sccache --start-server`, then retrying the build. Wait for
+other builds to finish before restarting; the disk cache does not need clearing.
+The workspace sets `SCCACHE_IDLE_TIMEOUT=0`, so the service can otherwise retain
+this state indefinitely.
 
 On Windows, `x.py` adds the absolute Chromium checkout path to sccache's C/C++
 cache identity (preserving any user cache-buster value). Cached `/showIncludes`

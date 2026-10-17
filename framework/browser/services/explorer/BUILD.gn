@@ -22,6 +22,7 @@ source_set("explorer") {
   ]
   deps = [
     "//content/public/browser",
+    "//tuffite/framework/browser/services/window:interfaces",
     "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/browser:support",
     "//tuffite/framework/common:access",

@@ -1,16 +1,19 @@
 // Copyright 2026 The Tuffite Authors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-#include "tuffite/framework/app/services/remoting/pointer_geometry.h"
-
 #include <cstdlib>
 #include <limits>
 #include <utility>
 
+#include "tuffite/framework/app/services/remoting/pointer_geometry.h"
+
 namespace {
 
 void ExpectPoint(const tuffite::remoting::PointerGeometry& geometry,
-                 int x, int y, int expected_x, int expected_y) {
+                 int x,
+                 int y,
+                 int expected_x,
+                 int expected_y) {
   const auto point = geometry.Map(x, y);
   if (!point || *point != std::pair(expected_x, expected_y)) {
     std::abort();
@@ -18,7 +21,10 @@ void ExpectPoint(const tuffite::remoting::PointerGeometry& geometry,
 }
 
 void ExpectFractional(const tuffite::remoting::PointerGeometry& geometry,
-                      double x, double y, int expected_x, int expected_y) {
+                      double x,
+                      double y,
+                      int expected_x,
+                      int expected_y) {
   const auto point = geometry.MapFractional(x, y);
   if (!point || *point != std::pair(expected_x, expected_y)) {
     std::abort();

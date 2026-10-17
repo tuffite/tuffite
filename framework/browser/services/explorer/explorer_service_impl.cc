@@ -4,6 +4,7 @@
 #include "tuffite/framework/browser/services/explorer/explorer_service_impl.h"
 
 #include <algorithm>
+#include <utility>
 
 #include "base/check.h"
 #include "content/public/browser/render_frame_host.h"
@@ -11,6 +12,8 @@
 #include "tuffite/components/explorer/browser/explorer_partition.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/services/explorer/explorer_navigation_throttle.h"
+#include "tuffite/framework/browser/services/window/window_service.h"
+#include "tuffite/framework/browser/services/window/window_service_factory.h"
 #include "tuffite/framework/browser/web_contents_role.h"
 #include "tuffite/framework/common/access.h"
 
@@ -99,5 +102,17 @@ void ExplorerServiceImpl::AddNavigationThrottles(
 }
 void ExplorerServiceImpl::Shutdown() {
   stopped_ = true;
+}
+void ExplorerServiceImpl::ResolveMessageWindow(
+    content::RenderFrameHost& source,
+    int64_t id,
+    base::OnceCallback<void(content::RenderFrameHost*)> callback) const {
+  auto* service = window::WindowServiceFactory::GetForBrowserContext(
+      source.GetBrowserContext());
+  if (!IsOwnerAllowed(source) || !service) {
+    std::move(callback).Run(nullptr);
+    return;
+  }
+  service->ResolveMessageTarget(id, source, std::move(callback));
 }
 }  // namespace tuffite

@@ -125,6 +125,32 @@ assert.equal(await windowFramework.window.create({
   url: 'playground://main/window.html', focused: false,
 }), 17n);
 
+// Window methods retain their native identity and bypass the Shell data codec.
+let posted;
+globalThis.tuffite = {
+  invoke: async (channel, body) => handler(channel, new Uint8Array(body)),
+  postWindowMessage: (...args) => { posted = args; },
+};
+const references = runtime.createFrameworkApi([[
+  'window.current', [], {kind: 'object', fields: [['id', {kind: 'bigint'}]]},
+]]);
+handler = async () => {
+  const response = new Uint8Array(8);
+  new DataView(response.buffer).setBigInt64(0, 17n, true);
+  return response;
+};
+const reference = await references.window.current();
+reference.id = 99n;
+const message = {value: 42n};
+const options = {targetOrigin: 'https://example.com', transfer: []};
+assert.equal(reference.postMessage(message, options), undefined);
+assert.equal(posted[0], 17n);
+assert.equal(posted[1], message);
+assert.equal(posted[2], options);
+assert.equal('transfer' in reference, false);
+assert.deepEqual(Object.keys(reference), ['id']);
+assert.throws(() => structuredClone(reference, {transfer: [reference]}));
+
 handler = (_channel, request) => {
   const response = responseFor(request, new TextEncoder().encode('denied'));
   new DataView(response.buffer).setUint16(6, 4, true);

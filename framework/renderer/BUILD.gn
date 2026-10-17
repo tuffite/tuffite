@@ -9,11 +9,14 @@ source_set("renderer") {
   sources = [
     "content_renderer_client.cc",
     "content_renderer_client.h",
+    "legacy_navigation_timing.cc",
+    "legacy_navigation_timing.h",
   ]
   deps = [
     "//base",
     "//content/public/renderer",
     "//gin",
+    "//net",
     "//third_party/blink/public:blink",
     "//tuffite/components/dispatch/renderer",
     "//tuffite/components/explorer/renderer",

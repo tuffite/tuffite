@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 
+#include "base/functional/callback.h"
 #include "tuffite/components/explorer/browser/explorer_policy.h"
 namespace content {
 class RenderFrameHost;
@@ -19,6 +20,10 @@ namespace tuffite {
 class ExplorerPolicyProvider {
  public:
   virtual ~ExplorerPolicyProvider() = default;
+  virtual void ResolveMessageWindow(
+      content::RenderFrameHost&,
+      int64_t,
+      base::OnceCallback<void(content::RenderFrameHost*)> callback) const;
   virtual bool IsSurfaceAllowed(content::RenderFrameHost&) const = 0;
   virtual bool IsOwnerAllowed(content::RenderFrameHost&) const = 0;
   virtual bool IsApp(const content::WebContents*) const = 0;

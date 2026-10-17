@@ -13,6 +13,10 @@ class ExplorerServiceImpl final : public ExplorerService {
  public:
   explicit ExplorerServiceImpl(const ManifestService& manifest);
   void AddNavigationThrottles(content::NavigationThrottleRegistry&) override;
+  void ResolveMessageWindow(
+      content::RenderFrameHost&,
+      int64_t,
+      base::OnceCallback<void(content::RenderFrameHost*)>) const override;
   bool IsSurfaceAllowed(content::RenderFrameHost& frame) const override;
   bool IsOwnerAllowed(content::RenderFrameHost& frame) const override;
   bool IsApp(const content::WebContents* contents) const override;

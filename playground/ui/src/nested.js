@@ -2,7 +2,7 @@ const requestId = crypto.randomUUID();
 document.querySelector("#nested-open").addEventListener("click", () => {
   void window.tuffite.postMessage(
     { type: "nested-request-triggered", eventType: "open" },
-    { to: "top" },
+    { targetOrigin: "*" },
   );
   window.open("./history-a.html?source=nested-open", "_blank");
 });
@@ -20,12 +20,12 @@ document.querySelector("#nested-dialog").addEventListener("click", () => {
       type: "nested-dialog-result",
       accepted,
     },
-    { to: "top" },
+    { targetOrigin: "*" },
   );
 });
 
 const receive = async (event) => {
-  const response = event.detail.data;
+  const response = event.data;
   if (response?.type === "trigger-request") {
     const selector =
       response.eventType === "dialog" ? "#nested-dialog" : "#nested-open";
@@ -46,10 +46,10 @@ const receive = async (event) => {
       type: "nested-message-complete",
       shown: response.shown === true,
     },
-    { to: "top" },
+    { targetOrigin: "*" },
   );
 };
-window.tuffite.addEventListener("message", receive);
+window.addEventListener("message", receive);
 await window.tuffite.postMessage(
   {
     type: "notification-request",
@@ -59,5 +59,5 @@ await window.tuffite.postMessage(
       body: "Browser-routed postMessage request",
     },
   },
-  { to: "top" },
+  { targetOrigin: "*" },
 );

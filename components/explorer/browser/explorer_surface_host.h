@@ -24,8 +24,8 @@ class WebContents;
 namespace tuffite {
 class ExplorerPolicyProvider;
 
-// Browser-owned route between App and nested Explorer documents. Instances
-// are document-scoped: navigation destroys the old SurfaceRef and its route.
+// Document-scoped request controllers, ancestry metadata and WindowInfo
+// delivery.
 class ExplorerSurfaceHost final
     : public content::DocumentService<mojom::ExplorerSurfaceHost> {
  public:
@@ -33,9 +33,6 @@ class ExplorerSurfaceHost final
                    mojo::PendingReceiver<mojom::ExplorerSurfaceHost> receiver,
                    ExplorerPolicyProvider* policy);
 
-  static bool DeliverToWebContents(content::WebContents* destination,
-                                   const std::string& json,
-                                   const std::string& from);
   static std::string RefForWebContents(content::WebContents* contents);
   static bool DeliverOpenToWebContents(content::WebContents* destination,
                                        const std::string& event_type,
@@ -48,16 +45,28 @@ class ExplorerSurfaceHost final
                                          bool is_reload,
                                          const std::string& from);
   static void ForgetDialog(content::BrowserContext* context,
-                           uint64_t request_id);
+                           uint64_t request_id,
+                           bool canceled = true);
+  static void FinishRequest(content::BrowserContext*,
+                            const std::string& kind,
+                            const std::string& key,
+                            bool canceled);
 
   ExplorerSurfaceHost(const ExplorerSurfaceHost&) = delete;
   ExplorerSurfaceHost& operator=(const ExplorerSurfaceHost&) = delete;
 
+  void PostWindowMessage(int64_t,
+                         blink::TransferableMessage,
+                         const std::string&) override;
+  void GetFrameAncestors(GetFrameAncestorsCallback) override;
+  static void UpdateFrameAncestors(content::WebContents*,
+                                   base::OnceCallback<void(bool)>,
+                                   unsigned attempt = 0);
   void BindClient(
       mojo::PendingRemote<mojom::ExplorerSurfaceClient> client) override;
-  void PostMessage(const std::string& json,
-                   const std::string& to,
-                   PostMessageCallback callback) override;
+  void DiscardWindow(const std::string&, DiscardWindowCallback) override;
+  void CompleteDialog(uint64_t request_id, bool propagate) override;
+  void CompleteOpen(const std::string& token, bool propagate) override;
   void RespondToDialog(uint64_t request_id,
                        bool accept,
                        const std::string& prompt_text,
@@ -78,10 +87,6 @@ class ExplorerSurfaceHost final
     bool is_reload = false;
     std::string from;
   };
-  struct PendingMessage {
-    std::string json;
-    std::string from;
-  };
 
   ExplorerSurfaceHost(
       content::RenderFrameHost& frame,
@@ -90,20 +95,16 @@ class ExplorerSurfaceHost final
   ~ExplorerSurfaceHost() override;
 
   bool IsCurrentPrimaryDocument() const;
-  content::WebContents* ResolveDestination(const std::string& to) const;
-  bool QueueMessage(const std::string& json, const std::string& from);
-  void FlushPendingMessages();
+  void FlushPendingRequests();
   void OnClientDisconnected();
   void DismissActiveDialogs();
-  bool Deliver(const std::string& json, const std::string& from);
 
   const std::string surface_ref_;
   mojo::Remote<mojom::ExplorerSurfaceClient> client_;
-  std::deque<PendingMessage> pending_messages_;
   std::deque<PendingOpen> pending_opens_;
   std::deque<PendingDialog> pending_dialogs_;
   std::set<uint64_t> active_dialogs_;
-  size_t pending_message_bytes_ = 0;
+  std::set<std::string> active_windows_;
   base::WeakPtrFactory<ExplorerSurfaceHost> weak_factory_{this};
 };
 

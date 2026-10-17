@@ -36,6 +36,13 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
         capabilities: fileURLToPath(new URL("./capabilities.html", import.meta.url)),
+        compatibility: fileURLToPath(new URL("./compatibility.html", import.meta.url)),
+        compatibilitySample: fileURLToPath(new URL("./compatibility-sample.html", import.meta.url)),
+        events: fileURLToPath(new URL("./events.html", import.meta.url)),
+        eventFixture: fileURLToPath(new URL("./event-fixture.html", import.meta.url)),
+        eventPopup: fileURLToPath(new URL("./event-popup.html", import.meta.url)),
+        tabs: fileURLToPath(new URL("./tabs.html", import.meta.url)),
+        tabSample: fileURLToPath(new URL("./tab-sample.html", import.meta.url)),
         capabilitySample: fileURLToPath(new URL("./capability-sample.html", import.meta.url)),
         transfer: fileURLToPath(new URL("./transfer.html", import.meta.url)),
         transferSample: fileURLToPath(new URL("./transfer-sample.html", import.meta.url)),

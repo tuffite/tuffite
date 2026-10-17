@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Explorer tab behavior</title>
+  <link rel="stylesheet" href="/src/styles.css">
+  <script type="module" src="/src/tab-behavior.js"></script>
+</head>
+<body><main>
+  <h1>Explorer tab behavior</h1>
+  <p><a href="./index.html">Back to capability lab</a></p>
+  <p>Search Chromium's frame tree, zoom one Explorer, and inspect native page state. The second Explorer is a control for isolation.</p>
+  <div class="controls">
+    <label>Find <input id="tab-query" value="needle"></label>
+    <label><input id="tab-case" type="checkbox"> Match case</label>
+    <button id="tab-find">Find</button><button id="tab-next">Next</button><button id="tab-previous">Previous</button><button id="tab-clear">Clear</button>
+    <label>Zoom <select id="tab-zoom"><option value="0.5">50%</option><option value="1" selected>100%</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select></label>
+    <label><input id="tab-mute" type="checkbox"> Mute Explorer</label>
+    <button id="tab-reload">Reload</button><button id="tab-state">Read native state</button>
+  </div>
+  <output id="tab-status" role="status">Loading fixtures</output>
+  <div id="tab-hosts"></div>
+  <pre id="tab-output" class="block-output code-output"></pre>
+</main></body></html>

@@ -22,6 +22,7 @@
 #include "content/public/common/content_switches.h"
 #include "mojo/public/cpp/bindings/binder_map.h"
 #include "net/http/http_util.h"
+#include "services/network/public/mojom/fetch_api.mojom.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 #include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
 #include "tuffite/components/dispatch/browser/dispatch_host.h"
@@ -244,6 +245,26 @@ ContentBrowserClient::CreateNonNetworkNavigationURLLoaderFactory(
     return application_->GetService<AssetService>()->CreateLoaderFactory();
   }
   return {};
+}
+
+void ContentBrowserClient::
+    RegisterNonNetworkWorkerMainResourceURLLoaderFactories(
+        content::BrowserContext* browser_context,
+        const std::optional<url::Origin>& request_initiator,
+        network::mojom::RequestDestination request_destination,
+        NonNetworkURLLoaderFactoryMap* factories) {
+  const ManifestService* manifest =
+      application_ ? application_->GetService<ManifestService>() : nullptr;
+  if (!manifest || !request_initiator ||
+      request_initiator->scheme() != manifest->app_info().scheme ||
+      (request_destination != network::mojom::RequestDestination::kWorker &&
+       request_destination !=
+           network::mojom::RequestDestination::kSharedWorker)) {
+    return;
+  }
+  factories->insert_or_assign(
+      manifest->app_info().scheme,
+      application_->GetService<AssetService>()->CreateLoaderFactory());
 }
 
 void ContentBrowserClient::RegisterNonNetworkSubresourceURLLoaderFactories(

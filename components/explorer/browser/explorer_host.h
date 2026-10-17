@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 
 #include "base/memory/raw_ref.h"
@@ -19,6 +20,7 @@
 #include "mojo/public/cpp/bindings/remote.h"
 #include "tuffite/components/explorer/browser/explorer_surface_data.h"
 #include "tuffite/components/explorer/common/explorer.mojom.h"
+#include "ui/gfx/geometry/rect.h"
 #include "url/gurl.h"
 
 namespace download {
@@ -47,6 +49,7 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
 
   ExplorerHost(const ExplorerHost&) = delete;
   ExplorerHost& operator=(const ExplorerHost&) = delete;
+  content::WebContents* OwnerContents() const;
 
   void Detach(mojo::PendingRemote<mojom::ExplorerTransferClient> client,
               DetachCallback callback) override;
@@ -62,6 +65,16 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
   void Reload(bool bypass_cache, ReloadCallback callback) override;
   void Stop(StopCallback callback) override;
   void GetNavigationState(GetNavigationStateCallback callback) override;
+  void FindInPage(const std::string& text,
+                  bool forward,
+                  bool match_case,
+                  bool find_next,
+                  FindInPageCallback callback) override;
+  void StopFindInPage(const std::string& action,
+                      StopFindInPageCallback callback) override;
+  void SetZoomFactor(double factor, SetZoomFactorCallback callback) override;
+  void GetZoomFactor(GetZoomFactorCallback callback) override;
+  void SetAudioMuted(bool muted, SetAudioMutedCallback callback) override;
   void ExecuteJavaScript(const std::string& source,
                          bool main_world,
                          const std::string& expected_document_id,
@@ -70,11 +83,15 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
                        bool accept,
                        const std::string& prompt_text,
                        RespondToDialogCallback callback) override;
+  void DiscardWindow(const std::string&, DiscardWindowCallback) override;
+
+  void FinishRequest(const std::string& kind,
+                     const std::string& key,
+                     bool canceled);
   void CompleteOpen(uint64_t request_id, bool propagate) override;
   void CompleteDialog(uint64_t request_id, bool propagate) override;
-  void PostMessage(const std::string& json,
-                   PostMessageCallback callback) override;
   void SetContextMenuEnabled(bool enabled) override;
+  void SetFramePolicy(const blink::FramePolicy&) override;
   static std::string DownloadDetail(const download::DownloadItem& item);
   void NotifyDownload(const std::string& json);
   void Download(const std::string& url, DownloadCallback callback) override;
@@ -85,9 +102,9 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
 
   // Called by the document-scoped surface router. The browser process owns
   // this lookup, so nested messages never depend on intermediate renderer JS.
-  static bool DeliverMessageToOwner(content::WebContents* inner,
-                                    const std::string& json,
-                                    const std::string& from);
+  static void NotifyPictureInPicture(content::WebContents*,
+                                     const std::string& type,
+                                     bool entered);
   // Returns true when a renderer-initiated current-surface navigation was
   // converted to an open event and must be cancelled by the throttle.
   static bool MaybeEmitNavigation(content::WebContents* contents,
@@ -106,7 +123,8 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
   static bool RespondToDialogForTree(content::WebContents* requester,
                                      uint64_t request_id,
                                      bool accept,
-                                     const std::string& prompt_text);
+                                     const std::string& prompt_text,
+                                     bool canceled = false);
   void RequestDialog(
       const std::string& kind,
       const std::u16string& message,
@@ -134,7 +152,8 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
                       content::RenderFrameHost* prepared_frame);
   void BeginAttachAfterInitialNavigation();
   void CapturePreviewWhenReady(CapturePreviewCallback callback, int attempts);
-  void AttachTransferred(AttachCallback callback,
+  void AttachTransferred(blink::FramePolicy,
+                         AttachCallback callback,
                          content::RenderFrameHost* prepared_frame);
   void OnPartitionSnapshotComplete(GURL initial_url, bool success);
   bool LoadURL(const GURL& url);
@@ -185,6 +204,12 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
       const blink::mojom::WindowFeatures& window_features,
       bool user_gesture,
       bool* was_blocked) override;
+  bool ShouldResumeRequestsForCreatedWindow() override;
+  void WebContentsCreated(content::WebContents*,
+                          const content::GlobalRenderFrameHostId&,
+                          const std::string&,
+                          const GURL&,
+                          content::WebContents*) override;
   content::JavaScriptDialogManager* GetJavaScriptDialogManager(
       content::WebContents* source) override;
   void RunFileChooser(content::RenderFrameHost* frame,
@@ -208,8 +233,31 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
   void DidFinishNavigation(
       content::NavigationHandle* navigation_handle) override;
   void TitleWasSet(content::NavigationEntry* entry) override;
+  void DidToggleFullscreenModeForTab(bool, bool) override;
+  void MediaPictureInPictureChanged(bool) override;
+  void OnAudioStateChanged(bool audible) override;
+  void DidUpdateAudioMutingState(bool muted) override;
+  void PrimaryMainFrameRenderProcessGone(
+      base::TerminationStatus status) override;
+  void DidUpdateFaviconURL(
+      content::RenderFrameHost* frame,
+      const std::vector<blink::mojom::FaviconURLPtr>& candidates,
+      blink::mojom::FaviconUpdateReason reason) override;
+  void FindReply(content::WebContents* contents,
+                 int request_id,
+                 int matches,
+                 const gfx::Rect& selection_rect,
+                 int active_match_ordinal,
+                 bool final_update) override;
+  void ContentsZoomChange(bool zoom_in) override;
+  void ActivateContents(content::WebContents* contents) override;
+  bool HandleKeyboardEvent(content::WebContents* source,
+                           const input::NativeWebKeyboardEvent& event) override;
+  std::optional<gfx::Rect> GetWindowBoundsInScreen() override;
 
   base::WeakPtr<ExplorerTransferRecord> attaching_transfer_;
+  std::set<uint64_t> offered_dialogs_;
+  std::set<std::string> offered_windows_;
   mojo::Remote<mojom::ExplorerClient> client_;
   std::unique_ptr<content::WebContents> pending_inner_web_contents_;
   std::optional<blink::LocalFrameToken> pending_frame_token_;
@@ -236,6 +284,9 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
   std::map<uint64_t, PendingOpenBubble> pending_open_bubbles_;
   std::map<uint64_t, PendingDialogBubble> pending_dialog_bubbles_;
   std::string document_id_;
+  int active_find_request_id_ = -1;
+  std::string find_text_;
+  bool find_match_case_ = false;
   CreateCallback pending_create_callback_;
   bool preparing_attachment_ = false;
   bool partition_snapshot_pending_ = false;
