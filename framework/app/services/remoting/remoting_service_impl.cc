@@ -20,10 +20,12 @@
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted_delete_on_sequence.h"
 #include "base/memory/weak_ptr.h"
 #include "base/message_loop/message_pump_type.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/task/bind_post_task.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner_thread_mode.h"
@@ -60,10 +62,16 @@
 #include "third_party/webrtc/modules/desktop_capture/desktop_capture_types.h"
 #include "third_party/webrtc/modules/desktop_capture/desktop_capturer.h"
 #include "third_party/webrtc/modules/desktop_capture/desktop_frame.h"
+#include "third_party/webrtc/modules/desktop_capture/shared_memory.h"
+#include "tuffite/framework/app/services/remoting/pointer_geometry.h"
 #include "tuffite/framework/app/services/remoting/remoting_service.h"
 #include "tuffite/framework/app/services/remoting/sequenced_input_dispatcher.h"
 #include "ui/gfx/codec/png_codec.h"
 #include "ui/gfx/geometry/size.h"
+
+#if BUILDFLAG(IS_MAC)
+#include <CoreGraphics/CoreGraphics.h>
+#endif
 
 namespace tuffite::remoting {
 namespace {
@@ -345,9 +353,78 @@ std::string DescriptionType(::remoting::SessionDescription::Type type) {
   }
 }
 
+// Observe the actual capture dimensions, including Retina and runtime display
+// changes, before the frame reaches the encoder. Keep callbacks on the Host
+// sequence; the capture sequence must never dereference the HostSession.
+class GeometryDesktopCapturer final : public webrtc::DesktopCapturer,
+                                      public webrtc::DesktopCapturer::Callback {
+ public:
+  GeometryDesktopCapturer(
+      std::unique_ptr<webrtc::DesktopCapturer> capturer,
+      webrtc::ScreenId screen_id,
+      base::RepeatingCallback<void(api::PointerGeometry)> geometry_callback)
+      : capturer_(std::move(capturer)),
+        screen_id_(screen_id),
+        geometry_callback_(std::move(geometry_callback)) {}
+
+  void Start(webrtc::DesktopCapturer::Callback* callback) override {
+    callback_ = callback;
+    capturer_->Start(this);
+  }
+  void CaptureFrame() override { capturer_->CaptureFrame(); }
+  bool GetSourceList(SourceList* sources) override {
+    return capturer_->GetSourceList(sources);
+  }
+  bool SelectSource(SourceId id) override {
+    if (!capturer_->SelectSource(id)) {
+      return false;
+    }
+    screen_id_ = id;
+    return true;
+  }
+  void SetSharedMemoryFactory(
+      std::unique_ptr<webrtc::SharedMemoryFactory> factory) override {
+    capturer_->SetSharedMemoryFactory(std::move(factory));
+  }
+  void SetMaxFrameRate(uint32_t rate) override {
+    capturer_->SetMaxFrameRate(rate);
+  }
+  void OnFrameCaptureStart() override { callback_->OnFrameCaptureStart(); }
+  void OnCaptureResult(Result result,
+                       std::unique_ptr<webrtc::DesktopFrame> frame) override {
+    if (result == Result::SUCCESS && frame) {
+#if BUILDFLAG(IS_MAC)
+      const CGRect bounds =
+          CGDisplayBounds(static_cast<CGDirectDisplayID>(screen_id_));
+      geometry_callback_.Run({frame->size().width(), frame->size().height(),
+                              bounds.origin.x, bounds.origin.y,
+                              bounds.size.width, bounds.size.height});
+#else
+      // Both DXGI and GDI normalize the desktop origin to (0, 0). A selected
+      // display's top_left is relative to that origin, exactly as expected by
+      // Chromium's Windows injector with MOUSEEVENTF_VIRTUALDESK. Do not divide
+      // by DPI or subtract the virtual desktop origin a second time.
+      geometry_callback_.Run({frame->size().width(), frame->size().height(),
+                              static_cast<double>(frame->top_left().x()),
+                              static_cast<double>(frame->top_left().y()),
+                              static_cast<double>(frame->size().width()),
+                              static_cast<double>(frame->size().height())});
+#endif
+    }
+    callback_->OnCaptureResult(result, std::move(frame));
+  }
+
+ private:
+  std::unique_ptr<webrtc::DesktopCapturer> capturer_;
+  webrtc::ScreenId screen_id_;
+  base::RepeatingCallback<void(api::PointerGeometry)> geometry_callback_;
+  raw_ptr<webrtc::DesktopCapturer::Callback> callback_ = nullptr;
+};
+
 std::unique_ptr<::remoting::DesktopCapturer> CreateDesktopCapturer(
     webrtc::ScreenId screen_id,
-    scoped_refptr<base::SequencedTaskRunner> capture_task_runner) {
+    scoped_refptr<base::SequencedTaskRunner> capture_task_runner,
+    base::RepeatingCallback<void(api::PointerGeometry)> geometry_callback) {
   auto proxy =
       std::make_unique<::remoting::DesktopCapturerProxy>(capture_task_runner);
   auto options = webrtc::DesktopCaptureOptions::CreateDefault();
@@ -358,16 +435,19 @@ std::unique_ptr<::remoting::DesktopCapturer> CreateDesktopCapturer(
   options.set_allow_sck_capturer(true);
 #endif
   proxy->CreateCapturer(base::BindOnce(
-      [](webrtc::DesktopCaptureOptions options, webrtc::ScreenId screen_id)
+      [](webrtc::DesktopCaptureOptions options, webrtc::ScreenId screen_id,
+         base::RepeatingCallback<void(api::PointerGeometry)> geometry_callback)
           -> std::unique_ptr<::remoting::DesktopCapturer> {
         auto capturer = webrtc::DesktopCapturer::CreateScreenCapturer(options);
         if (!capturer || !capturer->SelectSource(screen_id)) {
           return nullptr;
         }
+        capturer = std::make_unique<GeometryDesktopCapturer>(
+            std::move(capturer), screen_id, std::move(geometry_callback));
         return std::make_unique<::remoting::DesktopCapturerWrapper>(
             std::move(capturer));
       },
-      std::move(options), screen_id));
+      std::move(options), screen_id, std::move(geometry_callback)));
   return proxy;
 }
 
@@ -379,13 +459,13 @@ class HostSession final : public protocol::ConnectionToClient::EventHandler,
               protocol::IceConfig ice_config,
               scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner)
       : options_(std::move(options)),
-        ui_task_runner_(std::move(ui_task_runner)),
         capture_task_runner_(base::ThreadPool::CreateSingleThreadTaskRunner(
             {base::TaskPriority::USER_BLOCKING, base::MayBlock()},
             base::SingleThreadTaskRunnerThreadMode::DEDICATED)),
         input_task_runner_(base::ThreadPool::CreateSingleThreadTaskRunner(
             {base::TaskPriority::USER_BLOCKING, base::MayBlock()},
             base::SingleThreadTaskRunnerThreadMode::DEDICATED)),
+        ui_task_runner_(std::move(ui_task_runner)),
         connection_(std::make_unique<protocol::WebrtcConnectionToClient>(
             std::make_unique<StaticIceConfigFetcher>(std::move(ice_config)))) {
     connection_->SetEventHandler(this);
@@ -560,9 +640,20 @@ class HostSession final : public protocol::ConnectionToClient::EventHandler,
     if (video_stream_) {
       return;
     }
-    const webrtc::ScreenId screen_id = options_.screen_id.value_or(
+    webrtc::ScreenId screen_id = options_.screen_id.value_or(
         static_cast<int64_t>(webrtc::kFullDesktopScreenId));
-    auto capturer = CreateDesktopCapturer(screen_id, capture_task_runner_);
+#if BUILDFLAG(IS_MAC)
+    // ScreenCaptureKit cannot capture the combined desktop. Its implicit
+    // first-display fallback has no dependable input origin; choose explicitly.
+    if (screen_id == webrtc::kFullDesktopScreenId) {
+      screen_id = CGMainDisplayID();
+    }
+#endif
+    capture_screen_id_ = screen_id;
+    auto capturer = CreateDesktopCapturer(
+        screen_id, capture_task_runner_,
+        base::BindPostTaskToCurrentDefault(base::BindRepeating(
+            &HostSession::OnPointerGeometry, weak_factory_.GetWeakPtr())));
     if (!capturer) {
       state_ = "failed";
       error_ = "desktop capturer is unavailable";
@@ -595,7 +686,39 @@ class HostSession final : public protocol::ConnectionToClient::EventHandler,
 
   void InjectMouseEvent(const protocol::MouseEvent& event) override {
     if (input_injector_) {
-      input_injector_->InjectMouseEvent(event);
+      protocol::MouseEvent mapped(event);
+      if (event.has_fractional_coordinate() ||
+          (event.has_x() && event.has_y())) {
+        std::optional<std::pair<int, int>> point;
+        if (event.has_fractional_coordinate()) {
+          const auto& fractional = event.fractional_coordinate();
+          // Ovule input is scoped to this authenticated single video session.
+          // An omitted screen_id means its selected source; an explicit ID
+          // must match. Never fall back to pixels for malformed fractions.
+          if (fractional.has_x() && fractional.has_y() &&
+              (!fractional.has_screen_id() ||
+               fractional.screen_id() == capture_screen_id_)) {
+            point = pointer_geometry_.MapFractional(fractional.x(),
+                                                   fractional.y());
+          }
+        } else {
+          point = pointer_geometry_.Map(event.x(), event.y());
+        }
+        if (!point) {
+          // Geometry may not be ready before the first frame. Preserve button
+          // releases, but never inject unvalidated coordinates.
+          if (!event.has_button_down() || event.button_down()) {
+            return;
+          }
+          mapped.clear_x();
+          mapped.clear_y();
+        } else {
+          mapped.set_x(point->first);
+          mapped.set_y(point->second);
+        }
+      }
+      mapped.clear_fractional_coordinate();
+      input_injector_->InjectMouseEvent(mapped);
       BoostVideo();
     }
   }
@@ -660,8 +783,12 @@ class HostSession final : public protocol::ConnectionToClient::EventHandler,
     }
   }
 
+  void OnPointerGeometry(api::PointerGeometry geometry) {
+    pointer_geometry_ = geometry;
+  }
+
   api::StartOptions options_;
-  scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner_;
+  webrtc::ScreenId capture_screen_id_ = webrtc::kFullDesktopScreenId;
   std::string state_ = "starting";
   std::string route_ = "unknown";
   std::string transport_ = "unknown";
@@ -670,11 +797,13 @@ class HostSession final : public protocol::ConnectionToClient::EventHandler,
   std::vector<api::Signal> signals_;
   scoped_refptr<base::SequencedTaskRunner> capture_task_runner_;
   scoped_refptr<base::SingleThreadTaskRunner> input_task_runner_;
+  scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner_;
   std::unique_ptr<::remoting::InputInjector> input_injector_;
   std::unique_ptr<protocol::InputEventTracker> input_tracker_;
   std::unique_ptr<protocol::WebrtcConnectionToClient> connection_;
   std::unique_ptr<protocol::VideoStream> video_stream_;
   api::InputSequence input_sequence_;
+  api::PointerGeometry pointer_geometry_;
   base::TimeTicks last_input_boost_;
   std::unique_ptr<api::SequencedInputDispatcher> pointer_event_dispatcher_;
   std::unique_ptr<api::SequencedInputDispatcher> reliable_event_dispatcher_;

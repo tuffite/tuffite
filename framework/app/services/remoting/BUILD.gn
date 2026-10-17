@@ -29,6 +29,7 @@ source_set("remoting") {
     assert(enable_remoting_host,
            "Tuffite Remoting requires the Chromium remoting host")
     sources += [
+      "pointer_geometry.h",
       "remoting_service_impl.cc",
       "remoting_service_impl.h",
       "sequenced_input_dispatcher.cc",
@@ -46,5 +47,8 @@ source_set("remoting") {
       "//ui/gfx/codec",
       "//ui/gfx/geometry",
     ]
+    if (is_mac) {
+      frameworks = [ "CoreGraphics.framework" ]
+    }
   }
 }

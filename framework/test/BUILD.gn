@@ -7,6 +7,14 @@ assert(tuffite_in_chromium)
 
 import("//testing/test.gni")
 
+executable("remoting_pointer_geometry_unittests") {
+  testonly = true
+  sources = [
+    "//tuffite/framework/app/services/remoting/pointer_geometry.h",
+    "remoting_pointer_geometry_unittest.cc",
+  ]
+}
+
 # Compile the service with a fake injected launcher, excluding the production
 # factory and Chromium process launcher. The API headers belong to this test's
 # selected source set as well as to the production service target.
