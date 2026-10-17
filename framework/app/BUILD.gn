@@ -25,9 +25,15 @@ source_set("host_headers") {
 }
 
 source_set("app") {
+  public = [
+    "main_delegate.h",
+    "process_launch.h",
+  ]
   sources = [
     "abi_host_bridge.cc",
     "application_context.cc",
+    "content_client.cc",
+    "content_client.h",
     "main_delegate.cc",
     "main_delegate.h",
     "process_launch.cc",
@@ -68,13 +74,12 @@ source_set("app") {
     "//tuffite/framework/app:host_headers",
     "//tuffite/framework/app/services:manager",
     "//tuffite/framework/app/services/asset",
-    "//tuffite/framework/app/services/policy",
+    "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/app/services/remoting",
     "//tuffite/framework/app/services/utility",
     "//tuffite/framework/browser",
     "//tuffite/framework/browser/services/shell_api/commands",
-    "//tuffite/framework/common",
-    "//tuffite/framework/common:capability_pattern",
+    "//tuffite/framework/common:switches",
     "//tuffite/framework/common/utility:mojom",
     "//tuffite/framework/public:abi",
     "//tuffite/framework/renderer",

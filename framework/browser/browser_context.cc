@@ -11,13 +11,14 @@
 #include "content/public/browser/render_frame_host.h"
 #include "tuffite/components/explorer/browser/explorer_router.h"
 #include "tuffite/framework/app/application_context.h"
-#include "tuffite/framework/app/services/policy/application_policy_service.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/services/client_hints/client_hints_service.h"
 #include "tuffite/framework/browser/services/client_hints/client_hints_service_factory.h"
 #include "tuffite/framework/browser/services/context_menu/context_menu_service_factory.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service_factory.h"
 #include "tuffite/framework/browser/services/download/download_service.h"
 #include "tuffite/framework/browser/services/download/download_service_factory.h"
+#include "tuffite/framework/browser/services/explorer/explorer_service_factory.h"
 #include "tuffite/framework/browser/services/file_chooser/file_chooser_service_factory.h"
 #include "tuffite/framework/browser/services/javascript_dialog/javascript_dialog_service_factory.h"
 #include "tuffite/framework/browser/services/network_context/network_context_service_factory.h"
@@ -48,6 +49,7 @@ BrowserContext::BrowserContext(base::FilePath path,
                                ApplicationContext& application)
     : application_(application), path_(std::move(path)) {
   AliveBrowserContexts().push_back(this);
+  ExplorerServiceFactory::Get();
   window::WindowServiceFactory::Get();
   DownloadServiceFactory::Get();
   DevToolsServiceFactory::Get();
@@ -72,14 +74,10 @@ BrowserContext& BrowserContext::GetFrom(content::RenderFrameHost& frame) {
   return GetFrom(*frame.GetBrowserContext());
 }
 
-ApplicationPolicyService& BrowserContext::application_policy() const {
-  auto* policy = application_->GetService<ApplicationPolicyService>();
-  CHECK(policy);
-  return *policy;
-}
-
-const AppManifest& BrowserContext::manifest() const {
-  return application_->manifest();
+ManifestService& BrowserContext::manifest_service() const {
+  auto* manifest = application_->GetService<ManifestService>();
+  CHECK(manifest);
+  return *manifest;
 }
 
 BrowserContext::~BrowserContext() {

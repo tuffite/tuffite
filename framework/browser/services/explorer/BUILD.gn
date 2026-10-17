@@ -1,0 +1,30 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+import("//tuffite/tuffite_in_chromium.gni")
+assert(tuffite_in_chromium)
+source_set("explorer") {
+  public = [
+    "explorer_service.h",
+    "explorer_service_factory.h",
+  ]
+  sources = public + [
+              "explorer_navigation_throttle.cc",
+              "explorer_navigation_throttle.h",
+              "explorer_service_factory.cc",
+              "explorer_service_impl.cc",
+              "explorer_service_impl.h",
+            ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+    "//tuffite/components/explorer/browser",
+  ]
+  deps = [
+    "//content/public/browser",
+    "//tuffite/framework/app/services/manifest",
+    "//tuffite/framework/browser:support",
+    "//tuffite/framework/common:access",
+    "//url",
+  ]
+}

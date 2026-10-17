@@ -1,7 +1,7 @@
 // Copyright 2026 The Tuffite Authors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-#include "tuffite/framework/common/app_manifest.h"
+#include "tuffite/framework/app/services/manifest/manifest_service_impl.h"
 
 #include <algorithm>
 #include <utility>
@@ -18,9 +18,8 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "net/base/url_util.h"
-#include "tuffite/framework/common/capability_pattern.h"
-#include "tuffite/framework/common/constants.h"
-#include "tuffite/framework/common/scope_registry.inc"
+#include "tuffite/framework/app/services/manifest/scope_registry.inc"
+#include "tuffite/framework/common/access.h"
 
 namespace tuffite {
 namespace {
@@ -160,14 +159,11 @@ bool IsLiteralPrivateOrLoopbackHost(std::string_view host_lower) {
 
 }  // namespace
 
-AppManifest::AppManifest() = default;
-AppManifest::AppManifest(const AppManifest&) = default;
-AppManifest& AppManifest::operator=(const AppManifest&) = default;
-AppManifest::AppManifest(AppManifest&&) = default;
-AppManifest& AppManifest::operator=(AppManifest&&) = default;
-AppManifest::~AppManifest() = default;
+ManifestServiceImpl::ManifestServiceImpl() = default;
+ManifestServiceImpl::~ManifestServiceImpl() = default;
 
-bool AppManifest::ApplyDevelopmentUrl(const GURL& url, std::string* error) {
+bool ManifestServiceImpl::ApplyDevelopmentUrl(const GURL& url,
+                                              std::string* error) {
   if (!url.is_valid() || !url.SchemeIs("http") || !net::IsLocalhost(url) ||
       url.has_username() || url.has_password() || url.has_ref()) {
     if (error) {
@@ -191,7 +187,7 @@ bool AppManifest::ApplyDevelopmentUrl(const GURL& url, std::string* error) {
   const auto packaged_origin = url::Origin::Create(entry_url_);
   for (auto& capability : origin_capabilities_) {
     if (std::ranges::any_of(capability.origins, [&](const auto& pattern) {
-          return capability_pattern::MatchesOrigin(packaged_origin, pattern);
+          return access::MatchesOrigin(packaged_origin, pattern);
         })) {
       capability.origins.push_back(origin);
       if (!capability.shell_api.empty()) {
@@ -206,7 +202,7 @@ bool AppManifest::ApplyDevelopmentUrl(const GURL& url, std::string* error) {
 }
 
 // static
-std::optional<std::string> AppManifest::ReadApplicationScheme(
+std::optional<std::string> ManifestServiceImpl::ReadApplicationScheme(
     const base::FilePath& package_root,
     std::string* error) {
   const base::FilePath manifest_path =
@@ -247,7 +243,8 @@ std::optional<std::string> AppManifest::ReadApplicationScheme(
 }
 
 // static
-bool AppManifest::ReadNetworkDisableHttp2(const base::FilePath& package_root) {
+bool ManifestServiceImpl::ReadNetworkDisableHttp2(
+    const base::FilePath& package_root) {
   std::string serialized;
   if (!base::ReadFileToStringWithMaxSize(
           package_root.Append(FILE_PATH_LITERAL("tuffite.json")), &serialized,
@@ -262,13 +259,16 @@ bool AppManifest::ReadNetworkDisableHttp2(const base::FilePath& package_root) {
 }
 
 // static
-std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
-                                             std::string* error) {
-  auto fail = [error](std::string message) -> std::optional<AppManifest> {
+std::unique_ptr<ManifestServiceImpl> ManifestServiceImpl::Load(
+    const base::FilePath& package_root,
+    std::string* error,
+    const std::optional<GURL>& development_url) {
+  auto fail =
+      [error](std::string message) -> std::unique_ptr<ManifestServiceImpl> {
     if (error) {
       *error = std::move(message);
     }
-    return std::nullopt;
+    return nullptr;
   };
 
   const base::FilePath manifest_path =
@@ -308,9 +308,10 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
       return fail("unknown app field: " + std::string(key));
     }
   }
-  AppManifest manifest;
-  manifest.package_root_ = package_root;
-  manifest.asset_root_ = package_root.AppendASCII("assets");
+  auto manifest =
+      std::unique_ptr<ManifestServiceImpl>(new ManifestServiceImpl());
+  manifest->package_root_ = package_root;
+  manifest->assets_.root = package_root.AppendASCII("assets");
   const base::DictValue* security = app ? app->FindDict("security") : nullptr;
   if (!security) {
     return fail("app.security must be an object");
@@ -321,22 +322,22 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
         policy->find_first_of("\r\n") != std::string::npos) {
       return fail("app.security.csp is invalid");
     }
-    manifest.content_security_policy_ = *policy;
+    manifest->assets_.content_security_policy = *policy;
   }
-  manifest.application_id_ = *application_id;
+  manifest->application_id_ = *application_id;
   if (root.contains("productName") && !root.FindString("productName")) {
     return fail("productName must be a string");
   }
-  manifest.product_name_ = root.FindString("productName")
-                               ? *root.FindString("productName")
-                               : *application_id;
-  if (manifest.product_name_.empty() || manifest.product_name_.size() > 128 ||
-      !base::IsStringUTF8(manifest.product_name_) ||
-      manifest.product_name_.find_first_of("\r\n") != std::string::npos ||
-      manifest.product_name_.find('\0') != std::string::npos) {
+  manifest->product_name_ = root.FindString("productName")
+                                ? *root.FindString("productName")
+                                : *application_id;
+  if (manifest->product_name_.empty() || manifest->product_name_.size() > 128 ||
+      !base::IsStringUTF8(manifest->product_name_) ||
+      manifest->product_name_.find_first_of("\r\n") != std::string::npos ||
+      manifest->product_name_.find('\0') != std::string::npos) {
     return fail("productName is invalid");
   }
-  manifest.shell_api_namespace_ = *shell_api_namespace;
+  manifest->shell_api_namespace_ = *shell_api_namespace;
   if (const auto* utilities_value = app->Find("utilities")) {
     const auto* utilities = utilities_value->GetIfDict();
     if (!utilities) {
@@ -358,7 +359,7 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
       }
     }
   }
-  manifest.serialized_ = std::move(serialized);
+  manifest->serialized_ = std::move(serialized);
   std::vector<std::string> labels;
   for (const base::Value& value : *windows) {
     const base::DictValue* window = value.GetIfDict();
@@ -384,7 +385,7 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
       return fail("app.windows contains an invalid or duplicate window");
     }
     labels.push_back(*label);
-    AppWindow configured;
+    app::AppWindow configured;
     configured.label = *label;
     configured.url = window_url;
     configured.title = title ? *title : std::string();
@@ -411,21 +412,22 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
     }
     configured.focused = window->FindBool("focused").value_or(true);
     configured.decorations = window->FindBool("decorations").value_or(true);
-    manifest.windows_.push_back(std::move(configured));
+    manifest->windows_.push_back(std::move(configured));
   }
-  manifest.entry_url_ = manifest.windows_.front().url;
-  manifest.app_scheme_ = manifest.entry_url_.scheme();
-  if (manifest.app_scheme_ != manifest.shell_api_namespace_) {
+  manifest->entry_url_ = manifest->windows_.front().url;
+  manifest->assets_.scheme = manifest->entry_url_.scheme();
+  if (manifest->assets_.scheme != manifest->shell_api_namespace_) {
     return fail("application URL scheme must match shellApi.namespace");
   }
-  manifest.app_host_ = manifest.entry_url_.host();
-  if (!std::ranges::all_of(manifest.windows_, [&](const AppWindow& window) {
-        return window.url.scheme() == manifest.app_scheme_;
-      })) {
+  manifest->app_host_ = manifest->entry_url_.host();
+  if (!std::ranges::all_of(
+          manifest->windows_, [&](const app::AppWindow& window) {
+            return window.url.scheme() == manifest->assets_.scheme;
+          })) {
     return fail("all app.windows URLs must use the application scheme");
   }
-  const url::Origin entry_origin = url::Origin::Create(manifest.entry_url_);
-  manifest.shell_api_origin_patterns_.push_back(entry_origin.Serialize());
+  const url::Origin entry_origin = url::Origin::Create(manifest->entry_url_);
+  manifest->shell_api_origin_patterns_.push_back(entry_origin.Serialize());
 
   auto read_origins = [&](const base::DictValue* capability,
                           std::string_view key, std::string_view field,
@@ -444,10 +446,9 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
         continue;
       }
       if (!serialized_origin ||
-          !(url_patterns ? capability_pattern::NormalizeUrl(*serialized_origin,
-                                                            &normalized)
-                         : capability_pattern::NormalizeOrigin(
-                               *serialized_origin, &normalized))) {
+          !(url_patterns
+                ? access::NormalizeUrl(*serialized_origin, &normalized)
+                : access::NormalizeOrigin(*serialized_origin, &normalized))) {
         if (error) {
           *error = std::string(field) +
                    (url_patterns
@@ -473,7 +474,7 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
     const auto* paths = rule ? rule->FindList("paths") : nullptr;
     const auto* file = rule ? rule->FindString("file") : nullptr;
     const auto* directory = rule ? rule->FindString("directory") : nullptr;
-    AssetRoute route;
+    asset::AssetRoute route;
     if (!rule || !paths || paths->empty() || !rule->FindList("origins") ||
         rule->FindList("origins")->empty() ||
         (file != nullptr) == (directory != nullptr) ||
@@ -483,7 +484,7 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
       return fail("invalid app.assets route");
     }
     for (const auto& pattern : route.origins) {
-      if (!pattern.starts_with(manifest.app_scheme_ + "://")) {
+      if (!pattern.starts_with(manifest->assets_.scheme + "://")) {
         return fail("assets must use the application scheme");
       }
     }
@@ -503,7 +504,7 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
         return fail("invalid asset path pattern");
       }
       route.path = *path;
-      for (const auto& existing : manifest.asset_routes_) {
+      for (const auto& existing : manifest->assets_.routes) {
         if (existing.path != route.path) {
           continue;
         }
@@ -516,14 +517,14 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
               }
               return url::Origin::Create(GURL(text));
             };
-            if (capability_pattern::MatchesOrigin(sample(left), right) ||
-                capability_pattern::MatchesOrigin(sample(right), left)) {
+            if (access::MatchesOrigin(sample(left), right) ||
+                access::MatchesOrigin(sample(right), left)) {
               return fail("ambiguous app.assets route");
             }
           }
         }
       }
-      manifest.asset_routes_.push_back(route);
+      manifest->assets_.routes.push_back(route);
     }
   }
 
@@ -536,7 +537,7 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
       if (!text || !base::HexStringToUInt64(*text, &id)) {
         return fail("shellApi.commandIds contains an invalid command ID");
       }
-      manifest.shell_api_command_ids_.emplace_back(name, id);
+      manifest->shell_api_command_ids_.emplace_back(name, id);
     }
   }
   const auto* rules = security->FindList("capabilities");
@@ -544,8 +545,8 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
     return fail("app.security.capabilities must be an array");
   }
   // The new policy is default-deny, including the entry document.
-  manifest.shell_api_origin_patterns_.clear();
-  manifest.explorer_origin_patterns_.clear();
+  manifest->shell_api_origin_patterns_.clear();
+  manifest->explorer_origin_patterns_.clear();
   const auto scope_registry =
       base::JSONReader::Read(kShellApiScopeRegistry, base::JSON_PARSE_RFC);
   CHECK(scope_registry && scope_registry->is_dict());
@@ -554,7 +555,7 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
     const auto* identifier = rule ? rule->FindString("identifier") : nullptr;
     if (!identifier || !IsCapabilityName(*identifier) ||
         !rule->FindList("origins") || rule->FindList("origins")->empty() ||
-        std::ranges::any_of(manifest.origin_capabilities_, [&](const auto& c) {
+        std::ranges::any_of(manifest->origin_capabilities_, [&](const auto& c) {
           return c.identifier == *identifier;
         })) {
       return fail("capability requires unique identifier and origins");
@@ -569,7 +570,7 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
     capability.identifier = *identifier;
     if (!read_origins(rule, "origins", "capability origins", false,
                       &capability.origins)) {
-      return std::nullopt;
+      return nullptr;
     }
     if (const auto* value = rule->Find("explorer")) {
       const auto* explorer = value->GetIfDict();
@@ -614,7 +615,7 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
         }
         bool matched = false;
         bool matched_scope = false;
-        for (const auto& [method, id] : manifest.shell_api_command_ids_) {
+        for (const auto& [method, id] : manifest->shell_api_command_ids_) {
           if (wildcard ? !method.starts_with(prefix) : method != *pattern) {
             continue;
           }
@@ -652,7 +653,7 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
                 return fail(method + ": invalid scope object");
               }
               if (grant.scope_kind == "path") {
-                if (!capability_pattern::NormalizePath(
+                if (!access::NormalizePath(
                         *text, descriptor->FindBool("write").value_or(false),
                         &normalized)) {
                   return fail(method + ": invalid path scope");
@@ -662,7 +663,7 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
                     !text->starts_with("http://")) {
                   return fail(method + ": expected absolute HTTP(S) URL scope");
                 }
-                if (!capability_pattern::NormalizeUrl(*text, &normalized)) {
+                if (!access::NormalizeUrl(*text, &normalized)) {
                   return fail(method + ": invalid URL scope");
                 }
               } else if (grant.scope_kind == "window") {
@@ -689,13 +690,13 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
     }
     for (const auto& origin : capability.origins) {
       if (capability.create_explorer) {
-        manifest.explorer_origin_patterns_.push_back(origin);
+        manifest->explorer_origin_patterns_.push_back(origin);
       }
       if (!capability.shell_api.empty()) {
-        manifest.shell_api_origin_patterns_.push_back(origin);
+        manifest->shell_api_origin_patterns_.push_back(origin);
       }
     }
-    manifest.origin_capabilities_.push_back(std::move(capability));
+    manifest->origin_capabilities_.push_back(std::move(capability));
   }
   const auto* network = app->FindDict("network");
   if (network) {
@@ -703,41 +704,47 @@ std::optional<AppManifest> AppManifest::Load(const base::FilePath& package_root,
     if (disable && !disable->is_bool()) {
       return fail("network.disableHttp2 must be a boolean");
     }
-    manifest.network_disable_http2_ =
+    manifest->network_disable_http2_ =
         network->FindBool("disableHttp2").value_or(false);
     if (auto bytes = network->FindInt("maxResponseBytes")) {
       if (*bytes <= 0 ||
           static_cast<size_t>(*bytes) > kMaxNetworkResponseBytes) {
         return fail("invalid network.maxResponseBytes");
       }
-      manifest.network_max_response_bytes_ = *bytes;
+      manifest->network_max_response_bytes_ = *bytes;
     }
     if (auto seconds = network->FindInt("timeoutSeconds")) {
       if (*seconds <= 0 || *seconds > kMaxNetworkTimeoutSeconds) {
         return fail("invalid network.timeoutSeconds");
       }
-      manifest.network_timeout_seconds_ = *seconds;
+      manifest->network_timeout_seconds_ = *seconds;
     }
+  }
+  if (development_url &&
+      !manifest->ApplyDevelopmentUrl(*development_url, error)) {
+    return nullptr;
   }
   return manifest;
 }
 
-bool AppManifest::IsShellApiOriginAllowed(const url::Origin& origin) const {
-  return std::ranges::any_of(
-      shell_api_origin_patterns_, [&](const std::string& pattern) {
-        return capability_pattern::MatchesOrigin(origin, pattern);
-      });
+bool ManifestServiceImpl::IsShellApiOriginAllowed(
+    const url::Origin& origin) const {
+  return std::ranges::any_of(shell_api_origin_patterns_,
+                             [&](const std::string& pattern) {
+                               return access::MatchesOrigin(origin, pattern);
+                             });
 }
 
-bool AppManifest::IsExplorerOriginAllowed(const url::Origin& origin) const {
-  return std::ranges::any_of(
-      explorer_origin_patterns_, [&](const std::string& pattern) {
-        return capability_pattern::MatchesOrigin(origin, pattern);
-      });
+bool ManifestServiceImpl::IsExplorerOriginAllowed(
+    const url::Origin& origin) const {
+  return std::ranges::any_of(explorer_origin_patterns_,
+                             [&](const std::string& pattern) {
+                               return access::MatchesOrigin(origin, pattern);
+                             });
 }
 
-bool AppManifest::IsExplorerNavigationAllowed(const url::Origin& caller,
-                                              const GURL& url) const {
+bool ManifestServiceImpl::IsExplorerNavigationAllowed(const url::Origin& caller,
+                                                      const GURL& url) const {
   if (url.IsAboutBlank()) {
     return true;
   }
@@ -746,10 +753,11 @@ bool AppManifest::IsExplorerNavigationAllowed(const url::Origin& caller,
   }
   return IsExplorerOriginAllowed(caller) &&
          (url.SchemeIsHTTPOrHTTPS() || url.SchemeIsFile() ||
-          url.scheme() == app_scheme_);
+          url.scheme() == assets_.scheme);
 }
 
-bool AppManifest::IsAllShellApiAllowed(const url::Origin& origin) const {
+bool ManifestServiceImpl::IsAllShellApiAllowed(
+    const url::Origin& origin) const {
   // Events are currently business-wide. Require every registered business
   // command before exposing that stream.
   bool found = false;
@@ -764,13 +772,13 @@ bool AppManifest::IsAllShellApiAllowed(const url::Origin& origin) const {
   return found;
 }
 
-bool AppManifest::IsShellApiCommandAllowed(const url::Origin& origin,
-                                           std::string_view command) const {
+bool ManifestServiceImpl::IsShellApiCommandAllowed(
+    const url::Origin& origin,
+    std::string_view command) const {
   return std::ranges::any_of(origin_capabilities_, [&](const auto& capability) {
     return std::ranges::any_of(capability.origins,
                                [&](const auto& pattern) {
-                                 return capability_pattern::MatchesOrigin(
-                                     origin, pattern);
+                                 return access::MatchesOrigin(origin, pattern);
                                }) &&
            std::ranges::any_of(capability.shell_api, [&](const auto& grant) {
              return grant.method == command;
@@ -778,13 +786,14 @@ bool AppManifest::IsShellApiCommandAllowed(const url::Origin& origin,
   });
 }
 
-bool AppManifest::IsShellApiScopeAllowed(const url::Origin& origin,
-                                         std::string_view method,
-                                         std::string_view resource) const {
+bool ManifestServiceImpl::IsShellApiScopeAllowed(
+    const url::Origin& origin,
+    std::string_view method,
+    std::string_view resource) const {
   bool allowed = false;
   for (const auto& capability : origin_capabilities_) {
     if (!std::ranges::any_of(capability.origins, [&](const auto& pattern) {
-          return capability_pattern::MatchesOrigin(origin, pattern);
+          return access::MatchesOrigin(origin, pattern);
         })) {
       continue;
     }
@@ -796,20 +805,19 @@ bool AppManifest::IsShellApiScopeAllowed(const url::Origin& origin,
         if (grant.scope_kind == "path") {
           const auto slash = resource.find('/');
           return slash != std::string_view::npos &&
-                 capability_pattern::MatchesPath(
-                     resource.substr(0, slash), resource.substr(slash + 1),
-                     pattern,
-                     method != "tuffite.fs.readFile" &&
-                         method != "tuffite.fs.exists" &&
-                         method != "tuffite.path.resolve");
+                 access::MatchesPath(resource.substr(0, slash),
+                                     resource.substr(slash + 1), pattern,
+                                     method != "tuffite.fs.readFile" &&
+                                         method != "tuffite.fs.exists" &&
+                                         method != "tuffite.path.resolve");
         }
         if (grant.scope_kind == "url") {
           const GURL url(resource);
           if (!deny &&
               IsLiteralPrivateOrLoopbackHost(base::ToLowerASCII(url.host()))) {
-            return capability_pattern::ExplicitlyAllowsPrivateUrl(url, pattern);
+            return access::ExplicitlyAllowsPrivateUrl(url, pattern);
           }
-          return capability_pattern::MatchesUrl(url, pattern);
+          return access::MatchesUrl(url, pattern);
         }
         return pattern == "*" || pattern == resource;
       };
@@ -832,28 +840,29 @@ bool AppManifest::IsShellApiScopeAllowed(const url::Origin& origin,
   return allowed;
 }
 
-bool AppManifest::IsApplicationCommandRequest(std::string_view channel,
-                                              uint64_t command_id) const {
+bool ManifestServiceImpl::IsApplicationCommandRequest(
+    std::string_view channel,
+    uint64_t command_id) const {
   return std::ranges::any_of(shell_api_command_ids_, [&](const auto& item) {
     return item.first == channel && item.second == command_id;
   });
 }
 
-std::vector<std::string> AppManifest::ExecuteJavaScriptOrigins(
+std::vector<std::string> ManifestServiceImpl::ExecuteJavaScriptOrigins(
     const url::Origin& origin) const {
   return GrantsFor(origin).execute_javascript ? std::vector<std::string>{"*"}
                                               : std::vector<std::string>{};
 }
 
-bool AppManifest::IsWindowUrlAllowed(const url::Origin& caller,
-                                     const GURL& url) const {
+bool ManifestServiceImpl::IsWindowUrlAllowed(const url::Origin& caller,
+                                             const GURL& url) const {
   return IsShellApiCommandAllowed(caller, "tuffite.window.create") &&
          url.is_valid() && !url.has_username() && !url.has_password() &&
          (url.IsAboutBlank() || url.SchemeIsHTTPOrHTTPS() ||
-          url.scheme() == app_scheme_);
+          url.scheme() == assets_.scheme);
 }
 
-std::string AppManifest::SerializeShellApiOrigins() const {
+std::string ManifestServiceImpl::SerializeShellApiOrigins() const {
   std::string serialized;
   for (const std::string& origin : shell_api_origin_patterns_) {
     if (!serialized.empty()) {
@@ -864,7 +873,7 @@ std::string AppManifest::SerializeShellApiOrigins() const {
   return serialized;
 }
 
-std::string AppManifest::SerializeExplorerOrigins() const {
+std::string ManifestServiceImpl::SerializeExplorerOrigins() const {
   std::string serialized;
   for (const std::string& origin : explorer_origin_patterns_) {
     if (!serialized.empty()) {
@@ -875,11 +884,12 @@ std::string AppManifest::SerializeExplorerOrigins() const {
   return serialized;
 }
 
-OriginCapability AppManifest::GrantsFor(const url::Origin& origin) const {
+ManifestServiceImpl::OriginCapability ManifestServiceImpl::GrantsFor(
+    const url::Origin& origin) const {
   OriginCapability grants;
   for (const auto& cap : origin_capabilities_) {
     if (!std::ranges::any_of(cap.origins, [&](const auto& pattern) {
-          return capability_pattern::MatchesOrigin(origin, pattern);
+          return access::MatchesOrigin(origin, pattern);
         })) {
       continue;
     }
@@ -891,8 +901,8 @@ OriginCapability AppManifest::GrantsFor(const url::Origin& origin) const {
   return grants;
 }
 
-std::map<std::string, std::vector<uint8_t>> AppManifest::UtilityConfigurations()
-    const {
+std::map<std::string, std::vector<uint8_t>>
+ManifestServiceImpl::UtilityConfigurations() const {
   std::map<std::string, std::vector<uint8_t>> configurations;
   auto document = base::JSONReader::ReadDict(serialized_, base::JSON_PARSE_RFC);
   const auto* utilities =
@@ -916,77 +926,12 @@ std::map<std::string, std::vector<uint8_t>> AppManifest::UtilityConfigurations()
   return configurations;
 }
 
-std::string AppManifest::ResolveAssetRoute(const GURL& url) const {
-  if (url.path() == "/tuffite-runtime.js" ||
-      url.path() == "/tuffite-shell-api.js") {
-    return std::string(url.path());
-  }
-  const auto origin = url::Origin::Create(url);
-  const AssetRoute* best = nullptr;
-  for (const auto& route : asset_routes_) {
-    if (!std::ranges::any_of(route.origins, [&](const auto& pattern) {
-          return capability_pattern::MatchesOrigin(origin, pattern);
-        })) {
-      continue;
-    }
-    const bool glob = route.path.ends_with('*');
-    const auto prefix =
-        glob ? route.path.substr(0, route.path.size() - 1) : route.path;
-    if (glob ? !url.path().starts_with(prefix) : url.path() != prefix) {
-      continue;
-    }
-    if (!best || (!glob && best->path.ends_with('*')) ||
-        (glob == best->path.ends_with('*') &&
-         route.path.size() > best->path.size())) {
-      best = &route;
-    }
-  }
-  if (!best) {
-    return {};
-  }
-  if (!best->directory) {
-    return "/" + best->source;
-  }
-  return "/" + best->source + "/" +
-         std::string(url.path().substr(best->path.size() - 1));
-}
-
-std::optional<base::FilePath> AppManifest::ResolveAssetFile(
-    const GURL& url) const {
-  if (!IsAppUrl(url)) {
-    return std::nullopt;
-  }
-  const std::string escaped = ResolveAssetRoute(url);
-  std::string decoded;
-  if (escaped.empty() || escaped.front() != '/' ||
-      !base::UnescapeBinaryURLComponentSafe(escaped.substr(1), true,
-                                            &decoded) ||
-      decoded.empty()) {
-    return std::nullopt;
-  }
-  const auto relative = base::FilePath::FromUTF8Unsafe(decoded);
-  if (relative.IsAbsolute() || relative.ReferencesParent()) {
-    return std::nullopt;
-  }
-  return asset_root().Append(relative);
-}
-
-bool AppManifest::IsAppUrl(const GURL& url) const {
-  return url.is_valid() && url.scheme() == app_scheme_ && !url.has_username() &&
-         !url.has_password() && !url.has_port() &&
-         std::ranges::any_of(asset_routes_, [&](const auto& route) {
-           return std::ranges::any_of(route.origins, [&](const auto& pattern) {
-             return capability_pattern::MatchesOrigin(url::Origin::Create(url),
-                                                      pattern);
-           });
-         });
-}
-
-bool AppManifest::IsFileSystemPathAllowed(const url::Origin& caller,
-                                          std::string_view base,
-                                          std::string_view relative,
-                                          bool write,
-                                          std::string_view method) const {
+bool ManifestServiceImpl::IsFileSystemPathAllowed(
+    const url::Origin& caller,
+    std::string_view base,
+    std::string_view relative,
+    bool write,
+    std::string_view method) const {
   return (!write || base != "resource") &&
          IsShellApiScopeAllowed(
              caller, method, std::string(base) + "/" + std::string(relative));
@@ -1006,14 +951,14 @@ bool IsSafeFileSystemRelativePath(std::string_view value) {
 
 }  // namespace
 
-std::optional<base::FilePath> AppManifest::ResolveBaseDirectory(
+std::optional<base::FilePath> ManifestServiceImpl::ResolveBaseDirectory(
     std::string_view base) const {
   if (base != "resource" && base != "data" && base != "cache" &&
       base != "temp") {
     return std::nullopt;
   }
   if (base == "resource") {
-    return asset_root_;
+    return assets_.root;
   }
   base::FilePath root;
   if (base == "temp") {
@@ -1055,7 +1000,7 @@ std::optional<base::FilePath> AppManifest::ResolveBaseDirectory(
       .AppendASCII(std::string(base));
 }
 
-std::optional<base::FilePath> AppManifest::ResolveFileSystemPath(
+std::optional<base::FilePath> ManifestServiceImpl::ResolveFileSystemPath(
     const url::Origin& caller,
     std::string_view base,
     std::string_view relative,
@@ -1072,30 +1017,35 @@ std::optional<base::FilePath> AppManifest::ResolveFileSystemPath(
   return root->Append(base::FilePath::FromUTF8Unsafe(relative));
 }
 
-bool AppManifest::HasNoSymlinkComponents(const base::FilePath& root,
-                                         const base::FilePath& path) {
-  if (base::PathExists(root) && base::IsLink(root)) {
-    return false;
-  }
-  base::FilePath current = root;
-  base::FilePath relative;
-  if (!root.AppendRelativePath(path, &relative)) {
-    return false;
-  }
-  for (const auto& component : relative.GetComponents()) {
-    current = current.Append(component);
-    if (base::PathExists(current) && base::IsLink(current)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool AppManifest::IsNetworkUrlAllowed(const url::Origin& caller,
-                                      const GURL& url) const {
+bool ManifestServiceImpl::IsNetworkUrlAllowed(const url::Origin& caller,
+                                              const GURL& url) const {
   return url.is_valid() && url.SchemeIsHTTPOrHTTPS() && !url.has_username() &&
          !url.has_password() &&
          IsShellApiScopeAllowed(caller, "tuffite.net.request", url.spec());
+}
+
+app::AppInfo ManifestServiceImpl::app_info() const {
+  return {application_id_, product_name_, entry_url_, assets_.scheme,
+          shell_api_namespace_};
+}
+const std::vector<app::AppWindow>& ManifestServiceImpl::startup_windows()
+    const {
+  return windows_;
+}
+app::NetworkLimits ManifestServiceImpl::network_limits() const {
+  return {network_max_response_bytes_, network_timeout_seconds_};
+}
+asset::AssetConfiguration ManifestServiceImpl::assets() const {
+  return assets_;
+}
+const std::string& ManifestServiceImpl::SerializeRuntimeConfiguration() const {
+  return serialized_;
+}
+base::WeakPtr<const ManifestService> ManifestServiceImpl::GetWeakPtr() const {
+  return weak_factory_.GetWeakPtr();
+}
+void ManifestServiceImpl::Shutdown() {
+  weak_factory_.InvalidateWeakPtrs();
 }
 
 }  // namespace tuffite

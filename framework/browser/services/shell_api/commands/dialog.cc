@@ -17,10 +17,10 @@
 #include "base/strings/utf_string_conversions.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
-#include "tuffite/framework/browser/services/shell_api/commands/application_policy.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
 #include "tuffite/framework/browser/services/shell_api/commands/registry.h"
 #include "tuffite/framework/browser/web_contents_role.h"
-#include "tuffite/framework/common/app_manifest.h"
 #include "ui/shell_dialogs/select_file_dialog.h"
 #include "ui/shell_dialogs/select_file_policy.h"
 #include "ui/shell_dialogs/selected_file_info.h"
@@ -131,7 +131,7 @@ class PendingDialog final : public ui::SelectFileDialog::Listener,
 };
 
 bool IsAuthorized(content::RenderFrameHost& frame, bool file) {
-  const AppManifest* manifest = ManifestFor(frame);
+  const ManifestService* manifest = ManifestFor(frame);
   content::WebContents* web_contents =
       content::WebContents::FromRenderFrameHost(&frame);
   return manifest && web_contents &&

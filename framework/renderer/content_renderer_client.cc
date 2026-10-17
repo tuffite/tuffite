@@ -9,7 +9,7 @@
 #include "third_party/blink/public/web/web_security_policy.h"
 #include "tuffite/components/dispatch/renderer/dispatch_bindings.h"
 #include "tuffite/components/explorer/renderer/explorer_surface_bindings.h"
-#include "tuffite/framework/common/constants.h"
+#include "tuffite/framework/common/switches.h"
 
 namespace tuffite {
 ContentRendererClient::ContentRendererClient() = default;

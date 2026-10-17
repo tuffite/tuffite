@@ -19,11 +19,11 @@
 #include "base/time/time.h"
 #include "tuffite/components/dispatch/common/codec.h"
 #include "tuffite/framework/app/application_context.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/utility/host_runtime.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/browser/services/shell_api/commands/registry.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service_factory.h"
-#include "tuffite/framework/common/app_manifest.h"
 
 namespace tuffite {
 namespace {
@@ -246,7 +246,8 @@ bool AbiHostBridge::Start(std::string_view configuration) {
   if (application_context_) {
     ConfigureUtilityHostRuntime(
         *application_context_->GetService<UtilityService>(),
-        application_context_->manifest(), application_, runtime);
+        *application_context_->GetService<ManifestService>(), application_,
+        runtime);
   }
   return true;
 }

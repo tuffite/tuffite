@@ -10,7 +10,7 @@ dependency manager, and factory adapter.
 
 ## GN targets
 
-Each application service directory owns one `source_set`: `policy`, `asset`,
+Each application service directory owns one `source_set`: `manifest`, `asset`,
 `utility` and `remoting`. Public lists
 expose service APIs and factory entry points; implementation headers stay
 private. BrowserContext services live separately in `framework/browser/services`, together
@@ -39,7 +39,7 @@ storage and shutdown ordering in Chromium's existing keyed-service machinery.
 
 `//tuffite/framework/browser:support` owns BrowserContext declarations and
 WebContents role tagging, below the services and Shell API handlers. Shell API
-commands in `browser/services/shell_api/commands` depend on policy, utility, remoting, and window
+commands in `browser/services/shell_api/commands` depend on manifest, utility, remoting, and window
 services; the
 `browser/services/shell_api` service then depends on those handlers. Keeping this
 ordering avoids a cycle through the browser composition root.
@@ -117,13 +117,11 @@ class ApplicationContext final {
         GetServiceByType(internal::ApplicationServiceTypeKey<Service>(), create));
   }
 
-  const AppManifest& manifest() const;
   AbiHostBridge& bridge() const;
 
  private:
   KeyedService* GetServiceByType(const void* service_type, bool create);
 
-  raw_ref<const AppManifest> manifest_;
   raw_ref<AbiHostBridge> bridge_;
 };
 ```
@@ -230,7 +228,7 @@ directly.
 ```cpp
 UtilityServiceFactory::UtilityServiceFactory()
     : ApplicationKeyedServiceFactory<UtilityService>("TuffiteUtility") {
-  DependsOn(ApplicationPolicyServiceFactory::Get());
+  DependsOn(ManifestServiceFactory::Get());
 }
 ```
 
@@ -240,7 +238,7 @@ This convention is important because Chromium's `DependsOn()` checks the
 factory type but does not prove that both factories belong to the same manager.
 
 Dependency direction should follow lifetime and construction requirements. If
-`UtilityService` needs `ApplicationPolicyService`, Utility depends on Policy:
+`UtilityService` needs `ManifestService`, Utility depends on Manifest:
 
 ```text
 construction: Policy -> Utility
@@ -262,7 +260,7 @@ Services must release asynchronous work and borrowed dependencies from
 ## Central factory registration
 
 All application factories are registered explicitly in the `ApplicationContext`
-constructor. It instantiates the policy, asset, remoting, and utility factories,
+constructor. It instantiates the manifest, asset, remoting, and utility factories,
 then freezes registration through Chromium's dependency manager. Registration
 runs before `MainDelegate` creates keyed services. No separate registration entry
 point is required.
@@ -292,7 +290,7 @@ context:
 
 ```cpp
 void CreateEarlyApplicationServices(ApplicationContext& application) {
-  application.GetService<ApplicationPolicyService>();
+  application.GetService<ManifestService>();
 }
 
 void CreateBrowserReadyApplicationServices(
@@ -360,7 +358,7 @@ ShellApiServiceFactory::BuildServiceInstanceForBrowserContext(
 
   return std::make_unique<ShellApiServiceImpl>(
       application.bridge(),
-      *application.GetService<ApplicationPolicyService>(),
+      *application.GetService<ManifestService>(),
       *application.GetService<UtilityService>());
 }
 ```
@@ -420,7 +418,7 @@ At minimum, cover:
    `ApplicationKeyedServiceFactory`.
 2. Register concrete factories in the `ApplicationContext` constructor, before
    creating keyed services, and then freeze factory registration.
-3. Move `ApplicationPolicyServiceFactory` and `UtilityServiceFactory` to the new
+3. Move `ManifestServiceFactory` and `UtilityServiceFactory` to the new
    manager and typed context.
 4. Store an `ApplicationContext&` in each Tuffite `BrowserContext`.
 5. Inject application service interfaces into BrowserContext services.
@@ -436,7 +434,7 @@ infrastructure small.
 
 ## Browser and app responsibilities
 
-Application services own asset factory creation, Explorer navigation policy,
+Application services own manifest configuration and grants, asset factory creation,
 utility processes and remoting. BrowserContext services own
 WebAuthn, DevTools, context menus, downloads, windows (including configured startup windows),
 and ShellAPI routing.
@@ -460,19 +458,19 @@ remains scoped to its frontend WebContents, with weak references to its inspecte
 contents. Production startup opens no endpoint without an explicit debugging port.
 
 ContextMenuService is BrowserContext-scoped and depends explicitly on the
-DevToolsService factory. Application policy is borrowed through injection; it
+DevToolsService factory. ManifestService is borrowed through injection; it
 belongs to a separate graph and outlives all BrowserContexts. ContentBrowserClient
 injects it into the thin `browser/web_contents_view_delegate.*` adapter, which
 owns a service-created ContextMenuSession for its WebContents and forwards show
 and dismiss callbacks. The session, menu model and MenuRunner implementations
 are private to `context_menu/`. They receive service interfaces through
 constructor injection and never resolve the service context. Menu visibility
-follows PolicyService, inspection uses DevToolsService, and native editing and
+is evaluated by ContextMenuService using ManifestService and browser state, inspection uses DevToolsService, and native editing and
 navigation commands target the session's WebContents. Coordinate conversion and
 menu presentation also belong to the session. Menu state is not shared across
 views. Browser/profile teardown destroys the sessions before application
-services are destroyed; factory dependencies order WindowService shutdown before ContextMenuService,
-and ContextMenuService before DevToolsService. ApplicationPolicyService outlives
+services are destroyed; factory dependencies order ContextMenuService shutdown before DevToolsService,
+and DevToolsService before WindowService. ManifestService outlives
 the entire profile graph.
 
 ## Network and native document dialogs
@@ -505,8 +503,45 @@ The current `en-US,en` language preference is shared by network headers, Window
 renderer preferences and workers. Explorer copies its owning document's language
 preference when creating the inner WebContents.
 
-`ApplicationContext` exposes application identity, manifest, ABI host, and typed
+`ApplicationContext` exposes the ABI host and typed
 service lookup. Its constructor registers the concrete factories; `MainDelegate`
 creates and destroys service instances through the dependency manager. GN keeps
 the public header in `app:context` and constructor implementation in `app:app`
 to avoid a circular dependency between context and concrete factories.
+
+## Manifest ownership and browser policy
+
+`ManifestService` is eagerly registered with the application graph.
+ManifestServiceFactory loads and validates configuration, applies development
+URL overrides before publication, and returns a fully initialized service.
+MainDelegate transfers this unique service to ApplicationContext as a one-time
+bootstrap input. The factory consumes that input when the application graph is
+created; there is no separate manifest model and no public configuration mutator.
+Scheme and
+network bootstrap reads still run before the application service graph exists.
+
+Consumers query application information, startup windows, network limits,
+origin grants, paths and runtime serialization through explicit service APIs.
+Asset and Utility factories declare DependsOn(ManifestServiceFactory). Resource
+loaders and utility module resolvers retain only copyable AssetConfiguration
+snapshots, which survive service shutdown without retaining permissions or a
+service reference.
+
+Browser services resolve ManifestService through their ApplicationContext and
+receive it through constructor injection. The application graph outlives every
+profile graph. The BrowserContext keyed-service graph owns ExplorerService,
+which combines
+manifest grants with frame and WebContents roles. Navigation throttles are
+browser request objects and retain only the application scheme. Menu sessions
+query manifest grants through weak pointers and evaluate their own runtime menu
+visibility. ShellApiService evaluates frame authorization and command routing.
+ExplorerService also creates navigation throttles and stops policy admission
+at shutdown. WindowService depends on its factory so window WebContents are
+closed before their provider is destroyed. Application services outlive the
+profile graph. There is no ApplicationPolicyService or separate manifest model.
+
+Application projections use `app_config.h` and the `tuffite::app` namespace.
+ManifestService returns `app::AppInfo` through `app_info()`, startup windows and
+network limits through specific queries, and `asset::AssetConfiguration` resource
+snapshots. Resource configuration is owned by the asset module's configuration
+target, which is separate from AssetService to keep dependencies acyclic.

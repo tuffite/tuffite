@@ -9,7 +9,7 @@
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "tuffite/framework/app/abi_host_bridge.h"
 #include "tuffite/framework/app/application_context.h"
-#include "tuffite/framework/app/services/policy/application_policy_service.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/browser/browser_context.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service_impl.h"
@@ -37,12 +37,12 @@ std::unique_ptr<KeyedService>
 ShellApiServiceFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
   auto& application = BrowserContext::GetFrom(*context).application_context();
-  auto* policy = application.GetService<ApplicationPolicyService>();
-  CHECK(policy);
+  auto* manifest = application.GetService<ManifestService>();
+  CHECK(manifest);
   auto* utility = application.GetService<UtilityService>();
   CHECK(utility);
   auto service = std::make_unique<ShellApiServiceImpl>(
-      *context, application.bridge(), *policy, *utility);
+      *context, application.bridge(), *manifest, *utility);
   services_.insert_or_assign(
       context, RegisteredService{&application, service->GetWeakPtr()});
   return service;

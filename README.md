@@ -103,7 +103,7 @@ src/tuffite/
 |-- framework/
 |   |-- public/ abi.h
 |   |-- bootstrap.cc / runtime.cc
-|   |-- common/ app_manifest.* / capability_pattern.* / constants.h / content_client.*
+|   |-- common/ app_manifest.* / scope_pattern.* / constants.h / content_client.*
 |   |          / utility/utility_service.mojom / utility_service_name.h
 |   |-- app/ application_context.* / main_delegate.*
 |   |   |    abi_host_bridge.* / process_launch.*

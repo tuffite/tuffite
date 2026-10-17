@@ -1,15 +1,16 @@
 // Copyright 2026 The Tuffite Authors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-#include "tuffite/framework/common/capability_pattern.h"
+#include "tuffite/framework/common/access.h"
 
 #include <algorithm>
 #include <string>
 
+#include "base/files/file_util.h"
 #include "base/strings/pattern.h"
 #include "base/strings/string_util.h"
 
-namespace tuffite::capability_pattern {
+namespace tuffite::access {
 namespace {
 
 bool IsBase(std::string_view value) {
@@ -325,4 +326,23 @@ bool MatchesPath(std::string_view base,
                             std::string(pattern.substr(separator + 1)));
 }
 
-}  // namespace tuffite::capability_pattern
+bool HasNoSymlinkComponents(const base::FilePath& root,
+                            const base::FilePath& path) {
+  if (base::PathExists(root) && base::IsLink(root)) {
+    return false;
+  }
+  base::FilePath current = root;
+  base::FilePath relative;
+  if (!root.AppendRelativePath(path, &relative)) {
+    return false;
+  }
+  for (const auto& component : relative.GetComponents()) {
+    current = current.Append(component);
+    if (base::PathExists(current) && base::IsLink(current)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace tuffite::access

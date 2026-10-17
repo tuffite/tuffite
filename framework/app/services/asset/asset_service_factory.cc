@@ -5,6 +5,7 @@
 
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/services/asset/asset_service_impl.h"
+#include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
 
 namespace tuffite {
 AssetServiceFactory* AssetServiceFactory::Get() {
@@ -12,10 +13,13 @@ AssetServiceFactory* AssetServiceFactory::Get() {
   return instance.get();
 }
 AssetServiceFactory::AssetServiceFactory()
-    : ApplicationKeyedServiceFactory<AssetService>("TuffiteAssets") {}
+    : ApplicationKeyedServiceFactory<AssetService>("TuffiteAssets") {
+  DependsOn(ManifestServiceFactory::Get());
+}
 std::unique_ptr<AssetService>
 AssetServiceFactory::BuildServiceInstanceForApplication(
     ApplicationContext& context) const {
-  return std::make_unique<AssetServiceImpl>(context.manifest());
+  return std::make_unique<AssetServiceImpl>(
+      *context.GetService<ManifestService>());
 }
 }  // namespace tuffite

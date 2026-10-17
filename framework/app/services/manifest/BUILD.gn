@@ -1,0 +1,52 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+import("//tuffite/tuffite_in_chromium.gni")
+assert(tuffite_in_chromium)
+import("//testing/test.gni")
+
+action("scope_registry") {
+  script = "//tuffite/build/scope_registry.py"
+  inputs = [ "//tuffite/framework/shell_api/scope_registry.json" ]
+  outputs = [ "$target_gen_dir/scope_registry.inc" ]
+  args = [
+    rebase_path(inputs[0], root_build_dir),
+    rebase_path(outputs[0], root_build_dir),
+  ]
+}
+
+source_set("manifest") {
+  public = [
+    "app_config.h",
+    "manifest_service.h",
+    "manifest_service_factory.h",
+  ]
+  sources = public + [
+              "manifest_service_factory.cc",
+              "manifest_service_impl.cc",
+              "manifest_service_impl.h",
+            ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/core",
+    "//tuffite/framework/app/services:factory",
+    "//tuffite/framework/app/services/asset:configuration",
+    "//url",
+  ]
+  deps = [
+    ":scope_registry",
+    "//net",
+    "//tuffite/framework/common:access",
+  ]
+}
+
+test("manifest_service_unittests") {
+  testonly = true
+  sources = [ "manifest_service_unittest.cc" ]
+  deps = [
+    ":manifest",
+    "//base",
+    "//testing/gtest",
+    "//testing/gtest:gtest_main",
+    "//url",
+  ]
+}

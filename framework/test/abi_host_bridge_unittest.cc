@@ -17,7 +17,8 @@
 #include "tuffite/framework/app/main_delegate.h"
 #include "tuffite/framework/app/process_launch.h"
 #include "tuffite/framework/app/services/asset/asset_service.h"
-#include "tuffite/framework/app/services/policy/application_policy_service.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/browser/services/context_menu/context_menu_service.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service.h"
@@ -25,7 +26,6 @@
 #include "tuffite/framework/browser/services/shell_api/shell_api_service.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service_factory.h"
 #include "tuffite/framework/browser/services/webauthn/web_authentication_service.h"
-#include "tuffite/framework/common/app_manifest.h"
 #include "url/url_util.h"
 
 namespace tuffite {
@@ -428,7 +428,11 @@ TEST(ApplicationServiceTest, IsolatesServicesAcrossApplications) {
   "app": {
     "identifier": "com.tuffite.servicetest",
     "security": {
-      "capabilities": []
+      "capabilities": [{
+        "identifier": "main",
+        "origins": ["servicetest://main"],
+        "shellApi": ["tuffite.path.directories"]
+      }]
     },
     "windows": [
       {
@@ -439,7 +443,10 @@ TEST(ApplicationServiceTest, IsolatesServicesAcrossApplications) {
       }
     ],
     "shellApi": {
-      "namespace": "servicetest"
+      "namespace": "servicetest",
+      "commandIds": {
+        "tuffite.path.directories": "0000000000000000"
+      }
     },
     "network": {},
     "assets": [
@@ -458,21 +465,41 @@ TEST(ApplicationServiceTest, IsolatesServicesAcrossApplications) {
   ASSERT_TRUE(base::WriteFile(package.GetPath().AppendASCII("tuffite.json"),
                               kManifest));
   std::string error;
-  auto manifest = AppManifest::Load(package.GetPath(), &error);
+  auto manifest = ManifestServiceFactory::Load(package.GetPath(), &error);
   ASSERT_TRUE(manifest) << error;
-  AppManifest second_manifest = *manifest;
+  auto second_manifest = ManifestServiceFactory::Load(
+      package.GetPath(), &error, GURL("http://localhost:5173/"));
+  ASSERT_TRUE(second_manifest) << error;
 
   auto callbacks_a = FakeApplication();
   callbacks_a.start = [](auto...) { return TUFFITE_STATUS_INVALID_STATE; };
   auto callbacks_b = callbacks_a;
   MainDelegate application_a(AbiHostBridge::Create(&callbacks_a));
   MainDelegate application_b(AbiHostBridge::Create(&callbacks_b));
-  EXPECT_FALSE(application_a.StartUp(std::move(*manifest)));
+  EXPECT_FALSE(application_a.StartUp(std::move(manifest)));
   EXPECT_FALSE(application_b.StartUp(std::move(second_manifest)));
   ASSERT_NE(application_a.context(), nullptr);
   ASSERT_NE(application_b.context(), nullptr);
-  EXPECT_NE(application_a.context()->GetService<ApplicationPolicyService>(),
-            application_b.context()->GetService<ApplicationPolicyService>());
+  EXPECT_NE(application_a.context()->GetService<ManifestService>(),
+            application_b.context()->GetService<ManifestService>());
+  auto* manifest_a =
+      application_a.context()->GetService<ManifestService>(false);
+  auto* manifest_b =
+      application_b.context()->GetService<ManifestService>(false);
+  ASSERT_NE(manifest_a, nullptr);
+  ASSERT_NE(manifest_b, nullptr);
+  EXPECT_EQ(manifest_a->app_info().identifier, "com.tuffite.servicetest");
+  EXPECT_EQ(manifest_a->startup_windows().front().url,
+            GURL("servicetest://main/index.html"));
+  EXPECT_EQ(manifest_b->startup_windows().front().url,
+            GURL("http://localhost:5173/"));
+  const auto dev_origin = url::Origin::Create(GURL("http://localhost:5173/"));
+  EXPECT_FALSE(manifest_a->IsShellApiOriginAllowed(dev_origin));
+  EXPECT_TRUE(manifest_b->IsShellApiOriginAllowed(dev_origin));
+  EXPECT_FALSE(manifest_b->IsShellApiOriginAllowed(
+      url::Origin::Create(GURL("https://untrusted.example/"))));
+  auto resource_snapshot = manifest_a->assets();
+  auto manifest_weak = manifest_a->GetWeakPtr();
   auto* assets_a = application_a.context()->GetService<AssetService>();
   auto* assets_b = application_b.context()->GetService<AssetService>();
   ASSERT_NE(assets_a, nullptr);
@@ -523,6 +550,13 @@ TEST(ApplicationServiceTest, IsolatesServicesAcrossApplications) {
   EXPECT_EQ(application_a.context()->GetService<AssetService>(), assets_a);
   application_a.Shutdown();
   EXPECT_EQ(application_a.context(), nullptr);
+  EXPECT_FALSE(manifest_weak);
+  EXPECT_EQ(
+      resource_snapshot.ResolveAssetFile(GURL("servicetest://main/index.html")),
+      package.GetPath().AppendASCII("assets").AppendASCII("ui").AppendASCII(
+          "index.html"));
+  EXPECT_FALSE(resource_snapshot.ResolveAssetFile(
+      GURL("https://untrusted.example/index.html")));
   RunPendingBrowserTasks();
 }
 

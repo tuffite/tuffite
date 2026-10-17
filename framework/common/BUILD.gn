@@ -1,71 +1,29 @@
 # Copyright 2026 The Tuffite Authors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-
 import("//tuffite/tuffite_in_chromium.gni")
-
 assert(tuffite_in_chromium)
-
 import("//testing/test.gni")
-
-action("scope_registry") {
-  script = "//tuffite/build/scope_registry.py"
-  inputs = [ "//tuffite/framework/shell_api/scope_registry.json" ]
-  outputs = [ "$target_gen_dir/scope_registry.inc" ]
-  args = [
-    rebase_path(inputs[0], root_build_dir),
-    rebase_path(outputs[0], root_build_dir),
-  ]
+source_set("switches") {
+  public = [ "switches.h" ]
+  sources = public
 }
-
-source_set("common") {
-  sources = [
-    "app_manifest.cc",
-    "app_manifest.h",
-    "constants.h",
-    "content_client.cc",
-    "content_client.h",
-  ]
-  deps = [
-    ":scope_registry",
-    "//base",
-    "//content/public/common",
-    "//net",
-    "//tuffite:buildflags",
-    "//tuffite/framework/common:capability_pattern",
-    "//ui/base",
-    "//ui/gfx",
-    "//url",
-  ]
+source_set("languages") {
+  public = [ "languages.h" ]
+  sources = public
 }
-
-source_set("capability_pattern") {
-  sources = [
-    "capability_pattern.cc",
-    "capability_pattern.h",
-  ]
-  deps = [
+source_set("access") {
+  public = [ "access.h" ]
+  sources = public + [ "access.cc" ]
+  public_deps = [
     "//base",
     "//url",
   ]
 }
-
-test("capability_pattern_unittests") {
+test("access_unittests") {
   testonly = true
-  sources = [ "capability_pattern_unittest.cc" ]
+  sources = [ "access_unittest.cc" ]
   deps = [
-    "//base",
-    "//testing/gtest",
-    "//testing/gtest:gtest_main",
-    "//tuffite/framework/common:capability_pattern",
-    "//url",
-  ]
-}
-
-test("app_manifest_unittests") {
-  testonly = true
-  sources = [ "app_manifest_unittest.cc" ]
-  deps = [
-    ":common",
+    ":access",
     "//base",
     "//testing/gtest",
     "//testing/gtest:gtest_main",

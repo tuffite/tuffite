@@ -15,13 +15,13 @@
 #include "base/task/sequenced_task_runner.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
-#include "tuffite/framework/browser/services/shell_api/commands/application_policy.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
 #include "tuffite/framework/browser/services/shell_api/commands/registry.h"
 #include "tuffite/framework/browser/services/window/window.h"
 #include "tuffite/framework/browser/services/window/window_service.h"
 #include "tuffite/framework/browser/services/window/window_service_factory.h"
 #include "tuffite/framework/browser/web_contents_role.h"
-#include "tuffite/framework/common/app_manifest.h"
 #include "url/gurl.h"
 namespace tuffite::shell_api::window {
 using generated::WindowBounds;
@@ -103,7 +103,7 @@ struct WindowCall {
   raw_ptr<::tuffite::window::WindowService> service;
   raw_ptr<Window> current;
   raw_ptr<Window> target;
-  raw_ptr<const AppManifest> manifest;
+  raw_ptr<const ManifestService> manifest;
   url::Origin origin;
 };
 // Shared authorization and serialization, without dispatching native
@@ -203,8 +203,9 @@ void Create(const ::tuffite::dispatch::Context& context,
       return;
     }
   }
-  const GURL url = options && options->url ? GURL(*options->url)
-                                           : call->manifest->entry_url();
+  const GURL url = options && options->url
+                       ? GURL(*options->url)
+                       : call->manifest->app_info().entry_url;
   if (!call->manifest->IsWindowUrlAllowed(call->origin, url)) {
     std::move(callback).Run(kStatusAccessDenied, {});
     return;

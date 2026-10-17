@@ -8,7 +8,7 @@ Browser command implementations and route registration live in
 `framework/browser/services/shell_api/commands`. `ShellApiService` owns
 BrowserContext authorization, request cancellation, event subscriptions, and
 shutdown. Both that service and the native ABI bridge reuse the commands target.
-Commands depend on policy, utility, window, and remoting services, not on
+Commands depend on manifest, utility, window, and remoting services, not on
 `ShellApiService`.
 
 ## Directory layout
@@ -25,7 +25,7 @@ framework/browser/services/shell_api/
   commands/
     BUILD.gn                  :commands shared native handlers
     registry.{h,cc}           Registry and BuiltinRoutes()
-    application_policy.h     Manifest lookup helper
+    manifest.h     Manifest lookup helper
     <domain>.{h,cc}           Handler declarations and implementations
 ```
 
@@ -134,7 +134,7 @@ rejects Renderer callers before contacting CRD.
 Context pointers are valid only during synchronous handler invocation.
 Asynchronous handlers must copy values or capture an appropriate weak identity;
 they must not retain the Context or dereference its frame across an async boundary.
-Renderer manifest/origin checks use `ManifestFor()` in `application_policy.h`;
+Renderer manifest/origin checks use `ManifestFor()` in `manifest.h`;
 file operations continue through the manifest's path/symlink policy.
 
 Every handler completes asynchronously by invoking its callback, e.g.:

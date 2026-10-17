@@ -15,9 +15,10 @@
 #include "base/strings/string_view_util.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
-#include "tuffite/framework/browser/services/shell_api/commands/application_policy.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
 #include "tuffite/framework/browser/services/shell_api/commands/registry.h"
-#include "tuffite/framework/common/app_manifest.h"
+#include "tuffite/framework/common/access.h"
 
 namespace tuffite::shell_api::storage {
 
@@ -52,7 +53,7 @@ scoped_refptr<base::SequencedTaskRunner> StorageTaskRunner() {
 }
 
 std::optional<base::FilePath> StorageRoot(content::RenderFrameHost& frame) {
-  const AppManifest* manifest = ManifestFor(frame);
+  const ManifestService* manifest = ManifestFor(frame);
   auto data = manifest ? manifest->ResolveBaseDirectory("data") : std::nullopt;
   return data ? std::optional(data->AppendASCII("storage")) : std::nullopt;
 }
@@ -85,7 +86,7 @@ void Get(const ::tuffite::dispatch::Context& context,
       base::BindOnce(
           [](base::FilePath root,
              base::FilePath file) -> std::optional<GetResult> {
-            if (!AppManifest::HasNoSymlinkComponents(root, file)) {
+            if (!access::HasNoSymlinkComponents(root, file)) {
               return std::nullopt;
             }
             if (!base::PathExists(file)) {
@@ -134,7 +135,7 @@ void Set(const ::tuffite::dispatch::Context& context,
       base::BindOnce(
           [](base::FilePath root, base::FilePath file,
              std::vector<uint8_t> value) {
-            return AppManifest::HasNoSymlinkComponents(root, file) &&
+            return access::HasNoSymlinkComponents(root, file) &&
                    base::CreateDirectory(root) &&
                    base::ImportantFileWriter::WriteFileAtomically(
                        file, base::as_string_view(value), "TuffiteStorage");
@@ -168,7 +169,7 @@ void Remove(const ::tuffite::dispatch::Context& context,
       FROM_HERE,
       base::BindOnce(
           [](base::FilePath root, base::FilePath file) {
-            return AppManifest::HasNoSymlinkComponents(root, file) &&
+            return access::HasNoSymlinkComponents(root, file) &&
                    (!base::PathExists(file) || base::DeleteFile(file));
           },
           *root, file),

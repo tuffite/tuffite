@@ -1,14 +1,14 @@
 # Tuffite BrowserContext services
 
-This directory owns per-profile browser services: `client_hints`, `download`,
+This directory owns per-profile browser services: `client_hints`, `download`, `explorer`,
 `file_chooser`, `javascript_dialog`, `network_context`, `permission`, `shell_api`,
 `webauthn` and `window`. Their factories use Chromium's BrowserContext
 keyed-service graph.
 `devtools` and `context_menu` also live here because they implement browser and
 WebContents interactions; they use BrowserContext factories. ContextMenu depends
 on DevTools and borrows
-application policy through constructor injection. Windows shut down before menus,
-and menus shut down before DevTools. The process-wide debugging server uses a
+ManifestService through constructor injection. Menus shut down before DevTools,
+and DevTools before windows. The process-wide debugging server uses a
 weak ownership lease, separate from the profile service lifetime.
 Application-scoped services and the shared typed factory infrastructure live in
 [app/services](../../app/services/README.md).
@@ -37,3 +37,10 @@ PermissionService currently supports activation-bound sanitized clipboard writes
 Other capabilities remain denied until their backend, consent and revocation
 semantics exist. Its diagnostic logs contain permission types and decisions,
 without URLs or authentication data.
+
+ExplorerService owns profile-scoped Explorer policy resolution and navigation
+throttle creation. It implements the reusable component's ExplorerPolicyProvider
+interface and receives ManifestService through constructor injection. The
+factory creates it with BrowserContext; WindowService depends on its factory so
+window WebContents are destroyed first. Throttles retain their own navigation
+lifetime and a scheme snapshot, and policy admission stops at service shutdown.

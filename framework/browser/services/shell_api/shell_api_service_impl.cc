@@ -7,11 +7,10 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "tuffite/components/dispatch/common/codec.h"
-#include "tuffite/framework/app/services/policy/application_policy_service.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/browser/services/shell_api/commands/registry.h"
 #include "tuffite/framework/browser/web_contents_role.h"
-#include "tuffite/framework/common/app_manifest.h"
 
 namespace tuffite {
 
@@ -25,12 +24,12 @@ base::WeakPtr<ShellApiService> ShellApiServiceImpl::GetWeakPtr() {
 
 ShellApiServiceImpl::ShellApiServiceImpl(content::BrowserContext& context,
                                          HostDispatch& host,
-                                         ApplicationPolicyService& policy,
+                                         ManifestService& manifest,
                                          UtilityService& utility)
     : router_(shell_api::BuiltinRoutes()),
       browser_context_(context),
       host_(host),
-      policy_(policy),
+      manifest_(manifest),
       utility_(utility) {}
 bool ShellApiServiceImpl::IsAuthorized(content::RenderFrameHost& frame) const {
   if (stopped_ || frame.GetBrowserContext() != &browser_context_.get()) {
@@ -43,15 +42,14 @@ bool ShellApiServiceImpl::IsAuthorized(content::RenderFrameHost& frame) const {
          (role == WebContentsRole::kApp ||
           (role == WebContentsRole::kExplorer && explorer &&
            explorer->allow_shell_api)) &&
-         policy_->manifest().IsShellApiOriginAllowed(
-             frame.GetLastCommittedOrigin());
+         manifest_->IsShellApiOriginAllowed(frame.GetLastCommittedOrigin());
 }
 
 bool ShellApiServiceImpl::IsEventAuthorized(
     content::RenderFrameHost& frame) const {
   // A command allowlist must not implicitly expose unrelated business events.
-  return IsAuthorized(frame) && policy_->manifest().IsAllShellApiAllowed(
-                                    frame.GetLastCommittedOrigin());
+  return IsAuthorized(frame) &&
+         manifest_->IsAllShellApiAllowed(frame.GetLastCommittedOrigin());
 }
 
 void ShellApiServiceImpl::Dispatch(content::RenderFrameHost& frame,
@@ -76,8 +74,8 @@ void ShellApiServiceImpl::DispatchRequest(
     const std::vector<uint8_t>& payload,
     const base::UnguessableToken& document,
     Reply reply) {
-  const auto& manifest = policy_->manifest();
-  const auto prefix = manifest.shell_api_namespace() + ".";
+  const auto& manifest = *manifest_;
+  const auto prefix = manifest.app_info().shell_api_namespace + ".";
   const bool application_command = channel.starts_with(prefix);
   const auto request =
       application_command ? rpc::DecodeRequest(payload) : std::nullopt;

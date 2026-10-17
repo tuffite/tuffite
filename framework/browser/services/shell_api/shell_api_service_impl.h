@@ -14,13 +14,13 @@ namespace content {
 class BrowserContext;
 }
 namespace tuffite {
-class ApplicationPolicyService;
+class ManifestService;
 class UtilityService;
 class ShellApiServiceImpl final : public ShellApiService {
  public:
   ShellApiServiceImpl(content::BrowserContext&,
                       HostDispatch&,
-                      ApplicationPolicyService&,
+                      ManifestService&,
                       UtilityService&);
   ~ShellApiServiceImpl() override;
   base::WeakPtr<ShellApiService> GetWeakPtr() override;
@@ -49,7 +49,7 @@ class ShellApiServiceImpl final : public ShellApiService {
   rpc::Router router_;
   const raw_ref<content::BrowserContext> browser_context_;
   const raw_ref<HostDispatch> host_;
-  const raw_ref<ApplicationPolicyService> policy_;
+  const raw_ref<ManifestService> manifest_;
   const raw_ref<UtilityService> utility_;
   std::map<base::UnguessableToken, base::UnguessableToken> utility_owners_;
   std::map<base::UnguessableToken, Event> subscriptions_;

@@ -5,15 +5,17 @@
 
 #include "tuffite/framework/app/services/application_dependency_manager.h"
 #include "tuffite/framework/app/services/asset/asset_service_factory.h"
-#include "tuffite/framework/app/services/policy/application_policy_service_factory.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
 #include "tuffite/framework/app/services/remoting/remoting_service_factory.h"
 #include "tuffite/framework/app/services/utility/utility_service_factory.h"
 
 namespace tuffite {
-ApplicationContext::ApplicationContext(const AppManifest& manifest,
-                                       AbiHostBridge& bridge)
-    : manifest_(manifest), bridge_(bridge) {
-  ApplicationPolicyServiceFactory::Get();
+ApplicationContext::ApplicationContext(
+    std::unique_ptr<ManifestService> manifest,
+    AbiHostBridge& bridge)
+    : pending_manifest_(std::move(manifest)), bridge_(bridge) {
+  ManifestServiceFactory::Get();
   AssetServiceFactory::Get();
   remoting::RemotingServiceFactory::Get();
   UtilityServiceFactory::Get();

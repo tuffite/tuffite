@@ -5,6 +5,7 @@
 
 #include <memory>
 
+#include "base/command_line.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
 #include "base/strings/utf_string_conversions.h"
@@ -16,12 +17,14 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/common/content_switches.h"
 #include "third_party/blink/public/common/context_menu_data/context_menu_data.h"
 #include "third_party/blink/public/common/context_menu_data/edit_flags.h"
 #include "third_party/blink/public/mojom/context_menu/context_menu.mojom.h"
 #include "third_party/blink/public/mojom/frame/media_player_action.mojom.h"
-#include "tuffite/framework/app/services/policy/application_policy_service.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service.h"
+#include "tuffite/framework/browser/web_contents_role.h"
 #include "ui/base/clipboard/scoped_clipboard_writer.h"
 #if defined(USE_AURA)
 #include "ui/aura/client/screen_position_client.h"
@@ -239,14 +242,14 @@ class TuffiteContextMenu final : public ui::SimpleMenuModel::Delegate {
 class ContextMenuSessionImpl final : public ContextMenuSession {
  public:
   ContextMenuSessionImpl(content::WebContents* web_contents,
-                         ApplicationPolicyService& policy,
+                         base::WeakPtr<const ManifestService> manifest,
                          base::WeakPtr<DevToolsService> devtools)
-      : web_contents_(web_contents), policy_(policy), devtools_(devtools) {}
+      : web_contents_(web_contents), manifest_(manifest), devtools_(devtools) {}
   ~ContextMenuSessionImpl() override = default;
 
   void Show(content::RenderFrameHost& render_frame_host,
             const content::ContextMenuParams& params) override {
-    if (!policy_->ContextMenuAllowed(web_contents_)) {
+    if (!ContextMenuAllowed()) {
       return;
     }
     if (context_menu_runner_ && context_menu_runner_->IsRunning()) {
@@ -305,8 +308,24 @@ class ContextMenuSessionImpl final : public ContextMenuSession {
   }
 
  private:
+  bool ContextMenuAllowed() const {
+    if (!manifest_) {
+      return false;
+    }
+    if (WebContentsRoleData::IsExplorerContextMenuEnabled(web_contents_)) {
+      return true;
+    }
+    if (WebContentsRoleData::GetRole(web_contents_) != WebContentsRole::kApp) {
+      return false;
+    }
+    return manifest_->IsShellApiCommandAllowed(
+               web_contents_->GetPrimaryMainFrame()->GetLastCommittedOrigin(),
+               "tuffite.devtools.inspectElement") ||
+           base::CommandLine::ForCurrentProcess()->HasSwitch(
+               switches::kRemoteDebuggingPort);
+  }
   raw_ptr<content::WebContents> web_contents_;
-  const raw_ref<ApplicationPolicyService> policy_;
+  const base::WeakPtr<const ManifestService> manifest_;
   const base::WeakPtr<DevToolsService> devtools_;
   std::unique_ptr<TuffiteContextMenu> context_menu_;
   std::unique_ptr<views::MenuRunner> context_menu_runner_;
@@ -316,9 +335,9 @@ class ContextMenuSessionImpl final : public ContextMenuSession {
 
 std::unique_ptr<ContextMenuSession> CreateContextMenuSession(
     content::WebContents* web_contents,
-    ApplicationPolicyService& policy,
+    base::WeakPtr<const ManifestService> manifest,
     base::WeakPtr<DevToolsService> devtools) {
-  return std::make_unique<ContextMenuSessionImpl>(web_contents, policy,
+  return std::make_unique<ContextMenuSessionImpl>(web_contents, manifest,
                                                   devtools);
 }
 

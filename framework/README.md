@@ -83,7 +83,7 @@ renderer and utility clients; Chromium owns the BrowserMainParts returned by the
 browser client. BrowserMainParts owns the BrowserContext and native UI helpers.
 ContentBrowserClient injects ContextMenuService into the view adapter factory.
 The delegate owns a service-created ContextMenuSession. The session receives
-ApplicationPolicyService and DevToolsService interfaces and owns its menu state;
+ManifestService and DevToolsService interfaces and owns its menu state;
 menu runners are never shared between views.
 
 ```mermaid
@@ -130,7 +130,7 @@ adapter and duplicating ownership.
 
 ContentBrowserClient is Chromium's callback adapter. It forwards to services
 rather than implementing their business behavior. ContextMenuService owns the
-context-menu feature and depends on the profile DevToolsService factory and borrows application policy
+context-menu feature and depends on the profile DevToolsService factory and borrows ManifestService
 through constructor injection. Menu construction, command execution, permission checks, inspection
 and native coordinate conversion live in `browser/services/context_menu/`. The browser
 WebContentsViewDelegate stays a thin callback adapter, forwarding show/dismiss
@@ -323,7 +323,7 @@ windows. The service never retains the manifest or AppWindow configuration.
 Each Shell API route calls a named WindowService method directly; there is no
 second command dispatcher or WindowBackend abstraction. Reply-before-close
 ordering belongs to the Shell API close handler.
-The application policy remains borrowed and outlives every profile.
+ManifestService remains application-scoped and outlives every profile.
 
 
 WebAuthenticationService is also BrowserContext-scoped. Content's process-level
@@ -341,10 +341,20 @@ choice, not a prohibition imposed by Chromium's keyed-service framework.
 
 
 ShellApiService stays BrowserContext-scoped. Its factory injects the owning
-profile, application policy, UtilityService and HostDispatch interface. Frame
+profile, ManifestService, UtilityService and HostDispatch interface. Frame
 requests must belong to that profile, pass role/origin/command authorization,
 and retain their document token. Shutdown cancels pending requests, subscriptions
 and utility owners. The factory's weak broadcast catalog groups live profile
 services by their ApplicationContext; it neither owns services nor merges
 their request registries. Native application commands use an explicit application
 caller context rather than borrowing a renderer frame.
+
+ContentClient lives beside MainDelegate in `app/content_client.*` and is compiled
+privately into `app:app`. MainDelegate owns this process-level Chromium adapter;
+it registers application schemes and serves localized resources before the
+application service graph is available. It is shared across Chromium process
+roles and does not depend on application or profile services. Shared switches, languages, access helpers and utility IPC
+remain in common with explicit module targets. Application projections live in
+manifest/app_config.h under tuffite::app; resource snapshots live in
+asset/asset_configuration.h under tuffite::asset. See common/README.md for the
+module boundaries.

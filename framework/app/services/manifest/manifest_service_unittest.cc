@@ -1,10 +1,9 @@
 // Copyright 2026 The Tuffite Authors
 // SPDX-License-Identifier: MIT OR Apache-2.0
-#include "tuffite/framework/common/app_manifest.h"
-
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
 #include "url/url_util.h"
 
 namespace tuffite {
@@ -220,7 +219,7 @@ class OriginCapabilityTest : public testing::Test {
     ASSERT_TRUE(root_.CreateUniqueTempDir());
     ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
                                 kManifest));
-    manifest_ = AppManifest::Load(root_.GetPath(), &error_);
+    manifest_ = ManifestServiceFactory::Load(root_.GetPath(), &error_);
     ASSERT_TRUE(manifest_) << error_;
   }
   url::Origin Origin(const char* value) {
@@ -230,11 +229,11 @@ class OriginCapabilityTest : public testing::Test {
  protected:
   url::ScopedSchemeRegistryForTests registry_;
   base::ScopedTempDir root_;
-  std::optional<AppManifest> manifest_;
+  std::unique_ptr<ManifestService> manifest_;
   std::string error_;
 };
 TEST_F(OriginCapabilityTest, ProductNameDefaultsToApplicationIdentity) {
-  EXPECT_EQ(manifest_->product_name(), "com.example.originlab");
+  EXPECT_EQ(manifest_->app_info().product_name, "com.example.originlab");
 }
 
 TEST_F(OriginCapabilityTest, ProductNameIsIndependentFromIdentity) {
@@ -242,10 +241,10 @@ TEST_F(OriginCapabilityTest, ProductNameIsIndependentFromIdentity) {
   text.insert(1, "\"productName\":\"Origin Lab\",");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), text));
-  auto manifest = AppManifest::Load(root_.GetPath(), &error_);
+  auto manifest = ManifestServiceFactory::Load(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
-  EXPECT_EQ(manifest->product_name(), "Origin Lab");
-  EXPECT_EQ(manifest->application_id(), "com.example.originlab");
+  EXPECT_EQ(manifest->app_info().product_name, "Origin Lab");
+  EXPECT_EQ(manifest->app_info().identifier, "com.example.originlab");
 }
 
 TEST_F(OriginCapabilityTest, InvalidProductNamesAreRejected) {
@@ -254,7 +253,8 @@ TEST_F(OriginCapabilityTest, InvalidProductNamesAreRejected) {
     text.insert(1, std::string("\"productName\":") + value + ",");
     ASSERT_TRUE(
         base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), text));
-    EXPECT_FALSE(AppManifest::Load(root_.GetPath(), &error_)) << value;
+    EXPECT_FALSE(ManifestServiceFactory::Load(root_.GetPath(), &error_))
+        << value;
   }
 }
 
@@ -266,7 +266,7 @@ TEST_F(OriginCapabilityTest,
                      "{\"mode\": 7}}, \"parser\": {}},");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), configured));
-  auto manifest = AppManifest::Load(root_.GetPath(), &error_);
+  auto manifest = ManifestServiceFactory::Load(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
   auto configurations = manifest->UtilityConfigurations();
   ASSERT_EQ(configurations.size(), 1u);
@@ -277,7 +277,7 @@ TEST_F(OriginCapabilityTest,
                      "\"" + std::string(64 * 1024, 'x') + "\"");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), configured));
-  EXPECT_FALSE(AppManifest::Load(root_.GetPath(), &error_));
+  EXPECT_FALSE(ManifestServiceFactory::Load(root_.GetPath(), &error_));
 }
 TEST_F(OriginCapabilityTest, UnionGrantsRemainOriginScoped) {
   auto artifact = Origin("originlab://demo.artifact/page");
@@ -299,69 +299,82 @@ TEST_F(OriginCapabilityTest, UnionGrantsRemainOriginScoped) {
       Origin("data:text/html,hello"), "tuffite.path.directories"));
   EXPECT_FALSE(manifest_->IsExplorerOriginAllowed(artifact));
   EXPECT_TRUE(manifest_->IsExplorerOriginAllowed(Origin("originlab://main/")));
-  EXPECT_TRUE(manifest_->IsAppUrl(GURL("originlab://demo.preview/index.html")));
-  EXPECT_FALSE(manifest_->IsAppUrl(GURL("originlab://unknown/index.html")));
+  EXPECT_TRUE(manifest_->assets().IsAppUrl(
+      GURL("originlab://demo.preview/index.html")));
+  EXPECT_FALSE(
+      manifest_->assets().IsAppUrl(GURL("originlab://unknown/index.html")));
   // Chromium registers application schemes as host-only origins.
-  EXPECT_TRUE(
-      manifest_->IsAppUrl(GURL("originlab://demo.preview:443/index.html")));
+  EXPECT_TRUE(manifest_->assets().IsAppUrl(
+      GURL("originlab://demo.preview:443/index.html")));
 }
 TEST_F(OriginCapabilityTest,
        AssetsAndFrameworkScopesAreIndependentOfBusinessGrants) {
   const auto app = Origin("originlab://main/");
   const auto public_origin = Origin("originlab://public/");
-  EXPECT_TRUE(manifest_->IsAppUrl(GURL("originlab://public/index.html")));
+  EXPECT_TRUE(
+      manifest_->assets().IsAppUrl(GURL("originlab://public/index.html")));
   EXPECT_FALSE(manifest_->IsShellApiOriginAllowed(public_origin));
   EXPECT_FALSE(manifest_->IsExplorerOriginAllowed(public_origin));
   EXPECT_FALSE(manifest_->IsShellApiCommandAllowed(app, "tuffite.storage.get"));
   EXPECT_TRUE(
       manifest_->IsShellApiCommandAllowed(app, "originlab.commands.allowed"));
-  EXPECT_TRUE(
-      manifest_->IsFileSystemPathAllowed(app, "resource", "allowed/a", false));
-  EXPECT_FALSE(manifest_->IsFileSystemPathAllowed(public_origin, "resource",
-                                                  "allowed/a", false));
-  EXPECT_FALSE(
-      manifest_->IsFileSystemPathAllowed(app, "resource", "private/a", false));
+  EXPECT_TRUE(manifest_->ResolveFileSystemPath(app, "resource", "allowed/a",
+                                               false, "tuffite.fs.readFile"));
+  EXPECT_FALSE(manifest_->ResolveFileSystemPath(
+      public_origin, "resource", "allowed/a", false, "tuffite.fs.readFile"));
+  EXPECT_FALSE(manifest_->ResolveFileSystemPath(app, "resource", "private/a",
+                                                false, "tuffite.fs.readFile"));
   EXPECT_TRUE(manifest_->IsNetworkUrlAllowed(
       app, GURL("https://example.com/api/items")));
   EXPECT_FALSE(manifest_->IsNetworkUrlAllowed(
       public_origin, GURL("https://example.com/api/items")));
   EXPECT_FALSE(
       manifest_->IsNetworkUrlAllowed(app, GURL("https://example.com/private")));
-  EXPECT_EQ(manifest_->ResolveAssetRoute(GURL("originlab://main/exact")),
-            "/ui/index.html");
-  EXPECT_EQ(manifest_->ResolveAssetRoute(GURL("originlab://main/app/deep")),
-            "/ui/index.html");
-  EXPECT_EQ(manifest_->ResolveAssetRoute(GURL("originlab://public/app/deep")),
+  EXPECT_EQ(
+      manifest_->assets().ResolveAssetRoute(GURL("originlab://main/exact")),
+      "/ui/index.html");
+  EXPECT_EQ(
+      manifest_->assets().ResolveAssetRoute(GURL("originlab://main/app/deep")),
+      "/ui/index.html");
+  EXPECT_EQ(manifest_->assets().ResolveAssetRoute(
+                GURL("originlab://public/app/deep")),
             "/ui/app/deep");
-  EXPECT_EQ(manifest_->ResolveAssetRoute(GURL("originlab://entryonly/home")),
-            "/ui/index.html");
-  EXPECT_TRUE(
-      manifest_->ResolveAssetRoute(GURL("originlab://entryonly/missing"))
-          .empty());
-  EXPECT_TRUE(
-      manifest_->ResolveAssetRoute(GURL("originlab://entryonly/")).empty());
+  EXPECT_EQ(
+      manifest_->assets().ResolveAssetRoute(GURL("originlab://entryonly/home")),
+      "/ui/index.html");
+  EXPECT_TRUE(manifest_->assets()
+                  .ResolveAssetRoute(GURL("originlab://entryonly/missing"))
+                  .empty());
+  EXPECT_TRUE(manifest_->assets()
+                  .ResolveAssetRoute(GURL("originlab://entryonly/"))
+                  .empty());
 }
 TEST_F(OriginCapabilityTest, PackagedModulePathsReuseOriginAndRouteChecks) {
-  auto path = manifest_->ResolveAssetFile(GURL("originlab://main/exact"));
+  auto path =
+      manifest_->assets().ResolveAssetFile(GURL("originlab://main/exact"));
   ASSERT_TRUE(path);
-  EXPECT_EQ(*path, manifest_->asset_root().AppendASCII("ui/index.html"));
-  EXPECT_FALSE(manifest_->ResolveAssetFile(GURL("https://example.com/exact")));
-  EXPECT_FALSE(manifest_->ResolveAssetFile(GURL("file:///tmp/exact.html")));
-  EXPECT_FALSE(manifest_->ResolveAssetFile(GURL("originlab://unknown/exact")));
+  EXPECT_EQ(*path, manifest_->assets().root.AppendASCII("ui/index.html"));
   EXPECT_FALSE(
-      manifest_->ResolveAssetFile(GURL("originlab://entryonly/missing")));
+      manifest_->assets().ResolveAssetFile(GURL("https://example.com/exact")));
+  EXPECT_FALSE(
+      manifest_->assets().ResolveAssetFile(GURL("file:///tmp/exact.html")));
+  EXPECT_FALSE(
+      manifest_->assets().ResolveAssetFile(GURL("originlab://unknown/exact")));
+  EXPECT_FALSE(manifest_->assets().ResolveAssetFile(
+      GURL("originlab://entryonly/missing")));
   // A fixed-file route intentionally ignores the request's suffix.
-  EXPECT_EQ(manifest_->ResolveAssetFile(
+  EXPECT_EQ(manifest_->assets().ResolveAssetFile(
                 GURL("originlab://main/app/%2e%2e%2fsecret.mjs")),
             path);
   // A directory route must reject decoded parent components.
-  EXPECT_FALSE(manifest_->ResolveAssetFile(
+  EXPECT_FALSE(manifest_->assets().ResolveAssetFile(
       GURL("originlab://public/app/%2e%2e%2fsecret.mjs")));
 }
 
 TEST_F(OriginCapabilityTest, OwnerNavigationDoesNotInheritAssetAuthority) {
   const auto owner = Origin("originlab://main/");
-  EXPECT_TRUE(manifest_->IsAppUrl(GURL("originlab://public/index.html")));
+  EXPECT_TRUE(
+      manifest_->assets().IsAppUrl(GURL("originlab://public/index.html")));
   EXPECT_TRUE(manifest_->IsExplorerNavigationAllowed(
       owner, GURL("originlab://main/index.html")));
   EXPECT_TRUE(manifest_->IsExplorerNavigationAllowed(
@@ -373,12 +386,12 @@ TEST_F(OriginCapabilityTest, OwnerNavigationDoesNotInheritAssetAuthority) {
 TEST_F(OriginCapabilityTest,
        ResourceDenialsOverrideUnionWithoutLeakingMethodScopes) {
   const auto owner = Origin("originlab://main/");
-  EXPECT_TRUE(
-      manifest_->IsFileSystemPathAllowed(owner, "data", "safe/a", false));
-  EXPECT_FALSE(
-      manifest_->IsFileSystemPathAllowed(owner, "data", "secrets/a", false));
-  EXPECT_FALSE(manifest_->IsFileSystemPathAllowed(owner, "data", "safe/a",
-                                                  false, "tuffite.fs.exists"));
+  EXPECT_TRUE(manifest_->ResolveFileSystemPath(owner, "data", "safe/a", false,
+                                               "tuffite.fs.readFile"));
+  EXPECT_FALSE(manifest_->ResolveFileSystemPath(owner, "data", "secrets/a",
+                                                false, "tuffite.fs.readFile"));
+  EXPECT_FALSE(manifest_->ResolveFileSystemPath(owner, "data", "safe/a", false,
+                                                "tuffite.fs.exists"));
   EXPECT_TRUE(manifest_->IsShellApiScopeAllowed(owner, "tuffite.window.focus",
                                                 "current"));
   EXPECT_FALSE(manifest_->IsShellApiScopeAllowed(owner, "tuffite.window.focus",
@@ -396,7 +409,7 @@ TEST_F(OriginCapabilityTest,
   contents.replace(pos, std::string("originlab.*").size(), "*");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), contents));
-  auto manifest = AppManifest::Load(root_.GetPath(), &error_);
+  auto manifest = ManifestServiceFactory::Load(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
   const auto owner = Origin("originlab://main/");
   EXPECT_TRUE(
@@ -404,12 +417,12 @@ TEST_F(OriginCapabilityTest,
   EXPECT_FALSE(manifest->IsShellApiCommandAllowed(owner, "tuffite.unknown"));
   EXPECT_FALSE(manifest->IsShellApiCommandAllowed(Origin("originlab://public/"),
                                                   "tuffite.path.directories"));
-  EXPECT_TRUE(
-      manifest->IsFileSystemPathAllowed(owner, "data", "safe/a", false));
-  EXPECT_FALSE(
-      manifest->IsFileSystemPathAllowed(owner, "data", "secrets/a", false));
-  EXPECT_FALSE(manifest->IsFileSystemPathAllowed(owner, "data", "safe/a", false,
-                                                 "tuffite.fs.exists"));
+  EXPECT_TRUE(manifest->ResolveFileSystemPath(owner, "data", "safe/a", false,
+                                              "tuffite.fs.readFile"));
+  EXPECT_FALSE(manifest->ResolveFileSystemPath(owner, "data", "secrets/a",
+                                               false, "tuffite.fs.readFile"));
+  EXPECT_FALSE(manifest->ResolveFileSystemPath(owner, "data", "safe/a", false,
+                                               "tuffite.fs.exists"));
   EXPECT_FALSE(manifest->IsNetworkUrlAllowed(
       owner, GURL("https://example.com/api/private/token")));
 }
@@ -425,7 +438,7 @@ TEST_F(OriginCapabilityTest, NamespaceGroupScopesApplyOnlyToResourceMethods) {
   contents.insert(pos, R"("tuffite.window.current":"0000000000000000",)");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), contents));
-  auto manifest = AppManifest::Load(root_.GetPath(), &error_);
+  auto manifest = ManifestServiceFactory::Load(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
   const auto owner = Origin("originlab://main/");
   EXPECT_TRUE(
@@ -441,7 +454,7 @@ TEST_F(OriginCapabilityTest, NamespaceGroupScopesApplyOnlyToResourceMethods) {
                    R"({"path":"data/*"})");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), contents));
-  EXPECT_FALSE(AppManifest::Load(root_.GetPath(), &error_));
+  EXPECT_FALSE(ManifestServiceFactory::Load(root_.GetPath(), &error_));
 }
 
 TEST_F(OriginCapabilityTest, InvalidScopesAndPatternsFailAtStartup) {
@@ -452,7 +465,7 @@ TEST_F(OriginCapabilityTest, InvalidScopesAndPatternsFailAtStartup) {
                   "tuffite.path.read*");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), invalid));
-  EXPECT_FALSE(AppManifest::Load(root_.GetPath(), &error_));
+  EXPECT_FALSE(ManifestServiceFactory::Load(root_.GetPath(), &error_));
 }
 
 TEST_F(OriginCapabilityTest, WireCommandCannotBeDisguisedAsAllowedChannel) {
@@ -464,8 +477,9 @@ TEST_F(OriginCapabilityTest, WireCommandCannotBeDisguisedAsAllowedChannel) {
       manifest_->IsApplicationCommandRequest("originlab.commands.unknown", 1));
 }
 TEST_F(OriginCapabilityTest, DevelopmentAliasesOnlyPackagedEntryGrants) {
-  ASSERT_TRUE(manifest_->ApplyDevelopmentUrl(
-      GURL("http://127.0.0.1:5183/index.html"), &error_));
+  manifest_ = ManifestServiceFactory::Load(
+      root_.GetPath(), &error_, GURL("http://127.0.0.1:5183/index.html"));
+  ASSERT_TRUE(manifest_) << error_;
   auto dev = Origin("http://127.0.0.1:5183/");
   EXPECT_TRUE(manifest_->IsExplorerOriginAllowed(dev));
   EXPECT_TRUE(
@@ -474,6 +488,29 @@ TEST_F(OriginCapabilityTest, DevelopmentAliasesOnlyPackagedEntryGrants) {
       Origin("http://127.0.0.1:5184/"), "originlab.commands.allowed"));
   EXPECT_EQ(manifest_->ExecuteJavaScriptOrigins(dev),
             std::vector<std::string>({"*"}));
+}
+TEST_F(OriginCapabilityTest, RejectsInvalidDevelopmentUrlBeforePublication) {
+  EXPECT_FALSE(ManifestServiceFactory::Load(
+      root_.GetPath(), &error_, GURL("https://untrusted.example/")));
+  EXPECT_FALSE(error_.empty());
+}
+TEST(ManifestBootstrapTest, ReadsBeforeApplicationSchemeRegistration) {
+  base::ScopedTempDir root;
+  ASSERT_TRUE(root.CreateUniqueTempDir());
+  ASSERT_TRUE(base::WriteFile(
+      root.GetPath().AppendASCII("tuffite.json"),
+      R"({"app":{"windows":[{"url":"bootstraponly://main/index.html"}],"network":{"disableHttp2":true}}})"));
+  std::string error;
+  EXPECT_EQ(
+      ManifestServiceFactory::ReadApplicationScheme(root.GetPath(), &error),
+      std::make_optional(std::string("bootstraponly")));
+  EXPECT_TRUE(ManifestServiceFactory::ReadNetworkDisableHttp2(root.GetPath()));
+  ASSERT_TRUE(base::WriteFile(
+      root.GetPath().AppendASCII("tuffite.json"),
+      R"({"app":{"windows":[{"url":"https://example.com/"}]}})"));
+  EXPECT_FALSE(
+      ManifestServiceFactory::ReadApplicationScheme(root.GetPath(), &error));
+  EXPECT_FALSE(ManifestServiceFactory::ReadNetworkDisableHttp2(root.GetPath()));
 }
 }  // namespace
 }  // namespace tuffite

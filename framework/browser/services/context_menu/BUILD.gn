@@ -23,8 +23,9 @@ source_set("context_menu") {
   ]
   deps = [
     "//content/public/browser",
+    "//content/public/common",
     "//third_party/blink/public:blink",
-    "//tuffite/framework/app/services/policy",
+    "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/browser:support",
     "//tuffite/framework/browser/services/devtools",
     "//ui/base",

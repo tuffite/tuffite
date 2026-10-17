@@ -12,9 +12,10 @@
 #include "base/strings/string_view_util.h"
 #include "base/task/thread_pool.h"
 #include "content/public/browser/render_frame_host.h"
-#include "tuffite/framework/browser/services/shell_api/commands/application_policy.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
 #include "tuffite/framework/browser/services/shell_api/commands/registry.h"
-#include "tuffite/framework/common/app_manifest.h"
+#include "tuffite/framework/common/access.h"
 
 namespace tuffite::shell_api::fs {
 
@@ -44,7 +45,7 @@ std::optional<ResolvedPath> Resolve(content::RenderFrameHost& frame,
                                     std::string_view relative,
                                     bool write,
                                     std::string_view method) {
-  const AppManifest* manifest = ManifestFor(frame);
+  const ManifestService* manifest = ManifestFor(frame);
   auto path =
       manifest ? manifest->ResolveFileSystemPath(frame.GetLastCommittedOrigin(),
                                                  base, relative, write, method)
@@ -63,7 +64,7 @@ void RunBoolean(ResolvedPath path, Work work, Callback callback) {
       {base::MayBlock(), base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
       base::BindOnce(
           [](ResolvedPath path, Work work) {
-            return AppManifest::HasNoSymlinkComponents(path.root, path.path) &&
+            return access::HasNoSymlinkComponents(path.root, path.path) &&
                    std::move(work).Run(path.path);
           },
           std::move(path), std::move(work)),
@@ -94,7 +95,7 @@ void ReadFile(const ::tuffite::dispatch::Context& context,
       {base::MayBlock(), base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
       base::BindOnce(
           [](ResolvedPath path) -> std::optional<std::vector<uint8_t>> {
-            if (!AppManifest::HasNoSymlinkComponents(path.root, path.path)) {
+            if (!access::HasNoSymlinkComponents(path.root, path.path)) {
               return std::nullopt;
             }
             const auto size = base::GetFileSize(path.path);
@@ -165,7 +166,7 @@ void Exists(const ::tuffite::dispatch::Context& context,
       {base::MayBlock(), base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
       base::BindOnce(
           [](ResolvedPath path) -> std::optional<bool> {
-            if (!AppManifest::HasNoSymlinkComponents(path.root, path.path)) {
+            if (!access::HasNoSymlinkComponents(path.root, path.path)) {
               return std::nullopt;
             }
             return base::PathExists(path.path);

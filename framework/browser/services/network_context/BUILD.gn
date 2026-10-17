@@ -22,8 +22,8 @@ source_set("network_context") {
     "//components/os_crypt/async/browser:key_provider_interface",
     "//components/prefs",
     "//services/network/public/cpp",
+    "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/browser:support",
-    "//tuffite/framework/common",
   ]
   if (is_mac) {
     sources += [

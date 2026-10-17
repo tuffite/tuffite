@@ -4,6 +4,7 @@
 #ifndef TUFFITE_FRAMEWORK_APP_APPLICATION_CONTEXT_H_
 #define TUFFITE_FRAMEWORK_APP_APPLICATION_CONTEXT_H_
 
+#include <memory>
 #include <type_traits>
 
 #include "base/memory/raw_ref.h"
@@ -12,7 +13,8 @@
 namespace tuffite {
 
 class AbiHostBridge;
-class AppManifest;
+class ManifestService;
+class ManifestServiceFactory;
 
 namespace internal {
 template <typename Service>
@@ -24,7 +26,7 @@ const void* ApplicationServiceTypeKey() {
 
 class ApplicationContext final {
  public:
-  ApplicationContext(const AppManifest&, AbiHostBridge&);
+  ApplicationContext(std::unique_ptr<ManifestService>, AbiHostBridge&);
   ~ApplicationContext();
   ApplicationContext(const ApplicationContext&) = delete;
   ApplicationContext& operator=(const ApplicationContext&) = delete;
@@ -36,13 +38,14 @@ class ApplicationContext final {
         internal::ApplicationServiceTypeKey<Service>(), create));
   }
 
-  const AppManifest& manifest() const { return *manifest_; }
   AbiHostBridge& bridge() const { return *bridge_; }
 
  private:
   KeyedService* GetServiceByType(const void* service_type, bool create);
 
-  const raw_ref<const AppManifest> manifest_;
+  friend class ManifestServiceFactory;
+  // Consumed once when the service graph eagerly creates ManifestService.
+  std::unique_ptr<ManifestService> pending_manifest_;
   const raw_ref<AbiHostBridge> bridge_;
 };
 

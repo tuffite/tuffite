@@ -48,7 +48,6 @@ test("abi_host_bridge_unittests") {
     "//tuffite/framework/browser",
     "//tuffite/framework/browser:support",
     "//tuffite/framework/browser/services/shell_api/commands",
-    "//tuffite/framework/common",
     "//tuffite/framework/public:abi",
     "//url",
   ]

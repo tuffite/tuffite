@@ -8,18 +8,18 @@
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "services/network/public/cpp/self_deleting_url_loader_factory.h"
-#include "tuffite/framework/common/app_manifest.h"
+#include "tuffite/framework/app/services/asset/asset_configuration.h"
 
 namespace tuffite {
 
 class AppURLLoaderFactory final : public network::SelfDeletingURLLoaderFactory {
  public:
   static mojo::PendingRemote<network::mojom::URLLoaderFactory> Create(
-      const AppManifest&);
+      const asset::AssetConfiguration&);
 
   AppURLLoaderFactory(
       mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
-      const AppManifest& manifest,
+      const asset::AssetConfiguration& assets,
       base::SelfDeletingPassKey key);
 
   AppURLLoaderFactory(const AppURLLoaderFactory&) = delete;
@@ -27,7 +27,7 @@ class AppURLLoaderFactory final : public network::SelfDeletingURLLoaderFactory {
 
  private:
   ~AppURLLoaderFactory() override;
-  const AppManifest manifest_;
+  const asset::AssetConfiguration assets_;
 
   void CreateLoaderAndStart(
       mojo::PendingReceiver<network::mojom::URLLoader> loader,

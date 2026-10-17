@@ -1,11 +1,11 @@
 // Copyright 2026 The Tuffite Authors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-#include "tuffite/framework/common/content_client.h"
+#include "tuffite/framework/app/content_client.h"
 
 #include "base/command_line.h"
 #include "base/memory/ref_counted_memory.h"
-#include "tuffite/framework/common/constants.h"
+#include "tuffite/framework/common/switches.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
 

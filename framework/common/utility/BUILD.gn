@@ -4,7 +4,8 @@
 import("//mojo/public/tools/bindings/mojom.gni")
 
 source_set("service_name") {
-  sources = [ "utility_service_name.h" ]
+  public = [ "utility_service_name.h" ]
+  sources = public
 }
 
 mojom("mojom") {

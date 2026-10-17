@@ -1,8 +1,8 @@
 // Copyright 2026 The Tuffite Authors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-#ifndef TUFFITE_FRAMEWORK_COMMON_CONTENT_CLIENT_H_
-#define TUFFITE_FRAMEWORK_COMMON_CONTENT_CLIENT_H_
+#ifndef TUFFITE_FRAMEWORK_APP_CONTENT_CLIENT_H_
+#define TUFFITE_FRAMEWORK_APP_CONTENT_CLIENT_H_
 
 #include "content/public/common/content_client.h"
 
@@ -26,4 +26,4 @@ class ContentClient final : public content::ContentClient {
 
 }  // namespace tuffite
 
-#endif  // TUFFITE_FRAMEWORK_COMMON_CONTENT_CLIENT_H_
+#endif  // TUFFITE_FRAMEWORK_APP_CONTENT_CLIENT_H_

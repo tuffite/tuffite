@@ -4,6 +4,7 @@
 #include "tuffite/framework/browser/services/window/window_service_factory.h"
 
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
+#include "tuffite/framework/browser/services/explorer/explorer_service_factory.h"
 #include "tuffite/framework/browser/services/file_chooser/file_chooser_service_factory.h"
 #include "tuffite/framework/browser/services/javascript_dialog/javascript_dialog_service_factory.h"
 #include "tuffite/framework/browser/services/window/window_service_impl.h"
@@ -17,6 +18,7 @@ WindowServiceFactory::WindowServiceFactory()
     : BrowserContextKeyedServiceFactory(
           "TuffiteWindow",
           BrowserContextDependencyManager::GetInstance()) {
+  DependsOn(ExplorerServiceFactory::Get());
   DependsOn(JavaScriptDialogServiceFactory::Get());
   DependsOn(FileChooserServiceFactory::Get());
 }

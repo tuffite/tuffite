@@ -9,7 +9,7 @@
 
 #include "build/build_config.h"
 #include "content/public/app/content_main_delegate.h"
-#include "tuffite/framework/common/app_manifest.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
 
 namespace tuffite {
 class AbiHostBridge;
@@ -23,7 +23,7 @@ class MainDelegate final : public content::ContentMainDelegate {
  public:
   explicit MainDelegate(std::unique_ptr<AbiHostBridge> bridge);
   int Run(int argc, const char* const* argv, void* sandbox_info);
-  bool StartUp(AppManifest manifest);
+  bool StartUp(std::unique_ptr<ManifestService> manifest);
   void Shutdown();
   AbiHostBridge& bridge() { return *bridge_; }
   ApplicationContext* context() { return context_.get(); }
@@ -44,7 +44,6 @@ class MainDelegate final : public content::ContentMainDelegate {
 #endif
 
   std::unique_ptr<AbiHostBridge> bridge_;
-  std::optional<AppManifest> manifest_;
   std::unique_ptr<ApplicationContext> context_;
   std::unique_ptr<ContentClient> content_client_;
   std::unique_ptr<ContentBrowserClient> browser_client_;

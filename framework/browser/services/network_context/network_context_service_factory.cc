@@ -14,9 +14,9 @@
 #include "services/network/public/cpp/cookie_encryption_provider_impl.h"
 #include "services/network/public/cpp/transferable_directory.h"
 #include "services/network/public/mojom/network_context.mojom.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/browser_context.h"
 #include "tuffite/framework/browser/services/network_context/network_context_service.h"
-#include "tuffite/framework/common/app_manifest.h"
 
 #if BUILDFLAG(IS_MAC)
 #include "tuffite/framework/browser/services/network_context/safe_storage_key_provider_mac.h"
@@ -40,10 +40,10 @@ class NetworkContextServiceImpl final : public NetworkContextService {
                           std::unique_ptr<os_crypt_async::KeyProvider>>>
         providers;
 #if BUILDFLAG(IS_MAC)
-    const auto& manifest = BrowserContext::GetFrom(*context).manifest();
-    providers.emplace_back(
-        0, CreateSafeStorageKeyProvider(manifest.application_id(),
-                                        manifest.product_name(), path_));
+    const auto& manifest = BrowserContext::GetFrom(*context).manifest_service();
+    providers.emplace_back(0, CreateSafeStorageKeyProvider(
+                                  manifest.app_info().identifier,
+                                  manifest.app_info().product_name, path_));
 #elif BUILDFLAG(IS_WIN) || defined(TUFFITE_USE_SECRET_PORTAL)
     auto registry = base::MakeRefCounted<PrefRegistrySimple>();
 #if BUILDFLAG(IS_WIN)

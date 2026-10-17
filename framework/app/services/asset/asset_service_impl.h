@@ -7,15 +7,15 @@
 #include "base/memory/raw_ref.h"
 #include "tuffite/framework/app/services/asset/asset_service.h"
 namespace tuffite {
-class AppManifest;
+class ManifestService;
 class AssetServiceImpl final : public AssetService {
  public:
-  explicit AssetServiceImpl(const AppManifest& manifest);
+  explicit AssetServiceImpl(const ManifestService& manifest);
   mojo::PendingRemote<network::mojom::URLLoaderFactory> CreateLoaderFactory()
       override;
 
  private:
-  const raw_ref<const AppManifest> manifest_;
+  const raw_ref<const ManifestService> manifest_;
 };
 }  // namespace tuffite
 

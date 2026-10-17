@@ -27,11 +27,10 @@ source_set("shell_api") {
     "//content/public/browser",
     "//tuffite/framework/app:context",
     "//tuffite/framework/app:host_headers",
-    "//tuffite/framework/app/services/policy",
+    "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/app/services/utility",
     "//tuffite/framework/browser:support",
     "//tuffite/framework/browser/services/shell_api/commands",
     "//tuffite/framework/browser/services/window",
-    "//tuffite/framework/common",
   ]
 }

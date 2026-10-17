@@ -32,12 +32,14 @@
 #include "tuffite/framework/app/abi_host_bridge.h"
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/services/asset/asset_service.h"
-#include "tuffite/framework/app/services/policy/application_policy_service.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/browser_context.h"
 #include "tuffite/framework/browser/browser_main_parts.h"
 #include "tuffite/framework/browser/services/context_menu/context_menu_service.h"
 #include "tuffite/framework/browser/services/context_menu/context_menu_service_factory.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service.h"
+#include "tuffite/framework/browser/services/explorer/explorer_service.h"
+#include "tuffite/framework/browser/services/explorer/explorer_service_factory.h"
 #include "tuffite/framework/browser/services/network_context/network_context_service.h"
 #include "tuffite/framework/browser/services/network_context/network_context_service_factory.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service.h"
@@ -47,8 +49,8 @@
 #include "tuffite/framework/browser/services/window/video_overlay_window.h"
 #include "tuffite/framework/browser/web_contents_role.h"
 #include "tuffite/framework/browser/web_contents_view_delegate.h"
-#include "tuffite/framework/common/app_manifest.h"
-#include "tuffite/framework/common/constants.h"
+#include "tuffite/framework/common/languages.h"
+#include "tuffite/framework/common/switches.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 #include "url/url_constants.h"
@@ -126,11 +128,11 @@ bool ContentBrowserClient::IsHandledURL(const GURL& url) {
   if (!url.is_valid()) {
     return false;
   }
-  const AppManifest* manifest =
-      application_ ? &application_->manifest() : nullptr;
+  const ManifestService* manifest =
+      application_ ? application_->GetService<ManifestService>() : nullptr;
   return (url.scheme() ==
           (manifest
-               ? manifest->app_scheme()
+               ? manifest->app_info().scheme
                : base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
                      kAppSchemeSwitch))) ||
          url.SchemeIsHTTPOrHTTPS() || url.SchemeIs(url::kWsScheme) ||
@@ -167,12 +169,13 @@ ContentBrowserClient::CreateWindowForVideoPictureInPicture(
 void ContentBrowserClient::AppendExtraCommandLineSwitches(
     base::CommandLine* command_line,
     int child_process_id) {
-  const AppManifest* manifest =
-      application_ ? &application_->manifest() : nullptr;
+  const ManifestService* manifest =
+      application_ ? application_->GetService<ManifestService>() : nullptr;
   if (manifest) {
     command_line->AppendSwitchASCII(kShellApiOriginsSwitch,
                                     manifest->SerializeShellApiOrigins());
-    command_line->AppendSwitchASCII(kAppSchemeSwitch, manifest->app_scheme());
+    command_line->AppendSwitchASCII(kAppSchemeSwitch,
+                                    manifest->app_info().scheme);
     const std::string explorer_origins = manifest->SerializeExplorerOrigins();
     command_line->AppendSwitchASCII(kExplorerOriginsSwitch, explorer_origins);
     if (!explorer_origins.empty()) {
@@ -203,24 +206,25 @@ void ContentBrowserClient::RegisterBrowserInterfaceBindersForFrame(
   map->Add<mojom::ExplorerHost>(base::BindRepeating(
       [](content::RenderFrameHost* frame,
          mojo::PendingReceiver<mojom::ExplorerHost> receiver) {
-        ExplorerHost::Bind(
-            frame, std::move(receiver),
-            &BrowserContext::GetFrom(*frame).application_policy());
+        ExplorerHost::Bind(frame, std::move(receiver),
+                           ExplorerServiceFactory::GetForBrowserContext(
+                               frame->GetBrowserContext()));
       }));
   map->Add<mojom::ExplorerSurfaceHost>(base::BindRepeating(
       [](content::RenderFrameHost* frame,
          mojo::PendingReceiver<mojom::ExplorerSurfaceHost> receiver) {
-        ExplorerSurfaceHost::Bind(
-            frame, std::move(receiver),
-            &BrowserContext::GetFrom(*frame).application_policy());
+        ExplorerSurfaceHost::Bind(frame, std::move(receiver),
+                                  ExplorerServiceFactory::GetForBrowserContext(
+                                      frame->GetBrowserContext()));
       }));
 }
 
 void ContentBrowserClient::CreateThrottlesForNavigation(
     content::NavigationThrottleRegistry& registry) {
   CHECK(application_);
-  application_->GetService<ApplicationPolicyService>()->AddNavigationThrottles(
-      registry);
+  ExplorerServiceFactory::GetForBrowserContext(
+      registry.GetNavigationHandle().GetWebContents()->GetBrowserContext())
+      ->AddNavigationThrottles(registry);
 }
 
 std::unique_ptr<content::BrowserMainParts>
@@ -234,9 +238,9 @@ mojo::PendingRemote<network::mojom::URLLoaderFactory>
 ContentBrowserClient::CreateNonNetworkNavigationURLLoaderFactory(
     const std::string& scheme,
     content::FrameTreeNodeId frame_tree_node_id) {
-  const AppManifest* manifest =
-      application_ ? &application_->manifest() : nullptr;
-  if (manifest && scheme == manifest->app_scheme()) {
+  const ManifestService* manifest =
+      application_ ? application_->GetService<ManifestService>() : nullptr;
+  if (manifest && scheme == manifest->app_info().scheme) {
     return application_->GetService<AssetService>()->CreateLoaderFactory();
   }
   return {};
@@ -247,11 +251,11 @@ void ContentBrowserClient::RegisterNonNetworkSubresourceURLLoaderFactories(
     int render_frame_id,
     const std::optional<url::Origin>& request_initiator_origin,
     NonNetworkURLLoaderFactoryMap* factories) {
-  const AppManifest* manifest =
-      application_ ? &application_->manifest() : nullptr;
+  const ManifestService* manifest =
+      application_ ? application_->GetService<ManifestService>() : nullptr;
   if (manifest) {
     factories->insert_or_assign(
-        manifest->app_scheme(),
+        manifest->app_info().scheme,
         application_->GetService<AssetService>()->CreateLoaderFactory());
   }
 }

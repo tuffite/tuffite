@@ -6,9 +6,9 @@
 #include <utility>
 
 #include "content/public/browser/render_frame_host.h"
-#include "tuffite/framework/browser/services/shell_api/commands/application_policy.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
 #include "tuffite/framework/browser/services/shell_api/commands/registry.h"
-#include "tuffite/framework/common/app_manifest.h"
 
 namespace tuffite::shell_api::path {
 
@@ -26,7 +26,7 @@ void Directories(const ::tuffite::dispatch::Context& context,
     std::move(callback).Run(kStatusInvalidArgument, {});
     return;
   }
-  const AppManifest* manifest = ManifestFor(context.frame());
+  const ManifestService* manifest = ManifestFor(context.frame());
   if (!manifest) {
     std::move(callback).Run(kStatusUnavailable, {});
     return;
@@ -54,7 +54,7 @@ void Resolve(const ::tuffite::dispatch::Context& context,
     std::move(callback).Run(kStatusInvalidArgument, {});
     return;
   }
-  const AppManifest* manifest = ManifestFor(context.frame());
+  const ManifestService* manifest = ManifestFor(context.frame());
   if (!manifest) {
     std::move(callback).Run(kStatusUnavailable, {});
     return;

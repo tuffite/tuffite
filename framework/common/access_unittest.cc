@@ -1,17 +1,20 @@
 // Copyright 2026 The Tuffite Authors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-#include "tuffite/framework/common/capability_pattern.h"
+#include "tuffite/framework/common/access.h"
 
 #include <string>
 
+#include "base/files/file_util.h"
+#include "base/files/scoped_temp_dir.h"
+#include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "url/url_util.h"
 
-namespace tuffite::capability_pattern {
+namespace tuffite::access {
 namespace {
 
-TEST(CapabilityPatternTest, MatchesOriginWildcards) {
+TEST(AccessTest, MatchesOriginWildcards) {
   std::string pattern;
   EXPECT_TRUE(NormalizeOrigin("*", &pattern));
   EXPECT_TRUE(
@@ -29,7 +32,7 @@ TEST(CapabilityPatternTest, MatchesOriginWildcards) {
   EXPECT_EQ(pattern, "https://*.example.com");
 }
 
-TEST(CapabilityPatternTest, CustomOriginWildcardsRespectSchemeHostAndPort) {
+TEST(AccessTest, CustomOriginWildcardsRespectSchemeHostAndPort) {
   url::ScopedSchemeRegistryForTests registry;
   url::AddStandardScheme("playground", url::SCHEME_WITH_HOST);
   std::string pattern;
@@ -52,7 +55,7 @@ TEST(CapabilityPatternTest, CustomOriginWildcardsRespectSchemeHostAndPort) {
   EXPECT_FALSE(MatchesOrigin(origin("https://one.artifact:444/"), pattern));
 }
 
-TEST(CapabilityPatternTest, CustomNavigationScopesRemainSchemeAndPathScoped) {
+TEST(AccessTest, CustomNavigationScopesRemainSchemeAndPathScoped) {
   url::ScopedSchemeRegistryForTests registry;
   url::AddStandardScheme("playground", url::SCHEME_WITH_HOST);
   std::string pattern;
@@ -64,7 +67,7 @@ TEST(CapabilityPatternTest, CustomNavigationScopesRemainSchemeAndPathScoped) {
   EXPECT_FALSE(MatchesUrl(GURL("playground://artifact/view/page"), pattern));
 }
 
-TEST(CapabilityPatternTest, MatchesUrlAndKeepsPrivateWildcardClosed) {
+TEST(AccessTest, MatchesUrlAndKeepsPrivateWildcardClosed) {
   std::string pattern;
   EXPECT_TRUE(NormalizeUrl("https://*.example.com/api/*", &pattern));
   EXPECT_TRUE(
@@ -95,7 +98,7 @@ TEST(CapabilityPatternTest, MatchesUrlAndKeepsPrivateWildcardClosed) {
   EXPECT_FALSE(NormalizeUrl("example.com?unexpected", &pattern));
 }
 
-TEST(CapabilityPatternTest, MatchesPathsWithoutEscapingBase) {
+TEST(AccessTest, MatchesPathsWithoutEscapingBase) {
   std::string pattern;
   EXPECT_TRUE(NormalizePath("data/reports/*.md", true, &pattern));
   EXPECT_TRUE(MatchesPath("data", "reports/final.md", pattern, true));
@@ -107,5 +110,37 @@ TEST(CapabilityPatternTest, MatchesPathsWithoutEscapingBase) {
   EXPECT_FALSE(NormalizePath("data/../secret", false, &pattern));
 }
 
+TEST(AccessTest, ChecksRootRelativeFilesystemComponents) {
+  base::ScopedTempDir root;
+  base::ScopedTempDir outside;
+  ASSERT_TRUE(root.CreateUniqueTempDir());
+  ASSERT_TRUE(outside.CreateUniqueTempDir());
+  const auto directory = root.GetPath().AppendASCII("nested");
+  ASSERT_TRUE(base::CreateDirectory(directory));
+  const auto file = directory.AppendASCII("file");
+  ASSERT_TRUE(base::WriteFile(file, "contents"));
+  EXPECT_TRUE(HasNoSymlinkComponents(root.GetPath(), file));
+  EXPECT_TRUE(
+      HasNoSymlinkComponents(root.GetPath(), directory.AppendASCII("missing")));
+  EXPECT_FALSE(HasNoSymlinkComponents(root.GetPath(),
+                                      outside.GetPath().AppendASCII("file")));
+}
+TEST(AccessTest, RejectsSymlinkRootsAndDescendants) {
+#if BUILDFLAG(IS_POSIX)
+  base::ScopedTempDir root;
+  base::ScopedTempDir outside;
+  ASSERT_TRUE(root.CreateUniqueTempDir());
+  ASSERT_TRUE(outside.CreateUniqueTempDir());
+  const auto link = root.GetPath().AppendASCII("alias");
+  if (!base::CreateSymbolicLink(outside.GetPath(), link)) {
+    GTEST_SKIP() << "Creating symlinks is unavailable on this host";
+  }
+  EXPECT_FALSE(
+      HasNoSymlinkComponents(root.GetPath(), link.AppendASCII("file")));
+  EXPECT_FALSE(HasNoSymlinkComponents(link, link.AppendASCII("file")));
+#else
+  GTEST_SKIP() << "Symbolic-link creation is only exposed on POSIX";
+#endif
+}
 }  // namespace
-}  // namespace tuffite::capability_pattern
+}  // namespace tuffite::access

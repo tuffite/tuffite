@@ -27,10 +27,12 @@
 #include "tuffite/buildflags.h"
 #include "tuffite/framework/app/abi_host_bridge.h"
 #include "tuffite/framework/app/application_context.h"
+#include "tuffite/framework/app/content_client.h"
 #include "tuffite/framework/app/services/application_dependency_manager.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
 #include "tuffite/framework/browser/content_browser_client.h"
-#include "tuffite/framework/common/constants.h"
-#include "tuffite/framework/common/content_client.h"
+#include "tuffite/framework/common/switches.h"
 #include "tuffite/framework/renderer/content_renderer_client.h"
 #include "tuffite/framework/utility/content_utility_client.h"
 #include "ui/base/resource/resource_bundle.h"
@@ -52,6 +54,8 @@
 
 namespace tuffite {
 namespace {
+
+constexpr char kDevTokenEnvironment[] = "TUFFITE_DEV_TOKEN";
 
 #if BUILDFLAG(TUFFITE_DEV_MODE)
 #if BUILDFLAG(IS_WIN)
@@ -182,17 +186,18 @@ MainDelegate::~MainDelegate() {
 void MainDelegate::ProcessExiting(const std::string&) {
   Shutdown();
 }
-bool MainDelegate::StartUp(AppManifest manifest) {
+bool MainDelegate::StartUp(std::unique_ptr<ManifestService> manifest) {
   CHECK(!stopped_);
-  CHECK(!manifest_);
-  manifest_ = std::move(manifest);
-  context_ = std::make_unique<ApplicationContext>(*manifest_, *bridge_);
+  CHECK(!context_);
+  context_ =
+      std::make_unique<ApplicationContext>(std::move(manifest), *bridge_);
   ApplicationDependencyManager::Get()->CreateServices(context_.get());
   bridge_->BindApplicationContext(context_.get());
   if (browser_client_) {
     browser_client_->BindApplicationServices(context_.get());
   }
-  return bridge_->Start(manifest_->serialized());
+  return bridge_->Start(
+      context_->GetService<ManifestService>()->SerializeRuntimeConfiguration());
 }
 void MainDelegate::Shutdown() {
   if (stopped_) {
@@ -270,14 +275,15 @@ std::optional<int> MainDelegate::BasicStartupComplete() {
                                  executable_path);
   std::string manifest_error;
   std::optional<std::string> app_scheme =
-      AppManifest::ReadApplicationScheme(executable_directory, &manifest_error);
+      ManifestServiceFactory::ReadApplicationScheme(executable_directory,
+                                                    &manifest_error);
   if (!app_scheme) {
     LOG(ERROR) << "Unable to load Tuffite application manifest: "
                << manifest_error;
     return kRuntimeBootstrapFailure;
   }
   command_line->AppendSwitchASCII(kAppSchemeSwitch, *app_scheme);
-  if (AppManifest::ReadNetworkDisableHttp2(executable_directory)) {
+  if (ManifestServiceFactory::ReadNetworkDisableHttp2(executable_directory)) {
     command_line->AppendSwitch(switches::kDisableHttp2);
   }
   // Blink reads runtime feature switches before PreBrowserMain(). There is no
@@ -323,27 +329,10 @@ std::optional<int> MainDelegate::PreBrowserMain() {
     return kRuntimeBootstrapFailure;
   }
   std::string manifest_error;
-  std::optional<AppManifest> app_manifest =
-      AppManifest::Load(executable_directory, &manifest_error);
-  if (!app_manifest) {
-    LOG(ERROR) << "Unable to load Tuffite application manifest: "
-               << manifest_error;
-    return kRuntimeBootstrapFailure;
-  }
-  // Normal renderer children receive these immutable policy switches from
-  // ContentBrowserClient::AppendExtraCommandLineSwitches. Mirror that policy
-  // in the shared command line used by a single-process smoke/debug run.
-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kSingleProcess)) {
-    base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
-    command_line->AppendSwitchASCII(kShellApiOriginsSwitch,
-                                    app_manifest->SerializeShellApiOrigins());
-    command_line->AppendSwitchASCII(kExplorerOriginsSwitch,
-                                    app_manifest->SerializeExplorerOrigins());
-  }
   const std::string development_url =
       base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
           kDevUrlSwitch);
+  std::optional<GURL> requested_development_url;
   if (!development_url.empty()) {
 #if !BUILDFLAG(TUFFITE_DEV_MODE)
     LOG(ERROR) << "Tuffite development URLs are disabled in this build";
@@ -372,14 +361,28 @@ std::optional<int> MainDelegate::PreBrowserMain() {
       LOG(ERROR) << "Tuffite development URL requires a CLI-issued token";
       return kRuntimeBootstrapFailure;
     }
-    if (!app_manifest->ApplyDevelopmentUrl(GURL(development_url),
-                                           &manifest_error)) {
-      LOG(ERROR) << "Invalid Tuffite development URL: " << manifest_error;
-      return kRuntimeBootstrapFailure;
-    }
+    requested_development_url = GURL(development_url);
 #endif
   }
-  if (!StartUp(std::move(*app_manifest))) {
+  auto app_manifest = ManifestServiceFactory::Load(
+      executable_directory, &manifest_error, requested_development_url);
+  if (!app_manifest) {
+    LOG(ERROR) << "Unable to load Tuffite application manifest: "
+               << manifest_error;
+    return kRuntimeBootstrapFailure;
+  }
+  // Normal renderer children receive these immutable policy switches from
+  // ContentBrowserClient::AppendExtraCommandLineSwitches. Mirror that policy
+  // in the shared command line used by a single-process smoke/debug run.
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kSingleProcess)) {
+    base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+    command_line->AppendSwitchASCII(kShellApiOriginsSwitch,
+                                    app_manifest->SerializeShellApiOrigins());
+    command_line->AppendSwitchASCII(kExplorerOriginsSwitch,
+                                    app_manifest->SerializeExplorerOrigins());
+  }
+  if (!StartUp(std::move(app_manifest))) {
     return kRuntimeBootstrapFailure;
   }
   return std::nullopt;

@@ -20,9 +20,9 @@
 #include "services/network/public/cpp/simple_url_loader.h"
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
-#include "tuffite/framework/browser/services/shell_api/commands/application_policy.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
 #include "tuffite/framework/browser/services/shell_api/commands/registry.h"
-#include "tuffite/framework/common/app_manifest.h"
 #include "url/gurl.h"
 
 namespace tuffite::shell_api::net {
@@ -36,7 +36,7 @@ namespace {
 class NetworkRequest {
  public:
   static void Start(scoped_refptr<::network::SharedURLLoaderFactory> factory,
-                    const AppManifest& manifest,
+                    const ManifestService& manifest,
                     const GURL& url,
                     RequestCallback callback) {
     auto request = std::make_unique<::network::ResourceRequest>();
@@ -57,12 +57,12 @@ class NetworkRequest {
     operation_ptr->loader_->DownloadToString(
         operation_ptr->factory_.get(),
         base::BindOnce(&NetworkRequest::OnComplete, std::move(operation)),
-        manifest.network_max_response_bytes());
+        manifest.network_limits().max_response_bytes);
   }
 
  private:
   NetworkRequest(scoped_refptr<::network::SharedURLLoaderFactory> factory,
-                 const AppManifest& manifest,
+                 const ManifestService& manifest,
                  std::unique_ptr<::network::ResourceRequest> request,
                  RequestCallback callback)
       : factory_(std::move(factory)), callback_(std::move(callback)) {
@@ -86,7 +86,7 @@ class NetworkRequest {
         ::network::mojom::kURLLoadOptionBlockLocalRequest);
     loader_->SetAllowHttpErrorResults(true);
     loader_->SetTimeoutDuration(
-        base::Seconds(manifest.network_timeout_seconds()));
+        base::Seconds(manifest.network_limits().timeout_seconds));
   }
 
   static void OnComplete(std::unique_ptr<NetworkRequest> request,
@@ -121,7 +121,7 @@ void Request(const ::tuffite::dispatch::Context& context,
     std::move(callback).Run(kStatusInvalidArgument, {});
     return;
   }
-  const AppManifest* manifest = ManifestFor(context.frame());
+  const ManifestService* manifest = ManifestFor(context.frame());
   const GURL target(request.url);
   if (!manifest || !manifest->IsNetworkUrlAllowed(
                        context.sender->GetLastCommittedOrigin(), target)) {

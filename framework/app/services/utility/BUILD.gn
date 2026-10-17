@@ -32,8 +32,7 @@ source_set("utility") {
   deps = [
     "//content/public/browser",
     "//mojo/public/cpp/bindings",
-    "//tuffite/framework/app/services/policy",
-    "//tuffite/framework/common",
+    "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/common/utility:mojom",
     "//tuffite/framework/common/utility:service_name",
     "//tuffite/framework/public:abi",

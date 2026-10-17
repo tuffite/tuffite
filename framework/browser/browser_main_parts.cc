@@ -17,6 +17,7 @@
 #include "tuffite/buildflags.h"
 #include "tuffite/framework/app/abi_host_bridge.h"
 #include "tuffite/framework/app/application_context.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/browser/browser_context.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service.h"
@@ -28,8 +29,7 @@
 #include "tuffite/framework/browser/services/window/window_service_factory.h"
 #include "tuffite/framework/browser/test_support/browser_test_observers.h"
 #include "tuffite/framework/browser/web_contents_role.h"
-#include "tuffite/framework/common/app_manifest.h"
-#include "tuffite/framework/common/constants.h"
+#include "tuffite/framework/common/switches.h"
 #if BUILDFLAG(IS_MAC)
 #include "content/public/browser/context_factory.h"
 #endif
@@ -109,7 +109,7 @@ void BrowserMainParts::ToolkitInitialized() {
 }
 
 int BrowserMainParts::PreMainMessageLoopRun() {
-  const AppManifest* manifest = &application_->manifest();
+  const ManifestService* manifest = application_->GetService<ManifestService>();
   CHECK(manifest);
   base::FilePath profile =
       base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
@@ -155,17 +155,17 @@ void BrowserMainParts::PostMainMessageLoopRun() {
 
 void BrowserMainParts::InitializeMessageLoopContext() {
   bridge_->BindBrowserTaskRunner();
-  const AppManifest* manifest = &application_->manifest();
+  const ManifestService* manifest = application_->GetService<ManifestService>();
   CHECK(manifest);
   const base::CommandLine* command_line =
       base::CommandLine::ForCurrentProcess();
-  const AppWindow& primary = manifest->windows().front();
+  const app::AppWindow& primary = manifest->startup_windows().front();
   const gfx::Size primary_size = command_line->HasSwitch(kSmokeTestSwitch)
                                      ? gfx::Size(1100, 1000)
                                      : gfx::Size(primary.width, primary.height);
   std::vector<window::WindowOptions> startup_windows;
-  startup_windows.reserve(manifest->windows().size());
-  for (const auto& configured : manifest->windows()) {
+  startup_windows.reserve(manifest->startup_windows().size());
+  for (const auto& configured : manifest->startup_windows()) {
     startup_windows.push_back({
         .label = configured.label,
         .url = configured.url,

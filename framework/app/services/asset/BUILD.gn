@@ -26,10 +26,23 @@ source_set("asset") {
     "//tuffite/framework/app/services:factory",
   ]
   deps = [
+    ":configuration",
     "//mojo/public/cpp/system",
     "//net",
     "//services/network/public/cpp",
-    "//tuffite/framework/common",
+    "//tuffite/framework/app/services/manifest",
     "//url",
   ]
+}
+
+# Resource snapshots can outlive AssetService. This target also supplies the
+# manifest's asset configuration without a service dependency cycle.
+source_set("configuration") {
+  public = [ "asset_configuration.h" ]
+  sources = public + [ "asset_configuration.cc" ]
+  public_deps = [
+    "//base",
+    "//url",
+  ]
+  deps = [ "//tuffite/framework/common:access" ]
 }

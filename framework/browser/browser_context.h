@@ -15,8 +15,7 @@ class RenderFrameHost;
 namespace tuffite {
 
 class ExplorerRouter;
-class AppManifest;
-class ApplicationPolicyService;
+class ManifestService;
 class ApplicationContext;
 
 class BrowserContext final : public content::BrowserContext {
@@ -28,9 +27,8 @@ class BrowserContext final : public content::BrowserContext {
   static BrowserContext& GetFrom(content::BrowserContext&);
   static BrowserContext& GetFrom(content::RenderFrameHost&);
 
-  ApplicationPolicyService& application_policy() const;
+  ManifestService& manifest_service() const;
   ApplicationContext& application_context() const { return *application_; }
-  const AppManifest& manifest() const;
 
   BrowserContext(const BrowserContext&) = delete;
   BrowserContext& operator=(const BrowserContext&) = delete;

@@ -30,8 +30,7 @@
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/mojom/url_loader.mojom.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
-#include "tuffite/framework/common/app_manifest.h"
-#include "tuffite/framework/common/constants.h"
+#include "tuffite/framework/app/services/asset/asset_configuration.h"
 
 namespace tuffite {
 namespace {
@@ -41,8 +40,9 @@ struct Asset {
   base::FilePath path;
 };
 
-std::optional<Asset> FindAsset(const AppManifest& manifest, const GURL& url) {
-  const auto path = manifest.ResolveAssetFile(url);
+std::optional<Asset> FindAsset(const asset::AssetConfiguration& assets,
+                               const GURL& url) {
+  const auto path = assets.ResolveAssetFile(url);
   if (!path) {
     return std::nullopt;
   }
@@ -156,10 +156,10 @@ class AppURLLoader final : public network::mojom::URLLoader {
 
 AppURLLoaderFactory::AppURLLoaderFactory(
     mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
-    const AppManifest& manifest,
+    const asset::AssetConfiguration& assets,
     base::SelfDeletingPassKey key)
     : network::SelfDeletingURLLoaderFactory(std::move(receiver), key),
-      manifest_(manifest) {}
+      assets_(assets) {}
 
 AppURLLoaderFactory::~AppURLLoaderFactory() = default;
 
@@ -172,8 +172,7 @@ void AppURLLoaderFactory::CreateLoaderAndStart(
     const net::MutableNetworkTrafficAnnotationTag& traffic_annotation) {
   mojo::Remote<network::mojom::URLLoaderClient> client_remote(
       std::move(client));
-  const AppManifest* manifest = &manifest_;
-  if (!manifest || !manifest->IsAppUrl(request.url)) {
+  if (!assets_.IsAppUrl(request.url)) {
     client_remote->OnComplete(
         network::URLLoaderCompletionStatus(net::ERR_ACCESS_DENIED));
     return;
@@ -183,10 +182,10 @@ void AppURLLoaderFactory::CreateLoaderAndStart(
         network::URLLoaderCompletionStatus(net::ERR_METHOD_NOT_SUPPORTED));
     return;
   }
-  const std::optional<Asset> asset = FindAsset(*manifest, request.url);
+  const std::optional<Asset> asset = FindAsset(assets_, request.url);
   auto request_loader = std::make_unique<AppURLLoader>(
       std::move(client_remote), asset.value_or(Asset{}),
-      manifest->content_security_policy());
+      assets_.content_security_policy);
   AppURLLoader* request_loader_ptr = request_loader.get();
   mojo::MakeSelfOwnedReceiver(std::move(request_loader), std::move(loader));
   request_loader_ptr->Start();
@@ -194,10 +193,10 @@ void AppURLLoaderFactory::CreateLoaderAndStart(
 
 // static
 mojo::PendingRemote<network::mojom::URLLoaderFactory>
-AppURLLoaderFactory::Create(const AppManifest& manifest) {
+AppURLLoaderFactory::Create(const asset::AssetConfiguration& assets) {
   mojo::PendingRemote<network::mojom::URLLoaderFactory> remote;
   base::MakeSelfDeleting<AppURLLoaderFactory>(
-      remote.InitWithNewPipeAndPassReceiver(), manifest);
+      remote.InitWithNewPipeAndPassReceiver(), assets);
   return remote;
 }
 

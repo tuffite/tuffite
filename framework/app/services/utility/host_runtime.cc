@@ -12,8 +12,8 @@
 #include "base/functional/bind.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
-#include "tuffite/framework/common/app_manifest.h"
 namespace tuffite {
 namespace {
 struct ModuleResolutionReply {
@@ -86,16 +86,16 @@ tuffite_status_t CaptureModuleResolution(void* data,
 
 }  // namespace
 void ConfigureUtilityHostRuntime(UtilityService& service,
-                                 const AppManifest& manifest,
+                                 const ManifestService& manifest,
                                  const tuffite_application& application,
                                  tuffite_handle_t runtime) {
   service.SetUtilityStartupConfigurations(manifest.UtilityConfigurations());
   service.SetUtilityModuleResolver(base::BindRepeating(
-      [](AppManifest manifest, tuffite_resolve_v8_fn resolve,
+      [](asset::AssetConfiguration assets, tuffite_resolve_v8_fn resolve,
          tuffite_handle_t runtime, std::string name, std::string url,
          UtilityResponseCallback callback) {
         if (!resolve) {
-          ReadModuleAsset(manifest.ResolveAssetFile(GURL(url)),
+          ReadModuleAsset(assets.ResolveAssetFile(GURL(url)),
                           std::move(callback));
           return;
         }
@@ -103,7 +103,7 @@ void ConfigureUtilityHostRuntime(UtilityService& service,
             std::make_unique<ModuleResolutionReply>(ModuleResolutionReply{
                 std::move(callback),
                 base::SequencedTaskRunner::GetCurrentDefault(),
-                manifest.ResolveAssetFile(GURL(url))});
+                assets.ResolveAssetFile(GURL(url))});
         // Release before calling: an accepted reply may arrive
         // immediately on a worker.
         auto* context = pending.release();
@@ -117,7 +117,7 @@ void ConfigureUtilityHostRuntime(UtilityService& service,
           std::move(pending->callback).Run(status, {});
         }
       },
-      manifest, application.resolve_v8, runtime));
+      manifest.assets(), application.resolve_v8, runtime));
   const tuffite_utility_is_registered_fn utility_is_registered =
       application.utility.is_registered;
   service.SetUtilityRegistrationChecker(base::BindRepeating(

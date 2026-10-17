@@ -4,7 +4,7 @@
 #include "tuffite/framework/app/services/utility/utility_service_factory.h"
 
 #include "tuffite/framework/app/application_context.h"
-#include "tuffite/framework/app/services/policy/application_policy_service_factory.h"
+#include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
 #include "tuffite/framework/app/services/utility/utility_process_launcher.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
 
@@ -15,7 +15,7 @@ UtilityServiceFactory* UtilityServiceFactory::Get() {
 }
 UtilityServiceFactory::UtilityServiceFactory()
     : ApplicationKeyedServiceFactory<UtilityService>("TuffiteUtility") {
-  DependsOn(ApplicationPolicyServiceFactory::Get());
+  DependsOn(ManifestServiceFactory::Get());
 }
 std::unique_ptr<UtilityService>
 UtilityServiceFactory::BuildServiceInstanceForApplication(

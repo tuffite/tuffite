@@ -30,7 +30,7 @@
 #include "tuffite/framework/browser/services/window/platform.h"
 #include "tuffite/framework/browser/services/window/window_service.h"
 #include "tuffite/framework/browser/services/window/window_service_factory.h"
-#include "tuffite/framework/common/constants.h"
+#include "tuffite/framework/common/languages.h"
 #if !BUILDFLAG(IS_MAC)
 #include "ui/aura/window.h"
 #include "ui/aura/window_tree_host.h"
