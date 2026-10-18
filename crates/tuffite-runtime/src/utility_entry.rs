@@ -224,7 +224,7 @@ pub unsafe extern "C" fn start_utility<A: Registrations>(
     }
 }
 
-/// ABI 2.5 service construction with owned startup configuration.
+/// ABI 0.1.0 service construction with owned startup configuration.
 pub unsafe extern "C" fn start_utility_with_context<A: Registrations>(
     name: *const u8,
     name_len: usize,

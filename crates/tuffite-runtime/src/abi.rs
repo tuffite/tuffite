@@ -122,11 +122,7 @@ unsafe fn discover_capabilities(
             if !browser
                 .header
                 .version
-                .is_compatible_with(tuffite_abi::Version {
-                    major: 2,
-                    minor: 2,
-                    patch: 0,
-                })
+                .is_compatible_with(tuffite_abi::Version::BASELINE)
             {
                 return Err(Status::IncompatibleAbi);
             }
@@ -744,8 +740,8 @@ mod tests {
         let (snapshot, shell_api) = unsafe { discover_capabilities(&host) }.unwrap();
         assert_eq!(snapshot.user_data, client.user_data);
         assert_eq!(shell_api.unwrap().user_data, tables.shell_api.user_data);
-        tables.browser.header.version.minor = 1;
-        // SAFETY: Valid table memory advertises an older unsupported version.
+        tables.browser.header.version.major = tuffite_abi::Version::BASELINE.major.wrapping_add(1);
+        // SAFETY: Valid table memory advertises an incompatible major version.
         assert!(matches!(
             unsafe { discover_capabilities(&host) },
             Err(Status::IncompatibleAbi)

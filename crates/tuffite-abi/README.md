@@ -179,7 +179,7 @@ fields; the library and service table remain loaded until Framework run returns.
 ### Capability discovery and lifetime
 
 `Host.query_extension(user_data, capability: u32)` returns `*const Header` or
-null. ABI 2.2 introduces `Capability::Browser = 2`, matching
+null. ABI 0.1.0 introduces `Capability::Browser = 2`, matching
 `TUFFITE_CAPABILITY_BROWSER`. The current Rust runtime queries only Browser:
 
 ```text
@@ -195,7 +195,7 @@ older clients. New code uses the Browser hierarchy. The parameter remains raw
 
 The provider guarantees an aligned readable size prefix and a valid declared
 known prefix. Runtime checks size first, then version and reserved fields before
-copying its known table prefix. BrowserHost requires ABI 2.2; Runtime separately validates both child tables
+copying its known table prefix. BrowserHost requires ABI 0.1.0; Runtime separately validates both child tables
 and the nested session table.
 Malformed advertised capabilities reject startup; an absent query, null result,
 null child table, null session pointer, or null optional operation means that capability is
@@ -345,12 +345,12 @@ sequenceDiagram
   Launcher->>Framework: tuffite_run_application(table, args)
   Framework->>Framework: Validate and snapshot known Application prefix
   Framework->>Framework: Classify process from original args
-  alt ABI 2.3 process hook present
+  alt ABI 0.1.0 process hook present
     Framework->>Library: Application.prepare_process(process_kind, argv, sink)
     Library->>Library: before_startup with owned ProcessLaunch
     Library->>Framework: Emit replacement argv synchronously
     Framework->>Framework: Validate executable, unchanged role, UTF-8 and limits
-  else Legacy ABI 2.1 browser hook
+  else Legacy ABI 0.1.0 browser hook
     Framework->>Library: prepare_browser for browser role only
   else Hook absent
     Framework->>Framework: Preserve argv
@@ -379,7 +379,7 @@ The Framework copies `MainDelegate` before entering Chromium. The runtime copies
 lifetimes: the business library remains loaded until Framework run returns;
 native callback contexts remain valid until browser stop completes.
 
-### ABI 2.3 startup hook and named utility runtime
+### ABI 0.1.0 startup hook and named utility runtime
 
 `.before_startup` runs before Framework enters Chromium `ContentMain`. The OS
 process already exists, and sandbox bootstrap may have run, notably macOS
@@ -403,9 +403,9 @@ An omitted hook preserves argv. Windows applies effective arguments to
 Chromium CommandLine; POSIX passes them as argc/argv. Rust std::env::args()
 continues to read the original OS argument storage.
 
-ABI 2.3 appends `prepare_process` and `utility_runtime` after ABI 2.1's
-`prepare_browser`. Native reads only size/version-supported prefixes. The old
-hook remains browser-only for older providers, and the new hook takes precedence.
+`prepare_process` and `utility_runtime` follow `prepare_browser` in the
+0.1.0 layout. Native reads only size/version-supported prefixes. The browser-only
+hook remains a fallback when the process hook is absent.
 `utility_runtime(name, out)` returns the compiled backend discriminator: Rust=0
 or V8=1. Unknown names reject. When that callback is absent, native uses the
 legacy Rust selection and reserved JavaScript backend.
@@ -443,7 +443,7 @@ generated text. Rust resource resolution runs on supervised browser workers,
 using a reusable provider instance constructed with `V8Context`. Browser-only typed
 state and capabilities stay in that process; native owns a separate isolate per session.
 
-### Context, instance state, and ABI 2.5 startup configuration
+### Context, instance state, and ABI 0.1.0 startup configuration
 
 Rust services implement `Utility::new(UtilityContext)` inside their Utility
 child process. The context owns the service name, service-local configuration,
@@ -480,9 +480,9 @@ resolver routes by service name and URL, without a session identity.
 This is a manifest fragment. `app.utilities` configures compiled registrations;
 it does not register new services. Only the selected configuration value is
 serialized for the child, with a 64 KiB limit; an omitted value is an empty byte
-slice. Session init remains independent. ABI 2.5 appends
+slice. Session init remains independent. ABI 0.1.0 includes
 `Application.utility_start_with_context(name, configuration, service_out)`.
-Native prefers it and preserves the ABI 2.0 start callback for older providers.
+Native prefers it and uses the original start callback for shorter tables.
 A nonempty configuration with a provider lacking this callback fails with
 IncompatibleAbi instead of silently discarding configuration.
 
@@ -502,9 +502,9 @@ workers. Utility stop signals its contexts before waiting for active operations.
 Retained context clones observe the same signal; capabilities follow the owning
 runtime's lifetime.
 
-### ABI 2.4 on-demand V8 resources
+### ABI 0.1.0 on-demand V8 resources
 
-ABI 2.4 appends `Application.resolve_v8(runtime, name, url, context, reply)`.
+ABI 0.1.0 appends `Application.resolve_v8(runtime, name, url, context, reply)`.
 Acceptance returns OK and transfers callback ownership until exactly one reply;
 rejection invokes no callback. Sources are borrowed during the reply and copied
 by native. Workers are joined by browser stop before the business library unloads.
@@ -560,7 +560,7 @@ javascript_extensions accessor is deprecated.
 ### Resolver override and app.assets fallback
 
 `V8::resolve(&self, url)` returns `Result<Option<ModuleSource>, Error>` and defaults to
-`Ok(None)`. Some(source) overrides assets; None replies with ABI 2.4 NotFound=7
+`Ok(None)`. Some(source) overrides assets; None replies with ABI 0.1.0 NotFound=7
 and asks native to resolve the same URL through `app.assets`. An error or panic
 fails loading and never falls back. An assets-only service implements `new(V8Context)` and `entry(&self)`;
 `resolve` uses the default fallback.
@@ -734,7 +734,9 @@ forcibly terminate Rust futures.
 
 ## Versioning and layout
 
-[`Cargo.toml`](Cargo.toml) owns the independent ABI semver, currently `2.5.0`.
+[`Cargo.toml`](Cargo.toml) inherits the shared release from
+[`workspace.package.version`](../../Cargo.toml). The existing unpublished ABI
+capabilities were reset together to the 0.1.0 baseline.
 Rust derives `ABI_MAJOR`, `ABI_MINOR`, `ABI_PATCH` and `Version::CURRENT` from it.
 [`scripts/abi.py`](../../scripts/abi.py) generates native `abi_version.h` and
 provides the same version to Distribution packaging.
@@ -746,7 +748,8 @@ Header = struct_size: usize + Version { major, minor, patch }: 3 × u16 + reserv
 ```
 
 `Header::for_type::<T>()` records the **complete provided table** size. Providers must match the required major and satisfy its minimum
-minor/patch version (stable semver caret semantics). Reserved bits must be zero;
+minor/patch version. This binary minimum rule also applies before 1.0; Cargo
+dependency compatibility follows its separate pre-1.0 rules. Reserved bits must be zero;
 size must cover every field the consumer reads. A non-null pointer and a claimed
 size do not prove memory validity: callers still owe the documented pointer
 contract.
@@ -757,10 +760,10 @@ contract.
 
 ### Using the ABI version
 
-Set the release in `crates/tuffite-abi/Cargo.toml`; do not maintain separate native
-or Python version constants. When releasing a new ABI crate version, update the
-SDK/Runtime dependency requirements and lockfiles, then regenerate/build native
-consumers and package artifacts carrying that version.
+Run `python3 x.py bump patch` (or `minor`, `major`, an explicit X.Y.Z) at the
+Framework root to update the workspace, SDK/Runtime dependencies, JavaScript
+packages and lockfiles together. Preview with `--dry-run`. Rebuild native
+consumers, applications and Distributions before publishing.
 
 ```rust
 use tuffite_abi::{Header, Host, Version};
@@ -770,32 +773,26 @@ let header = Header::for_type::<Host>();
 assert_eq!(header.version, Version::CURRENT);
 
 // Consumer: choose the minimum binary capabilities it actually requires.
-let required = Version { major: 2, minor: 0, patch: 0 };
+let required = Version::BASELINE;
 assert!(header.version.is_compatible_with(required));
 assert!(header.struct_size >= std::mem::size_of::<Host>());
 assert_eq!(header.reserved, 0);
 
 // Illustrative newer provider versus minimum requirement.
-assert!(Version { major: 2, minor: 1, patch: 0 }.is_compatible_with(required));
-assert!(!Version { major: 3, minor: 0, patch: 0 }.is_compatible_with(required));
+assert!(Version { major: required.major, minor: required.minor + 1, patch: 0 }.is_compatible_with(required));
+assert!(!Version { major: required.major + 1, minor: 0, patch: 0 }.is_compatible_with(required));
 ```
 
-The current Runtime and native bridge use `Version::BASELINE` (the original
-`major.0.0` contract) for the tables they consume, rather than blindly requiring
-`Version::CURRENT`. Providers still advertise their full crate release version.
-This keeps a new compatible crate release from rejecting an older provider when
-only baseline callbacks are required. ABI 2.1 adds the optional browser launch
-hook while preserving the ABI 2.0 prefix. ABI 2.2 adds the Browser discovery
-capability with child table pointers. ABI 2.3 adds the all-process startup hook
-and named utility runtime selection. ABI 2.4 adds asynchronous V8 source resolution.
-ABI 2.5 appends service startup configuration without changing existing prefixes. When Browser is absent, its safe facades
-return Unavailable; the current runtime does not fall back to querying legacy IDs.
-Version checks on a received raw pointer follow a size-first validation path;
-do not dereference the complete table before validating its readable prefix.
+The Runtime and native bridge require `Version::BASELINE`: 0.1.0 for major zero,
+and major.0.0 after 1.0. Providers advertise their full crate release. Browser
+launch, process launch, Browser discovery, named utility runtimes, V8 resolution
+and service configuration are all available in the reset baseline. Optional
+Application tail fields remain size-gated; shorter tables retain their fallback.
+When Browser is absent, safe facades return Unavailable.
 
 ```c
 tuffite_abi_header header = tuffite_abi_header_for_size(sizeof(tuffite_host));
-tuffite_abi_version required = {2, 0, 0};
+tuffite_abi_version required = tuffite_abi_baseline_version();
 int compatible =
     header.struct_size >= sizeof(tuffite_host) && header.reserved == 0 &&
     tuffite_abi_is_compatible(header.version, required);
@@ -804,11 +801,11 @@ int compatible =
 
 | Provided / required | Accepted? | Reason |
 | --- | --- | --- |
-| `2.0.0` / `2.0.0` | Yes | Exact minimum |
-| `2.0.2` / `2.0.1` | Yes | Sufficient patch |
-| `2.0.0` / `2.0.1` | No | Insufficient patch |
-| `2.1.0` / `2.0.2` | Yes | Greater minor |
-| `3.0.0` / `2.0.0` | No | Different major |
+| `0.1.0` / `0.1.0` | Yes | Exact minimum |
+| `0.1.2` / `0.1.1` | Yes | Sufficient patch |
+| `0.1.0` / `0.1.1` | No | Insufficient patch |
+| `0.2.0` / `0.1.2` | Yes | Greater minor |
+| `1.0.0` / `0.1.0` | No | Different major |
 
 ### Extending capabilities without shifting Host
 
@@ -840,12 +837,10 @@ optional callbacks with size-gated reads. Pointer indirection protects both
 client and service session tables; changing existing signatures or ownership
 still requires a major release.
 
-This refactor directly finalizes the unpublished ABI 2.0 shape; there is no
-compatibility shim for the earlier interim inline Host layout.
-
-Framework release/Distribution metadata and application configuration schemas
-have their own contracts; they are not the ABI version. ABI 1 artifacts must be
-rebuilt for the ABI 2 getter and contract.
+The reset finalizes the unpublished ABI shape without compatibility shims for
+interim 1.x/2.x artifacts. Rebuild those artifacts for the shared release.
+Framework release and ABI package versions move together; Distribution metadata
+and application configuration retain their own validation contracts.
 
 ## Implementation and validation map
 

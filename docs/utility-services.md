@@ -148,7 +148,7 @@ pub trait Utility: Send + Sync + 'static {
 `UtilityContext` owns the service name and service-local startup configuration,
 and reports shutdown through `is_stopping()`. Put business state in the service
 instance; session init and session state remain separate. Declare startup JSON in
-`app.utilities.<name>.configuration` (64 KiB serialized maximum). ABI 2.5 copies
+`app.utilities.<name>.configuration` (64 KiB serialized maximum). ABI 0.1.0 copies
 only that configuration over Mojo when a child starts, including after restart.
 An omitted configuration yields empty bytes. This map configures services already
 registered in main; it cannot register a new service or share Browser pointers.

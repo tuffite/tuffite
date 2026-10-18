@@ -124,7 +124,7 @@ std::unique_ptr<AbiHostBridge> AbiHostBridge::Create(
       !application->utility.session->close) {
     return nullptr;
   }
-  // ABI 2.0 providers expose only the original prefix. Never read their tail.
+  // Providers may expose only a prefix. Never read beyond their declared size.
   tuffite_application snapshot = {
       .header = application->header,
       .start = application->start,
@@ -137,27 +137,27 @@ std::unique_ptr<AbiHostBridge> AbiHostBridge::Create(
       .resolve_v8 = nullptr,
       .utility_start_with_context = nullptr,
   };
-  const tuffite_abi_version startup_version = {2, 1, 0};
+  const tuffite_abi_version startup_version = tuffite_abi_baseline_version();
   if (application->header.struct_size >=
           offsetof(tuffite_application, prepare_process) &&
       tuffite_abi_is_compatible(application->header.version, startup_version)) {
     snapshot.prepare_browser = application->prepare_browser;
   }
-  const tuffite_abi_version process_version = {2, 3, 0};
+  const tuffite_abi_version process_version = tuffite_abi_baseline_version();
   if (application->header.struct_size >=
           offsetof(tuffite_application, resolve_v8) &&
       tuffite_abi_is_compatible(application->header.version, process_version)) {
     snapshot.prepare_process = application->prepare_process;
     snapshot.utility_runtime = application->utility_runtime;
   }
-  const tuffite_abi_version resolver_version = {2, 4, 0};
+  const tuffite_abi_version resolver_version = tuffite_abi_baseline_version();
   if (application->header.struct_size >=
           offsetof(tuffite_application, utility_start_with_context) &&
       tuffite_abi_is_compatible(application->header.version,
                                 resolver_version)) {
     snapshot.resolve_v8 = application->resolve_v8;
   }
-  const tuffite_abi_version context_version = {2, 5, 0};
+  const tuffite_abi_version context_version = tuffite_abi_baseline_version();
   if (application->header.struct_size >= sizeof(tuffite_application) &&
       tuffite_abi_is_compatible(application->header.version, context_version)) {
     snapshot.utility_start_with_context =
@@ -203,7 +203,7 @@ const tuffite_abi_header* AbiHostBridge::QueryExtension(void* user_data,
   switch (capability) {
     case TUFFITE_CAPABILITY_BROWSER:
       return &bridge->browser_host_.header;
-    // Preserve the ABI 2.0 IDs for older consumers.
+    // Preserve the ABI 0.1.0 IDs for older consumers.
     case TUFFITE_CAPABILITY_SHELL_API:
       return &bridge->shell_api_.header;
     case TUFFITE_CAPABILITY_UTILITY:

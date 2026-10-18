@@ -31,7 +31,8 @@ const fn version_component(value: &str) -> u16 {
 }
 
 /// A provider must match the required major and satisfy the full minimum
-/// version, following a stable semver caret requirement.
+/// version. This binary minimum rule also applies before 1.0; Cargo requirements
+/// follow Cargo's separate pre-1.0 compatibility rules.
 #[must_use]
 pub const fn is_compatible(provided: (u16, u16, u16), required: (u16, u16, u16)) -> bool {
     provided.0 == required.0
@@ -58,11 +59,11 @@ impl Version {
         patch: ABI_PATCH,
     };
 
-    /// Minimum original contract in this stable ABI major.
+    /// Minimum original contract: 0.1.0 before 1.0, then major.0.0.
     /// Optional capabilities declare their own minimum when they evolve.
     pub const BASELINE: Self = Self {
         major: ABI_MAJOR,
-        minor: 0,
+        minor: if ABI_MAJOR == 0 { 1 } else { 0 },
         patch: 0,
     };
 
@@ -415,11 +416,11 @@ impl Default for UtilitySessionClient {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum Capability {
-    /// Legacy ABI 2.0 discovery ID. New clients use `BrowserHost::shell_api`.
+    /// Legacy ABI 0.1.0 discovery ID. New clients use `BrowserHost::shell_api`.
     ShellApi = 0,
-    /// Legacy ABI 2.0 discovery ID. New clients use `BrowserHost::utility`.
+    /// Legacy ABI 0.1.0 discovery ID. New clients use `BrowserHost::utility`.
     Utility = 1,
-    /// Browser-process host capabilities, introduced in ABI 2.2.
+    /// Browser-process host capabilities, introduced in ABI 0.1.0.
     Browser = 2,
 }
 
@@ -523,7 +524,7 @@ pub struct Host {
 pub type LaunchArgumentFn =
     unsafe extern "C" fn(user_data: *mut c_void, argument: ByteSlice) -> Status;
 
-/// Browser-only argument preparation, available in ABI 2.1.
+/// Browser-only argument preparation, available in ABI 0.1.0.
 /// Input slices are borrowed; accepted output is copied through the sink.
 pub type PrepareBrowserFn = unsafe extern "C" fn(
     args: *const ByteSlice,
@@ -532,7 +533,7 @@ pub type PrepareBrowserFn = unsafe extern "C" fn(
     emit: Option<LaunchArgumentFn>,
 ) -> Status;
 
-/// Synchronous argument hook for every native process role, available in ABI 2.3.
+/// Synchronous argument hook for every native process role, available in ABI 0.1.0.
 pub type PrepareProcessFn = unsafe extern "C" fn(
     process_kind: u32,
     args: *const ByteSlice,
@@ -556,7 +557,7 @@ pub type ResolveV8Fn = unsafe extern "C" fn(
     reply: Option<UtilityReplyFn>,
 ) -> Status;
 
-/// ABI 2.5 Utility startup with service-local configuration (at most 64 KiB).
+/// ABI 0.1.0 Utility startup with service-local configuration (at most 64 KiB).
 /// Input bytes are borrowed; the child copies them before constructing its service.
 pub type UtilityStartWithContextFn = unsafe extern "C" fn(
     name: *const u8,
@@ -582,15 +583,15 @@ pub struct Application {
     pub stop: Option<ApplicationStopFn>,
     /// Registered utility services and their session operations.
     pub utility: UtilityService,
-    /// Optional ABI 2.1 browser-only startup hook; absent in the ABI 2.0 prefix.
+    /// Optional browser-only startup hook; may be absent in a shorter table.
     pub prepare_browser: Option<PrepareBrowserFn>,
-    /// Optional ABI 2.3 all-process hook, preferred over the legacy browser hook.
+    /// Optional ABI 0.1.0 all-process hook, preferred over the legacy browser hook.
     pub prepare_process: Option<PrepareProcessFn>,
-    /// Optional ABI 2.3 named runtime lookup. Absent means legacy Rust backend.
+    /// Optional ABI 0.1.0 named runtime lookup. Absent means legacy Rust backend.
     pub utility_runtime: Option<UtilityRuntimeFn>,
-    /// ABI 2.4 asynchronous named V8 module resolution in the browser process.
+    /// ABI 0.1.0 asynchronous named V8 module resolution in the browser process.
     pub resolve_v8: Option<ResolveV8Fn>,
-    /// ABI 2.5 service startup configuration; absent means legacy empty context.
+    /// ABI 0.1.0 service startup configuration; absent means legacy empty context.
     pub utility_start_with_context: Option<UtilityStartWithContextFn>,
 }
 
@@ -715,6 +716,25 @@ mod header_parity {
         assert!(!super::is_compatible((2, 3, 9), (2, 4, 0)));
         assert!(!super::is_compatible((1, 9, 9), (2, 0, 0)));
         assert!(!super::is_compatible((3, 0, 0), (2, 0, 0)));
+    }
+
+    #[test]
+    fn current_release_satisfies_reset_baseline() {
+        assert!(super::Version::CURRENT.is_compatible_with(super::Version::BASELINE));
+        assert!(
+            !super::Version {
+                major: 2,
+                minor: 5,
+                patch: 0
+            }
+            .is_compatible_with(super::Version {
+                major: 0,
+                minor: 1,
+                patch: 0
+            })
+        );
+        assert!(!super::is_compatible((0, 0, 9), (0, 1, 0)));
+        assert!(super::is_compatible((0, 1, 1), (0, 1, 0)));
     }
 
     #[test]

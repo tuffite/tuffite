@@ -293,7 +293,7 @@ impl<B: Browser> Default for Builder<B> {
     }
 }
 
-/// ABI 2.3 process launch adapter. Input and sink bytes are borrowed for each call.
+/// ABI 0.1.0 process launch adapter. Input and sink bytes are borrowed for each call.
 ///
 /// # Safety
 /// The input array and each byte slice must be readable for the call. The sink

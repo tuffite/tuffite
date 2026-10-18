@@ -1714,7 +1714,7 @@ dependencies = [
 
 [[package]]
 name = "tuffite-abi"
-version = "2.5.0"
+version = "0.1.0"
 
 [[package]]
 name = "tuffite-ioc"

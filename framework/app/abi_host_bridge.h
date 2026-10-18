@@ -35,7 +35,7 @@ class Router;
 
 // Adapts the host application's callback table and owns one Runtime instance.
 //
-// Since ABI v1.2 dispatch is asynchronous: the browser posts a request via
+// Dispatch is asynchronous: the browser posts a request via
 // `Dispatch()` with a completion callback and returns immediately. The host
 // scheduler runs the handler off the UI thread and eventually invokes the
 // stored callback on the browser task runner with the response bytes.

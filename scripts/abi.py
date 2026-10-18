@@ -12,6 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def abi_version():
     with (ROOT / "crates/tuffite-abi/Cargo.toml").open("rb") as source:
         version = tomllib.load(source)["package"]["version"]
+    if isinstance(version, dict) and version.get("workspace") is True:
+        with (ROOT / "Cargo.toml").open("rb") as source:
+            version = tomllib.load(source)["workspace"]["package"]["version"]
     match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", version)
     if not match or any(int(value) > 65535 for value in match.groups()):
         raise ValueError(f"Invalid ABI crate version: {version}")

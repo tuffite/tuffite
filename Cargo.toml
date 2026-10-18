@@ -37,6 +37,11 @@ missing_errors_doc = "allow"
 module_name_repetitions = "allow"
 
 [workspace.dependencies]
+tuffite-abi = { path = "crates/tuffite-abi" }
+tuffite-ioc = { path = "crates/tuffite-ioc", default-features = false}
+tuffite-macros = { path = "crates/tuffite-macros" }
+tuffite-runtime = { path = "crates/tuffite-runtime" }
+
 anyhow = "1"
 thiserror = "2"
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }

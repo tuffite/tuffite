@@ -7,7 +7,10 @@ assert(tuffite_in_chromium)
 
 action("abi_version") {
   script = "//tuffite/scripts/abi.py"
-  inputs = [ "//tuffite/crates/tuffite-abi/Cargo.toml" ]
+  inputs = [
+    "//tuffite/Cargo.toml",
+    "//tuffite/crates/tuffite-abi/Cargo.toml",
+  ]
   outputs = [ "$target_gen_dir/abi_version.h" ]
   args = [
     "--output",

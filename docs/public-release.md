@@ -61,8 +61,9 @@ uses the source workspace and Playground until the actual 0.1.0 SDK and matching
 Framework Distributions are published and verified on clean supported machines.
 Do not silently install the placeholder as the development CLI.
 
-Before a package release, run Cargo packaging/verification for tuffite-abi (2.5.0),
-tuffite-macros, tuffite-runtime, and tuffite in dependency order. Review package
+Before a package release, run Cargo packaging/verification for tuffite-abi,
+tuffite-macros, tuffite-ioc, tuffite-runtime, and tuffite at the shared workspace
+version in dependency order. Review package
 contents and license inclusion; then publish in that order after verifying the
 matching Framework assets. SDK publishing and native asset upload do not happen
 as part of source cleanup.

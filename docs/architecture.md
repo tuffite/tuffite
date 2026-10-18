@@ -176,9 +176,9 @@ typedef struct tuffite_application {
   tuffite_application_dispatch_fn dispatch;
   tuffite_application_stop_fn stop;
   tuffite_utility_service utility;
-  tuffite_prepare_browser_fn prepare_browser; // legacy optional ABI 2.1
-  tuffite_prepare_process_fn prepare_process; // optional ABI 2.3
-  tuffite_utility_runtime_fn utility_runtime; // optional ABI 2.3
+  tuffite_prepare_browser_fn prepare_browser; // legacy optional ABI 0.1.0
+  tuffite_prepare_process_fn prepare_process; // optional ABI 0.1.0
+  tuffite_utility_runtime_fn utility_runtime; // optional ABI 0.1.0
 } tuffite_application;
 
 const tuffite_application* tuffite_get_application(void);
@@ -273,7 +273,7 @@ fn main() -> tuffite::app::Builder<ProjectBrowser> {
 ```
 
 Application crates emit a business runtime `cdylib`. The native launcher owns
-the OS main, loads the library and validates its ABI table. ABI 2.3 adds an
+the OS main, loads the library and validates its ABI table. ABI 0.1.0 adds an
 optional startup hook for every process role before ContentMain. It exposes
 process_kind and argv; changing the executable or process role is rejected. Sandbox initialization
 remains native-owned. See the [ABI lifecycle guide](../crates/tuffite-abi/README.md).
@@ -289,7 +289,7 @@ JavaScript uses a native V8 backend declared with `utility::V8` and the same
 returns Result<Option<ModuleSource>, Error> on supervised Browser workers.
 Some overrides resources; None (the default) falls back to app.assets; Err
 fails creation. Relative paths use the app scheme and a service.utility host.
-Native asynchronously requests static imports over Mojo through ABI 2.4,
+Native asynchronously requests static imports over Mojo through ABI 0.1.0,
 caches compiled modules per session, then links synchronously. Both Rust and
 V8 types are listed in main. Browser opens the named entry through
 `context.utilities().create_v8(...)`, and the utility process selects its backend
@@ -298,8 +298,8 @@ using `Application.utility_runtime(name)` before session creation.
 `.before_startup` runs for every process role before Chromium ContentMain, after
 OS process creation. Native supplies read-only `ProcessKind` and editable argv,
 and rejects executable or role changes. The utility service name is selected
-later by Mojo Start(name). ABI 2.3 retains the browser-only ABI 2.1 hook for older
-providers.
+later by Mojo Start(name). The browser-only hook remains a fallback when the
+process hook is absent.
 
 
 ## 9. WebContents roles
@@ -419,7 +419,7 @@ runtime feature plus manifest origin policy.
 ### Utility contexts and state ownership
 
 `Utility::new(UtilityContext)` constructs service state in the child. Only the
-selected `app.utilities.<name>.configuration` JSON crosses Mojo/ABI 2.5 (64 KiB
+selected `app.utilities.<name>.configuration` JSON crosses Mojo/ABI 0.1.0 (64 KiB
 maximum); request payloads and session init remain separate. Context clones own
 the configuration and observe service stopping. Restart reconstructs child state.
 

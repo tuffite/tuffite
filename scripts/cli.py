@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import framework, release, roll, style, tasks
+from . import bump, framework, release, roll, style, tasks
 from .common import Context, TaskError, require
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,6 +62,9 @@ def parser():
         if native_args:
             native_options(child)
         return child
+
+    bumping = command("bump", "Update the shared Framework, SDK, ABI and JavaScript release")
+    bumping.add_argument("version", help="major, minor, patch, or an explicit X.Y.Z release")
 
     build = command("build", "Build local Framework and Playground", True)
     choice = build.add_mutually_exclusive_group()
@@ -139,6 +142,8 @@ def main(argv=None):
         tasks.configure_context(context)
         if args.command in ("build", "package", "test", "compdb"):
             getattr(tasks, args.command)(context, args)
+        elif args.command == "bump":
+            bump.run(context, args)
         elif args.command == "format":
             style.run(context, check=args.check)
         elif args.command == "verify":

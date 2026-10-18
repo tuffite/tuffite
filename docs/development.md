@@ -40,6 +40,36 @@ arguments bypass menus, and non-interactive mode never reads terminal input.
 The outer Mise tasks prepare checkouts and forward `framework`, `dev`, `tuff`,
 and `www` commands. Framework operations remain implemented in `x` and `spo`.
 
+## Updating the release version
+
+Run from `src/tuffite`:
+
+```sh
+python3 x.py bump patch --dry-run  # Preview 0.1.0 -> 0.1.1
+python3 x.py bump patch            # Apply the next patch release
+python3 x.py bump minor            # Next minor, resetting patch
+python3 x.py bump 0.2.0            # Or select an explicit newer release
+```
+
+`bump` updates the Cargo workspace version (inherited by every crate, including
+spo, ABI and Playground), versioned internal path dependencies, Cargo.lock,
+JavaScript workspace package versions and their bun.lock entries. It validates
+all declarations before writing and preserves third-party dependency versions.
+It accepts stable X.Y.Z releases with components fitting the ABI's u16 fields;
+`major` resets minor and patch. The command performs no dependency resolution,
+commit, tag, build or upload.
+
+Framework metadata, SDK expectations, generated native ABI constants and the
+default `v<version>` upload tag derive from these manifests. Rebuild native output,
+Rust applications and Distributions after bumping; existing dist/cache artifacts
+are not rewritten. Review ABI compatibility when choosing the release: bumping
+the number does not make a breaking layout change compatible. Run Framework,
+native and smoke checks, then package/upload the matching platform artifacts and
+publish the Rust/JS packages as described in [public-release.md](public-release.md).
+Update the outer `.gclient` pin to the released Framework commit when adopting it;
+Chromium DEPS, toolchain versions, historical tags and user application versions
+are separate release decisions.
+
 ## Daily tasks
 
 ```sh
@@ -193,20 +223,16 @@ target checks and ABI semver checks when evolving the manifest. Breaking layout
 changes require a Framework release version change. Application configuration
 schema versions describe a separate user-facing contract.
 
-`crates/tuffite-abi/Cargo.toml` owns the independent ABI crate version (currently
-`2.5.0`). Rust derives `ABI_MAJOR` / `ABI_MINOR` / `ABI_PATCH` from Cargo's package version;
-GN generates `abi_version.h` from the same manifest; Python packaging reads it
-through `scripts/abi.py`. Workspace/application releases do not change the ABI
-version implicitly. Major releases change the binary contract, minor releases
-append compatible capabilities, and patch releases preserve the layout. A
-provider must match the required major and satisfy the full minimum semver
-version (equivalent to `^2.0.0` for this ABI); patch versions need not be identical.
-Consumers require `Version::BASELINE` for the original known prefixes, not
-unconditionally `Version::CURRENT`; new optional fields need size/version checks
-and fallback. Provider `struct_size` describes its complete table; consumers read
-only the prefix they require. Removing the getter's `_v1`
-suffix requires ABI 2, so ABI 1 Distributions and application libraries must be
-rebuilt and repackaged together.
+The ABI crate inherits `[workspace.package].version` from `Cargo.toml` along
+with the SDK and Runtime. Rust derives `ABI_MAJOR` / `ABI_MINOR` / `ABI_PATCH`
+from Cargo; GN generates `abi_version.h` from both manifests through
+`scripts/abi.py`, which also supplies Distribution packaging. The unpublished
+2.x ABI was reset to the shared 0.1.0 release; rebuild existing Distributions
+and application libraries together. Current capabilities all belong to that
+baseline. Consumers check table size and their minimum binary version, with
+matching major and sufficient minor/patch (including before 1.0). New optional
+fields need size/version checks and fallback. Cargo dependency compatibility
+uses Cargo's own pre-1.0 rules.
 
 ## Branch changes and rolls
 

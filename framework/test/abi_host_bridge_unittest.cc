@@ -245,11 +245,11 @@ TEST(ProcessLaunchTest, PreparesEveryRoleAndPrefersTheProcessHook) {
   EXPECT_EQ(args, (std::vector<std::string>{"app", "--type=utility"}));
 }
 
-TEST(AbiHostBridgeTest, PreservesAbi24ResolverWithoutReadingAbi25Tail) {
+TEST(AbiHostBridgeTest, PreservesResolverWithoutReadingStartupContextTail) {
   auto application = FakeApplication();
   application.header.struct_size =
       offsetof(tuffite_application, utility_start_with_context);
-  application.header.version = {2, 4, 0};
+  application.header.version = tuffite_abi_current_version();
   application.resolve_v8 = [](auto...) { return TUFFITE_STATUS_OK; };
   application.utility_start_with_context = [](auto...) {
     return TUFFITE_STATUS_INTERNAL;
@@ -260,7 +260,13 @@ TEST(AbiHostBridgeTest, PreservesAbi24ResolverWithoutReadingAbi25Tail) {
   EXPECT_EQ(bridge->application().utility_start_with_context, nullptr);
 }
 
-TEST(AbiHostBridgeTest, AcceptsAbi25ServiceStartupContext) {
+TEST(AbiHostBridgeTest, RejectsIncompatibleAbiMajor) {
+  auto application = FakeApplication();
+  application.header.version.major ^= 1;
+  EXPECT_FALSE(AbiHostBridge::Create(&application));
+}
+
+TEST(AbiHostBridgeTest, AcceptsServiceStartupContext) {
   auto application = FakeApplication();
   application.utility_start_with_context = [](auto...) {
     return TUFFITE_STATUS_OK;
@@ -270,11 +276,11 @@ TEST(AbiHostBridgeTest, AcceptsAbi25ServiceStartupContext) {
   EXPECT_NE(bridge->application().utility_start_with_context, nullptr);
 }
 
-TEST(AbiHostBridgeTest, PreservesAbi21HookWithoutReadingAbi23Tail) {
+TEST(AbiHostBridgeTest, PreservesBrowserHookWithoutReadingProcessTail) {
   auto application = FakeApplication();
   application.header.struct_size =
       offsetof(tuffite_application, prepare_process);
-  application.header.version = {2, 1, 0};
+  application.header.version = tuffite_abi_current_version();
   application.prepare_browser = [](auto...) { return TUFFITE_STATUS_OK; };
   application.prepare_process = [](auto...) { return TUFFITE_STATUS_INTERNAL; };
   application.utility_runtime = [](auto...) { return TUFFITE_STATUS_INTERNAL; };
@@ -289,7 +295,7 @@ TEST(AbiHostBridgeTest, AcceptsOriginalApplicationPrefixWithoutStartupHook) {
   auto application = FakeApplication();
   application.header.struct_size =
       offsetof(tuffite_application, prepare_browser);
-  application.header.version = {2, 0, 0};
+  application.header.version = tuffite_abi_current_version();
   application.prepare_browser = [](auto...) { return TUFFITE_STATUS_INTERNAL; };
   auto bridge = AbiHostBridge::Create(&application);
   ASSERT_TRUE(bridge);

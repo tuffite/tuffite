@@ -12,7 +12,8 @@ async = []
 [dependencies]
 thiserror.workspace = true
 tracing.workspace = true
-tuffite-abi = { version = "2.5.0", path = "../tuffite-abi" }
+tuffite-abi.workspace = true
+
 futures-executor = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -38,7 +38,8 @@ static inline tuffite_abi_version tuffite_abi_current_version(void) {
 // Baseline required by the original tables in this stable major. Optional
 // appended fields may require a newer minimum; do not require CURRENT blindly.
 static inline tuffite_abi_version tuffite_abi_baseline_version(void) {
-  tuffite_abi_version version = {TUFFITE_FFI_ABI_MAJOR, 0, 0};
+  tuffite_abi_version version = {TUFFITE_FFI_ABI_MAJOR,
+                                 TUFFITE_FFI_ABI_MAJOR == 0 ? 1 : 0, 0};
   return version;
 }
 
@@ -67,7 +68,7 @@ typedef int32_t tuffite_status_t;
 #define TUFFITE_STATUS_INVALID_STATE ((tuffite_status_t)4)
 #define TUFFITE_STATUS_RESOURCE_EXHAUSTED ((tuffite_status_t)5)
 #define TUFFITE_STATUS_INTERNAL ((tuffite_status_t)6)
-// ABI 2.4 resolver miss: native may fall back to app.assets.
+// ABI 0.1.0 resolver miss: native may fall back to app.assets.
 #define TUFFITE_STATUS_NOT_FOUND ((tuffite_status_t)7)
 
 typedef struct tuffite_byte_slice_t {
@@ -210,7 +211,7 @@ typedef struct tuffite_shell_api {
   tuffite_shell_api_invoke_fn invoke;
 } tuffite_shell_api;
 
-// ABI 2.2: browser-owned host capabilities. Child pointers are independently
+// ABI 0.1.0: browser-owned host capabilities. Child pointers are independently
 // sized/versioned tables, borrowed until browser stop completes.
 typedef struct tuffite_browser_host {
   tuffite_abi_header header;
@@ -310,7 +311,7 @@ typedef struct tuffite_utility_service {
   TUFFITE_FFI_RAW_PTR_EXCLUSION const tuffite_utility_session_service* session;
 } tuffite_utility_service;
 
-// ABI 2.1: synchronous browser argument preparation. Slices are borrowed;
+// ABI 0.1.0: synchronous browser argument preparation. Slices are borrowed;
 // the sink copies each argument before returning. Child processes skip this
 // hook.
 typedef tuffite_status_t (*tuffite_launch_argument_fn)(
@@ -322,7 +323,7 @@ typedef tuffite_status_t (*tuffite_prepare_browser_fn)(
     void* user_data,
     tuffite_launch_argument_fn emit);
 
-// ABI 2.3: native process role and selected utility runtime are raw integers.
+// ABI 0.1.0: native process role and selected utility runtime are raw integers.
 #define TUFFITE_PROCESS_BROWSER ((uint32_t)0)
 #define TUFFITE_PROCESS_UTILITY ((uint32_t)1)
 #define TUFFITE_PROCESS_RENDERER ((uint32_t)2)
@@ -340,7 +341,7 @@ typedef tuffite_status_t (*tuffite_utility_runtime_fn)(const uint8_t* name,
                                                        size_t name_len,
                                                        uint32_t* runtime);
 
-// ABI 2.4: accepted resolution owns one asynchronous source reply. Context is
+// ABI 0.1.0: accepted resolution owns one asynchronous source reply. Context is
 // thread-safe and remains valid until reply; rejection invokes no callback.
 // A NOT_FOUND reply requests app.assets fallback; other errors fail loading.
 typedef tuffite_status_t (*tuffite_resolve_v8_fn)(
@@ -350,7 +351,7 @@ typedef tuffite_status_t (*tuffite_resolve_v8_fn)(
     void* user_data,
     tuffite_utility_reply_fn reply);
 
-// ABI 2.5: borrowed service-local startup configuration, limited to 64 KiB.
+// ABI 0.1.0: borrowed service-local startup configuration, limited to 64 KiB.
 typedef tuffite_status_t (*tuffite_utility_start_with_context_fn)(
     const uint8_t* name,
     size_t name_len,

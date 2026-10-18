@@ -16,7 +16,7 @@ registered with `#[tuffite::utility(name = "parser")]` on an impl of
 `resolve(&self, url)` returns `Result<Option<utility::v8::ModuleSource>, utility::v8::Error>`.
 The native utility loader requests its entry and discovered static imports over
 Mojo. Browser dispatches each canonical application, HTTPS or file URL to a supervised Rust worker
-through ABI 2.4 `Application.resolve_v8`. ModuleSource accepts embedded, owned
+through ABI 0.1.0 `Application.resolve_v8`. ModuleSource accepts embedded, owned
 file-loaded or generated source text. Sources are copied and compiled once per
 session; utility processes never open these files themselves. Definitions are
 listed explicitly in main, alongside Rust services. Some(source) overrides resources; None falls back to explicit app.assets
@@ -96,7 +96,7 @@ microtask/timer policy rather than silently inheriting browser behavior.
 The packaged Playground fixture defines a seven-module graph with generated, shared, cyclic and HTTPS/file dependencies, resolves a static
 relative import, invokes a default-export method, round-trips JSON, verifies
 that `process`, `require`, and `fetch` are absent, verifies that `eval` throws,
-then invokes an infinite loop and cancels it across Mojo. Run the smoke with a rebuilt ABI 2.5 Distribution to verify on-demand loading.
+then invokes an infinite loop and cancels it across Mojo. Run the smoke with a rebuilt ABI 0.1.0 Distribution to verify on-demand loading.
 The same smoke also
 proves bounded concurrent unary Utility calls and a long-lived credit/ACK
 session across the 30-second idle boundary.
