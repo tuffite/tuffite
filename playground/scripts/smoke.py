@@ -143,6 +143,23 @@ def run_explorer_demo(
     profile.mkdir(parents=True)
     grant_sandbox_access(test_root)
     port = requested_port or free_port()
+    fixture_port = None
+    if script == "explorer-reload-smoke.mjs":
+        # Nested Explorer creation requires an explicit origin capability. Grant
+        # only our two local fixture origins in a disposable application copy.
+        fixture_port = free_port()
+        fixture_package = test_root / "application"
+        shutil.copytree(package, fixture_package, symlinks=True)
+        manifest_path = fixture_package / "tuffite.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["app"]["security"]["capabilities"].append({
+            "identifier": "explorer-reload-fixture",
+            "origins": [f"http://127.0.0.1:{fixture_port}", f"http://localhost:{fixture_port}"],
+            "explorer": {"create": True},
+        })
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        application = fixture_package / application.relative_to(package)
+        package = fixture_package
     command = [
         str(application),
         "--lang=en-US",
@@ -166,6 +183,8 @@ def run_explorer_demo(
             wait_for_cdp(port, process, timeout)
             environment = os.environ.copy()
             environment["TUFFITE_PLAYGROUND_CDP_PORT"] = str(port)
+            if fixture_port is not None:
+                environment["TUFFITE_EXPLORER_RELOAD_HTTP_PORT"] = str(fixture_port)
             environment["TUFFITE_PLAYGROUND_COMMAND"] = json.dumps(command)
             environment["TUFFITE_PLAYGROUND_CWD"] = str(package)
             environment["TUFFITE_TURNSTILE_LIVE"] = "1" if turnstile_live else "0"
@@ -177,6 +196,12 @@ def run_explorer_demo(
                 check=True,
                 timeout=max(timeout, 180),
             )
+            if script == "explorer-reload-smoke.mjs":
+                diagnostic = stderr_log.read_text(encoding="utf-8", errors="replace")
+                if "restricted_cookie_manager.cc" in diagnostic:
+                    raise RuntimeError("Explorer Cookie context disagreed with the browser")
+                if process.poll() is not None:
+                    raise RuntimeError("Application exited during Explorer reload checks")
             if script == "browser-contract-smoke.mjs":
                 import sqlite3
 
@@ -236,6 +261,7 @@ def main() -> int:
                         help="Check official Turnstile always-pass and always-fail test callbacks; does not establish real acceptance.")
     parser.add_argument("--explorer-webauthn", action="store_true",
                         help="Run WebAuthn resident credential and cancellation smoke.")
+    parser.add_argument("--explorer-reload", action="store_true", help="Run nested cross-site reload, messaging and Cookie isolation smoke.")
     parser.add_argument("--explorer-ancestry", action="store_true",
                         help="Run native parent/top, WindowProxy messages and reattachment smoke.")
     parser.add_argument("--explorer-transfer", action="store_true",
@@ -293,7 +319,7 @@ def main() -> int:
         if public
         else Path(tempfile.gettempdir())
     )
-    if args.explorer_ancestry or args.explorer_events or args.explorer_tabs or args.browser_compatibility or args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
+    if args.explorer_reload or args.explorer_ancestry or args.explorer_events or args.explorer_tabs or args.browser_compatibility or args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
         return run_explorer_demo(
             package,
             application,
@@ -301,6 +327,7 @@ def main() -> int:
             args.timeout,
             args.keep_files,
             args.cdp_port,
+            "explorer-reload-smoke.mjs" if args.explorer_reload else
             "explorer-ancestry-smoke.mjs" if args.explorer_ancestry else
             "explorer-event-smoke.mjs" if args.explorer_events else
             "explorer-tab-smoke.mjs" if args.explorer_tabs else

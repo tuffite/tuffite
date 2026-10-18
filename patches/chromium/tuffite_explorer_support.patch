@@ -1336,3 +1336,52 @@ index 1913feb02ae8f97ca61970c713c9ac53df3edecb..5c355a105c27eaf89889968336e5a981
      {
        // Enables RFC 7234-compliant Cache-Control header parsing, removing RFC
        // 2616 separators that are not valid in RFC 7234.
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Garey Chan <garey.chan@outlook.com>
+Date: Sun, 18 Oct 2026 16:14:42 +0800
+Subject: Tuffite: keep Explorer Cookie context scoped to its physical Page
+
+
+diff --git a/third_party/blink/renderer/core/dom/document.cc b/third_party/blink/renderer/core/dom/document.cc
+index 21106d6d4c8512f7f3e73bfae80c46f9f2b63ee3..091c18348ffd08706f5bb92ac034d9fa5c32f3c6 100644
+--- a/third_party/blink/renderer/core/dom/document.cc
++++ b/third_party/blink/renderer/core/dom/document.cc
+@@ -437,6 +437,7 @@
+ // TUFFITE_END
+ 
+ #if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++#include "tuffite/components/explorer/renderer/blink/explorer_frame_ancestry.h"
+ #include "tuffite/components/explorer/renderer/blink/html_explorer_element.h"
+ #endif
+ 
+@@ -7130,6 +7131,15 @@ scoped_refptr<const SecurityOrigin> Document::TopFrameOrigin() const {
+   if (!GetFrame())
+     return scoped_refptr<const SecurityOrigin>();
+ 
++// TUFFITE_BEGIN
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  // Explorer's DOM parent/top can cross WebContents, but network isolation and
++  // the browser-bound CookieManager remain scoped to the physical Page.
++  if (ExplorerTopFrame(*GetFrame())) {
++    return GetFrame()->Top()->GetSecurityContext()->GetSecurityOrigin();
++  }
++#endif
++// TUFFITE_END
+   return GetFrame()->Tree().Top().GetSecurityContext()->GetSecurityOrigin();
+ }
+ 
+@@ -7189,6 +7199,14 @@ net::SiteForCookies Document::SiteForCookies() const {
+       }
+       can_avoid_revise_if_security_origins_match = false;
+     }
++// TUFFITE_BEGIN
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++    if (ExplorerTopFrame(*GetFrame())) {
++      current_frame = current_frame->Parent();
++      continue;
++    }
++#endif
++// TUFFITE_END
+     current_frame = current_frame->Tree().Parent();
+   }
+ 

@@ -149,13 +149,17 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
                      ExplorerPolicy* policy) const;
   void AttachPrepared(std::unique_ptr<content::WebContents> inner_web_contents,
                       CreateCallback callback,
+                      GURL initial_url,
+                      blink::FramePolicy frame_policy,
                       content::RenderFrameHost* prepared_frame);
-  void BeginAttachAfterInitialNavigation();
+  void BeginAttach(GURL initial_url, blink::FramePolicy frame_policy);
   void CapturePreviewWhenReady(CapturePreviewCallback callback, int attempts);
   void AttachTransferred(blink::FramePolicy,
                          AttachCallback callback,
                          content::RenderFrameHost* prepared_frame);
-  void OnPartitionSnapshotComplete(GURL initial_url, bool success);
+  void OnPartitionSnapshotComplete(GURL initial_url,
+                                   blink::FramePolicy frame_policy,
+                                   bool success);
   bool LoadURL(const GURL& url);
   void NotifyLoadComplete();
   void NotifyRequestedOpen(const char* event_type,

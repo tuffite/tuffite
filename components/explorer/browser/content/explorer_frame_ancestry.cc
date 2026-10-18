@@ -88,9 +88,15 @@ content::RenderFrameProxyHost* Proxy(content::RenderFrameHostImpl& frame,
     if (!view) {
       return nullptr;
     }
-    proxy = state->CreateRenderFrameProxyHost(
-        group, std::move(view), node,
-        State::ProxyAccessMode::kAllowOuterDelegate);
+    // Creating a view initializes its composed ancestry and can re-enter this
+    // helper. Reuse any proxy created by that initialization.
+    proxy = state->GetRenderFrameProxyHost(
+        group, State::ProxyAccessMode::kAllowOuterDelegate);
+    if (!proxy) {
+      proxy = state->CreateRenderFrameProxyHost(
+          group, std::move(view), node,
+          State::ProxyAccessMode::kAllowOuterDelegate);
+    }
   }
   if (!proxy->is_render_frame_proxy_live()) {
     if (node->IsMainFrame()) {
@@ -182,8 +188,18 @@ bool EnsureExplorerMessageSourceProxy(content::RenderFrameHost& source,
                                       content::SiteInstanceGroup* group) {
   // Build only this sender and its composed ancestor chain. Do not expose
   // unrelated opener trees across the Explorer isolation boundary.
-  ExplorerFrameAncestors(source, group);
   auto& frame = static_cast<content::RenderFrameHostImpl&>(source);
+  // Ordinary messages inside an Explorer's own frame tree already have native
+  // source references. A live local frame must never also have a proxy in its
+  // own SiteInstanceGroup: navigation creates that replacement during unload.
+  auto view = frame.frame_tree_node()->frame_tree().GetRenderViewHost(group);
+  if (frame.GetSiteInstance()->group() == group ||
+      (view && view->GetMainRenderFrameHost() &&
+       &view->GetMainRenderFrameHost()->frame_tree_node()->frame_tree() ==
+           &frame.frame_tree_node()->frame_tree())) {
+    return true;
+  }
+  ExplorerFrameAncestors(source, group);
   return Proxy(frame, group) != nullptr;
 }
 bool ExplorerAttachWouldCycle(content::WebContents* contents,

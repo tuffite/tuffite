@@ -39,10 +39,8 @@
     <p><a id="new-window" href="explorer_target.html?new-window=1" target="_blank">点击测试新窗口拦截</a></p>
   </main>
   <script>
-    // Capture the viewport synchronously. Explorer's initial navigation runs
-    // before the inner WebContents is attached, so this guards against a 0x0
-    // bootstrap viewport that responsive third-party applications may never
-    // recover from.
+    // Capture the viewport synchronously to guard against a 0x0 bootstrap
+    // viewport that responsive third-party applications may never recover from.
     document.documentElement.dataset.initialViewport =
         `${innerWidth}x${innerHeight}`;
     const storageKey = 'playground-explorer-shared-storage-test';

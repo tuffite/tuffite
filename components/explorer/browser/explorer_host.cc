@@ -416,8 +416,6 @@ void ExplorerHost::AttachTransferred(blink::FramePolicy frame_policy,
   }
   auto record = attaching_transfer_;
   auto owned = record->TakeContents();
-  SetExplorerOwner(owned.get(), &render_frame_host(),
-                   record->policy().allow_parent_messages, frame_policy);
   policy_ = record->policy();
   document_id_ = record->document_id();
   primary_navigation_error_.reset();
@@ -436,6 +434,8 @@ void ExplorerHost::AttachTransferred(blink::FramePolicy frame_policy,
   dialog_manager_ = std::make_unique<ExplorerDialogManager>(*this);
   auto* outer = content::WebContents::FromRenderFrameHost(&render_frame_host());
   outer->AttachInnerWebContents(std::move(owned), frame, false);
+  SetExplorerOwner(WebContentsObserver::web_contents(), &render_frame_host(),
+                   record->policy().allow_parent_messages, frame_policy);
   WebContentsObserver::web_contents()->UpdateWebContentsVisibility(
       outer->GetVisibility());
   attaching_transfer_.reset();
@@ -581,8 +581,6 @@ void ExplorerHost::Create(mojom::ExplorerCreateParamsPtr params,
   pending_frame_token_ = params->frame_to_replace;
   pending_create_callback_ = std::move(callback);
   client_.Bind(std::move(client));
-  SetExplorerOwner(pending_inner_web_contents_.get(), &render_frame_host(),
-                   policy_->allow_parent_messages, params->frame_policy);
   Observe(pending_inner_web_contents_.get());
   pending_inner_web_contents_->SetDelegate(this);
   dialog_manager_ = std::make_unique<ExplorerDialogManager>(*this);
@@ -592,13 +590,15 @@ void ExplorerHost::Create(mojom::ExplorerCreateParamsPtr params,
         browser_context->GetStoragePartition(inherited_partition_config),
         browser_context->GetStoragePartition(partition_config),
         base::BindOnce(&ExplorerHost::OnPartitionSnapshotComplete,
-                       weak_factory_.GetWeakPtr(), url));
+                       weak_factory_.GetWeakPtr(), url, params->frame_policy));
     return;
   }
-  LoadURL(url);
+  BeginAttach(url, params->frame_policy);
 }
 
-void ExplorerHost::OnPartitionSnapshotComplete(GURL initial_url, bool success) {
+void ExplorerHost::OnPartitionSnapshotComplete(GURL initial_url,
+                                               blink::FramePolicy frame_policy,
+                                               bool success) {
   partition_snapshot_pending_ = false;
   if (!success || !pending_inner_web_contents_ || !pending_create_callback_) {
     Observe(nullptr);
@@ -610,15 +610,17 @@ void ExplorerHost::OnPartitionSnapshotComplete(GURL initial_url, bool success) {
     }
     return;
   }
-  LoadURL(initial_url);
+  BeginAttach(initial_url, frame_policy);
 }
 
 void ExplorerHost::AttachPrepared(
     std::unique_ptr<content::WebContents> inner_web_contents,
     CreateCallback callback,
+    GURL initial_url,
+    blink::FramePolicy frame_policy,
     content::RenderFrameHost* prepared_frame) {
-  preparing_attachment_ = false;
   if (!prepared_frame || prepared_frame->GetParent() != &render_frame_host()) {
+    preparing_attachment_ = false;
     Observe(nullptr);
     client_.reset();
     std::move(callback).Run(false);
@@ -627,14 +629,23 @@ void ExplorerHost::AttachPrepared(
   auto* outer = content::WebContents::FromRenderFrameHost(&render_frame_host());
   outer->AttachInnerWebContents(std::move(inner_web_contents), prepared_frame,
                                 false);
-  if (content::WebContents* attached = WebContentsObserver::web_contents()) {
-    attached->UpdateWebContentsVisibility(outer->GetVisibility());
+  auto* attached = WebContentsObserver::web_contents();
+  // Native attachment owns the outer-delegate proxy. Expose composed ancestry
+  // only after that proxy exists, and navigate only after attachment. Otherwise
+  // startup postMessages can create an ordinary proxy in the same group before
+  // AttachInnerWebContents attempts to create its outer-delegate proxy.
+  SetExplorerOwner(attached, &render_frame_host(),
+                   policy_->allow_parent_messages, frame_policy);
+  attached->UpdateWebContentsVisibility(outer->GetVisibility());
+  pending_create_callback_ = std::move(callback);
+  preparing_attachment_ = false;
+  if (!LoadURL(initial_url)) {
+    std::move(pending_create_callback_).Run(false);
   }
-  std::move(callback).Run(true);
-  NotifyLoadComplete();
 }
 
-void ExplorerHost::BeginAttachAfterInitialNavigation() {
+void ExplorerHost::BeginAttach(GURL initial_url,
+                               blink::FramePolicy frame_policy) {
   if (!pending_inner_web_contents_ || !pending_frame_token_ ||
       !pending_create_callback_ || preparing_attachment_) {
     return;
@@ -650,10 +661,10 @@ void ExplorerHost::BeginAttachAfterInitialNavigation() {
   }
   preparing_attachment_ = true;
   pending_frame_token_.reset();
-  child->PrepareForInnerWebContentsAttach(
-      base::BindOnce(&ExplorerHost::AttachPrepared, weak_factory_.GetWeakPtr(),
-                     std::move(pending_inner_web_contents_),
-                     std::move(pending_create_callback_)));
+  child->PrepareForInnerWebContentsAttach(base::BindOnce(
+      &ExplorerHost::AttachPrepared, weak_factory_.GetWeakPtr(),
+      std::move(pending_inner_web_contents_),
+      std::move(pending_create_callback_), initial_url, frame_policy));
 }
 
 void ExplorerHost::Navigate(const std::string& url, NavigateCallback callback) {
@@ -1447,14 +1458,11 @@ void ExplorerHost::DidStartLoading() {
 }
 
 void ExplorerHost::DidStopLoading() {
-  if (pending_inner_web_contents_) {
-    // Preparing the outer frame can synchronously abandon the inner contents.
-    // Do not destroy a WebContents from its own observer notification.
-    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE,
-        base::BindOnce(&ExplorerHost::BeginAttachAfterInitialNavigation,
-                       weak_factory_.GetWeakPtr()));
+  if (pending_inner_web_contents_ || preparing_attachment_) {
     return;
+  }
+  if (pending_create_callback_) {
+    std::move(pending_create_callback_).Run(true);
   }
   NotifyLoadComplete();
 }

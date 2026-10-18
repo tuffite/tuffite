@@ -85,6 +85,17 @@ python3 x.py test --suite smoke       # Package and run Playground integration s
 python3 x.py test --suite explorer    # Package and run the detailed Explorer CDP smoke
 ```
 
+`playground/scripts/smoke.py --package dist/playground --explorer-reload`
+exercises nested local cross-site pages, repeated reloads, source-window messages,
+and first-party Cookie round trips. It uses an isolated profile and no live account.
+The runner grants Explorer creation to the two local fixture origins in a
+disposable application copy; the packaged application policy is preserved.
+Explorer attaches its native inner WebContents before initial navigation and
+exposes composed ancestry only after the native outer-delegate proxy exists.
+Startup messaging must not create that proxy ahead of attachment.
+DOM `parent`/`top` ancestry can cross Explorer Pages; Cookie/network isolation
+continues to follow each physical Page's browser-bound context.
+
 The macOS Explorer CDP suite checks the native context-menu enable/disable
 policy. AppKit menu interaction requires native OS input rather than CDP
 renderer key events, and is reported separately as untested by this suite.
