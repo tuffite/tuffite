@@ -28,8 +28,10 @@ bool ExplorerServiceImpl::IsSurfaceAllowed(
     content::RenderFrameHost& frame) const {
   auto* contents = content::WebContents::FromRenderFrameHost(&frame);
   auto role = WebContentsRoleData::GetRole(contents);
-  return !stopped_ && contents && contents->GetPrimaryMainFrame() == &frame &&
-         role &&
+  // Every frame needs ancestry metadata, including out-of-process iframes.
+  // Surface UI events remain routed to the primary main document.
+  return !stopped_ && contents &&
+         contents->GetPrimaryMainFrame() == frame.GetMainFrame() && role &&
          (*role == WebContentsRole::kApp ||
           *role == WebContentsRole::kExplorer);
 }

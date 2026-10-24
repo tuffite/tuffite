@@ -52,6 +52,8 @@ class CORE_EXPORT HTMLExplorerElement final
   void setPartition(const String& value);
   String navigation() const;
   void setNavigation(const String& value);
+  bool isolated() const;
+  void setIsolated(bool);
   String dialogs() const;
   void setDialogs(const String& value);
   bool contextMenuEnabled() const;

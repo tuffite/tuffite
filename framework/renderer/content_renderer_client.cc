@@ -34,8 +34,8 @@ void ContentRendererClient::RenderFrameCreated(content::RenderFrame* frame) {
   LegacyNavigationTiming::Create(frame);
   if (frame->IsMainFrame()) {
     DispatchBindings::Create(frame);
-    ExplorerSurfaceBindings::Create(frame);
   }
+  ExplorerSurfaceBindings::Create(frame);
 }
 
 void ContentRendererClient::PrepareErrorPage(

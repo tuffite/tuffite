@@ -38,7 +38,8 @@ namespace tuffite {
 CONTENT_EXPORT void SetExplorerOwner(content::WebContents*,
                                      content::RenderFrameHost*,
                                      bool,
-                                     const blink::FramePolicy& = {});
+                                     const blink::FramePolicy& = {},
+                                     bool isolated_browsing_context = false);
 CONTENT_EXPORT std::optional<blink::FramePolicy> ExplorerFrameOwnerPolicy(
     content::RenderFrameHost&);
 CONTENT_EXPORT void SetExplorerFramePolicy(content::WebContents*,

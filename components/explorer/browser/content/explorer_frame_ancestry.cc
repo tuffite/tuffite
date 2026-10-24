@@ -1,5 +1,7 @@
 // Copyright 2026 The Tuffite Authors
 // SPDX-License-Identifier: MIT OR Apache-2.0
+#include "tuffite/components/explorer/browser/content/explorer_frame_ancestry.h"
+
 #include <set>
 
 #include "base/supports_user_data.h"
@@ -23,6 +25,7 @@ struct OwnerData final : base::SupportsUserData::Data {
   ~OwnerData() override;
   content::WeakDocumentPtr document;
   bool allow_messages = false;
+  bool isolated_browsing_context = false;
   blink::FramePolicy frame_policy;
 };
 OwnerData::OwnerData() = default;
@@ -112,12 +115,14 @@ content::RenderFrameProxyHost* Proxy(content::RenderFrameHostImpl& frame,
 void SetExplorerOwner(content::WebContents* contents,
                       content::RenderFrameHost* owner,
                       bool allow_messages,
-                      const blink::FramePolicy& frame_policy) {
+                      const blink::FramePolicy& frame_policy,
+                      bool isolated_browsing_context) {
   auto data = std::make_unique<OwnerData>();
   if (owner) {
     data->document = owner->GetWeakDocumentPtr();
   }
   data->allow_messages = allow_messages;
+  data->isolated_browsing_context = isolated_browsing_context;
   data->frame_policy = frame_policy;
   contents->SetUserData(&kOwnerKey, std::move(data));
 }
@@ -164,6 +169,29 @@ std::vector<blink::FrameToken> ExplorerFrameAncestors(
       return {};
     }
     result[i - 1] = proxy->GetFrameToken();
+  }
+  return result;
+}
+std::vector<bool> ExplorerFrameIsolationBoundaries(
+    content::RenderFrameHost& frame) {
+  std::vector<bool> result;
+  std::set<content::RenderFrameHostImpl*> seen;
+  for (auto* current = static_cast<content::RenderFrameHostImpl*>(&frame);
+       current && seen.insert(current).second; current = Owner(current)) {
+    auto* contents = content::WebContents::FromRenderFrameHost(current);
+    auto* data = static_cast<OwnerData*>(contents->GetUserData(&kOwnerKey));
+    result.push_back(!current->GetParent() && data &&
+                     data->isolated_browsing_context);
+  }
+  return result;
+}
+std::vector<std::optional<blink::FramePolicy>> ExplorerFrameOwnerPolicies(
+    content::RenderFrameHost& frame) {
+  std::vector<std::optional<blink::FramePolicy>> result;
+  std::set<content::RenderFrameHostImpl*> seen;
+  for (auto* current = static_cast<content::RenderFrameHostImpl*>(&frame);
+       current && seen.insert(current).second; current = Owner(current)) {
+    result.push_back(ExplorerFrameOwnerPolicy(*current));
   }
   return result;
 }

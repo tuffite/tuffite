@@ -9,6 +9,7 @@
     [CEReactions] attribute DOMString partition;
     [CEReactions] attribute DOMString navigation;
     [CEReactions] attribute DOMString dialogs;
+    [CEReactions] attribute boolean isolated;
     attribute boolean contextMenuEnabled;
     [CallWith=ScriptState] Promise<ExplorerHandle> detach();
     [CallWith=ScriptState] Promise<undefined> attach(ExplorerHandle handle);

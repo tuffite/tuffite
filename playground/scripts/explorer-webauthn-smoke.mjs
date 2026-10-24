@@ -75,6 +75,7 @@ try {
   }, {url, allow});
   await mountExplorer(url);
   let page = await until(() => pages().find((page) => page.url().startsWith(url)), "Missing Explorer target");
+  // Cookie context follows the physical Page even with composed DOM ancestry.
   assert.deepEqual(await page.evaluate(() => {
     localStorage.setItem("explorer-session-check", "present");
     document.cookie = "explorer-session-check=present; Path=/; SameSite=Strict";
@@ -85,7 +86,7 @@ try {
     const cookies = document.cookie.includes("explorer-session-check=present");
     document.cookie = "explorer-session-check=; Path=/; Max-Age=0; SameSite=None; Secure";
     return { topLevel: window.top === window, parentIsSelf: window.parent === window, storage, strictCookies, cookies };
-  }), { topLevel: false, parentIsSelf: false, storage: true, strictCookies: false, cookies: true },
+  }), { topLevel: false, parentIsSelf: false, storage: true, strictCookies: true, cookies: true },
   "Explorer must expose its embedding ancestry with working session storage");
   await page.goto(`${url}/input-parent`);
   await until(async () => (await page.frames().find(frame => frame.url().endsWith("/input-frame"))

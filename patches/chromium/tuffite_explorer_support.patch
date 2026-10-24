@@ -447,7 +447,7 @@ index 5a4051158ce35d281eeaff71f3505321925b73ac..a323e50f6bcfca1547da70eba698ed85
  
    if (is_android) {
 diff --git a/content/renderer/agent_scheduling_group.cc b/content/renderer/agent_scheduling_group.cc
-index db02a2af0d2ed9f50ead7a352dfc8c9124ccf240..93347b5ffb0201ab5f44571be5bb74a7d1d49b03 100644
+index db02a2af0d2ed9f50ead7a352dfc8c9124ccf240..d03247be15445108038f0f95b9638e0de3a39380 100644
 --- a/content/renderer/agent_scheduling_group.cc
 +++ b/content/renderer/agent_scheduling_group.cc
 @@ -34,6 +34,13 @@
@@ -470,7 +470,7 @@ index db02a2af0d2ed9f50ead7a352dfc8c9124ccf240..93347b5ffb0201ab5f44571be5bb74a7
        params->outermost_origin ? &params->outermost_origin.value() : nullptr);
 +// TUFFITE_BEGIN
 +#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
-+  blink::SetExplorerFrameAncestors(web_view->MainFrame(), params->tuffite_frame_ancestors, params->tuffite_explorer_frame_policy);
++  blink::InitializeExplorerFrameAncestors(web_view->MainFrame(), params->tuffite_frame_ancestors, params->tuffite_explorer_frame_policy);
 +#endif
 +// TUFFITE_END
    return web_view;
@@ -968,7 +968,7 @@ index 9984b934aaf6d2927b044b89818834edc16c4c6e..ae666cee1ad104ddf4ab6944c3771354
    event_->SetStopImmediatePropagation(false);
  
 diff --git a/third_party/blink/renderer/core/execution_context/security_context_init.cc b/third_party/blink/renderer/core/execution_context/security_context_init.cc
-index 4e69516fcab54e33c7529acc84d51d87d54aefa3..3c711a390d74f4a981e1b137ff66db9f8f69936e 100644
+index 4e69516fcab54e33c7529acc84d51d87d54aefa3..43ca668ffb2f332d7ff7ee30dc4073331e428485 100644
 --- a/third_party/blink/renderer/core/execution_context/security_context_init.cc
 +++ b/third_party/blink/renderer/core/execution_context/security_context_init.cc
 @@ -3,6 +3,12 @@
@@ -997,6 +997,21 @@ index 4e69516fcab54e33c7529acc84d51d87d54aefa3..3c711a390d74f4a981e1b137ff66db9f
  
    if (RuntimeEnabledFeatures::BlockingFocusWithoutUserActivationEnabled(
            execution_context_)) {
+@@ -288,6 +300,14 @@ void SecurityContextInit::ApplyPermissionsPolicy(
+                                                   ->GetSecurityContext()
+                                                   ->GetPermissionsPolicy()
+                                             : nullptr;
++// TUFFITE_BEGIN
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++      if (auto* parent = ExplorerPermissionsPolicyParent(frame)) {
++        parent_permissions_policy =
++            parent->GetSecurityContext()->GetPermissionsPolicy();
++      }
++#endif
++// TUFFITE_END
+       // Ideally we would use the URL in `execution_context_` but at this point,
+       // it has no `document_` and so does not know its URL.
+       permissions_policy = network::PermissionsPolicy::CreateFromParentPolicy(
 diff --git a/third_party/blink/renderer/core/frame/frame.cc b/third_party/blink/renderer/core/frame/frame.cc
 index d69be19a1e4b2db98cfcecc6491da122117a7bc0..7e6905ceebf1d060c8de3240eef4d7b29b7b3189 100644
 --- a/third_party/blink/renderer/core/frame/frame.cc
@@ -1100,7 +1115,7 @@ index 10e67b39b6cad9deef8b4c292d87928ed919c9a3..9d3eccf7f5b0e028d7e7cd533892d210
    // Just return the |this| object the way the normal valueOf function on the
    // Object prototype would.  The valueOf function is only added to make sure
 diff --git a/third_party/blink/renderer/core/frame/remote_frame.cc b/third_party/blink/renderer/core/frame/remote_frame.cc
-index 527576cd5ca835b67d6901699945a7e16522cca4..301b850d4f8e8a2092843c9b5342a7d8764ff517 100644
+index 527576cd5ca835b67d6901699945a7e16522cca4..5a5a66f29bb86496a0db501e79f527929f26b180 100644
 --- a/third_party/blink/renderer/core/frame/remote_frame.cc
 +++ b/third_party/blink/renderer/core/frame/remote_frame.cc
 @@ -3,6 +3,12 @@
@@ -1126,7 +1141,7 @@ index 527576cd5ca835b67d6901699945a7e16522cca4..301b850d4f8e8a2092843c9b5342a7d8
 +  Frame* policy_parent = Parent();
 +// TUFFITE_BEGIN
 +#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
-+  if (auto* parent = ExplorerParentFrame(*this)) policy_parent = parent;
++  if (auto* parent = ExplorerPermissionsPolicyParent(*this)) policy_parent = parent;
 +#endif
 +// TUFFITE_END
 +  if (policy_parent) {
@@ -1262,7 +1277,7 @@ index ca3f043eca9ccb6e3fe5aec1bb243238228069dc..0f9e993abc084d7918e0b92e840127d0
        blink::BlinkTransferableMessage& input) {
      blink::Vector<blink::MessagePortDescriptor> result;
 diff --git a/third_party/blink/renderer/core/page/frame_tree.cc b/third_party/blink/renderer/core/page/frame_tree.cc
-index 435f286cfe29485e99abde176db03c549b4fa5c1..031a47dbaf0839039c17c3ed59543825e3a72384 100644
+index 435f286cfe29485e99abde176db03c549b4fa5c1..5af6d079086c8524fa98ea92f2dbf0015a032683 100644
 --- a/third_party/blink/renderer/core/page/frame_tree.cc
 +++ b/third_party/blink/renderer/core/page/frame_tree.cc
 @@ -37,6 +37,13 @@
@@ -1279,12 +1294,13 @@ index 435f286cfe29485e99abde176db03c549b4fa5c1..031a47dbaf0839039c17c3ed59543825
  namespace blink {
  
  namespace {
-@@ -128,10 +135,20 @@ void FrameTree::SetName(const AtomicString& name,
+@@ -128,10 +135,21 @@ void FrameTree::SetName(const AtomicString& name,
  
  DISABLE_CFI_PERF
  Frame* FrameTree::Parent() const {
 +// TUFFITE_BEGIN
 +#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  if (ExplorerIsolatedFrame(*this_frame_)) return nullptr;
 +  if (auto* parent = ExplorerParentFrame(*this_frame_)) return parent;
 +#endif
 +// TUFFITE_END
@@ -1300,7 +1316,7 @@ index 435f286cfe29485e99abde176db03c549b4fa5c1..031a47dbaf0839039c17c3ed59543825
    return *this_frame_->Top();
  }
  
-@@ -386,8 +403,14 @@ bool FrameTree::IsDescendantOf(const Frame* ancestor) const {
+@@ -386,8 +404,14 @@ bool FrameTree::IsDescendantOf(const Frame* ancestor) const {
    if (!ancestor)
      return false;
  

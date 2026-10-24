@@ -125,6 +125,8 @@ export interface HTMLExplorerElement extends HTMLElement {
   allow: string;
   /** Empty selects the parent's partition; `shared` is not an element value. */
   partition: string;
+  /** Fixed at creation. Isolated keeps window.parent/top within this Explorer's frame tree. */
+  isolated: boolean;
   navigation: ExplorerNavigationPolicy;
   dialogs: ExplorerDialogPolicy;
   contextMenuEnabled: boolean;

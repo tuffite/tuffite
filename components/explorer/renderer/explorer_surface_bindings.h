@@ -22,6 +22,7 @@ class ExplorerSurfaceBindings final : public content::RenderFrameObserver,
  public:
   static void Create(content::RenderFrame* frame);
 
+  void DidCreateDocumentElement() override;
   void DidCreateScriptContext(v8::Local<v8::Context> context,
                               int32_t world_id) override;
   void WillReleaseScriptContext(v8::Local<v8::Context> context,
@@ -29,7 +30,8 @@ class ExplorerSurfaceBindings final : public content::RenderFrameObserver,
   void OnDestruct() override;
   void DidFinishRequest(const std::string&, const std::string&, bool) override;
   void DidChangeAncestors(const std::vector<blink::FrameToken>&,
-                          const std::optional<blink::FramePolicy>&,
+                          const std::vector<std::optional<blink::FramePolicy>>&,
+                          const std::vector<bool>&,
                           DidChangeAncestorsCallback) override;
   void DidReceiveOpen(const std::string& event_type,
                       const std::string& request_json) override;
@@ -55,7 +57,8 @@ class ExplorerSurfaceBindings final : public content::RenderFrameObserver,
   static void ResetDialogSink(const v8::FunctionCallbackInfo<v8::Value>& info);
   static void RespondToDialog(const v8::FunctionCallbackInfo<v8::Value>& info);
   void ApplyAncestors(std::vector<blink::FrameToken>,
-                      std::optional<blink::FramePolicy>,
+                      std::vector<std::optional<blink::FramePolicy>>,
+                      std::vector<bool>,
                       DidChangeAncestorsCallback,
                       unsigned attempt);
   void ResetOpenSinkImpl(const v8::FunctionCallbackInfo<v8::Value>& info);
@@ -65,6 +68,7 @@ class ExplorerSurfaceBindings final : public content::RenderFrameObserver,
   void OnDialogResponded(uint64_t request_id, bool accepted);
   void Reset();
   mojom::ExplorerSurfaceHost& GetRemote();
+  void SyncAncestors(unsigned attempt = 0);
 
   mojo::Remote<mojom::ExplorerSurfaceHost> remote_;
   mojo::Receiver<mojom::ExplorerSurfaceClient> receiver_{this};

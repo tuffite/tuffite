@@ -10,5 +10,9 @@ struct FramePolicy;
 CORE_EXPORT const FramePolicy* ExplorerFrameOwnerPolicy(Frame&);
 CORE_EXPORT Frame* ExplorerParentFrame(Frame&);
 CORE_EXPORT Frame* ExplorerTopFrame(Frame&);
+CORE_EXPORT bool ExplorerIsolatedFrame(Frame&);
+// Permissions inheritance follows actual ownership even when DOM ancestry
+// stops.
+CORE_EXPORT Frame* ExplorerPermissionsPolicyParent(Frame&);
 }  // namespace blink
 #endif

@@ -19,6 +19,7 @@ enum class ExplorerDialogPolicy {
 struct ExplorerPolicy {
   bool operator==(const ExplorerPolicy&) const = default;
   std::string partition;
+  bool isolated_browsing_context = false;
   ExplorerNavigationPolicy navigation = ExplorerNavigationPolicy::kEmit;
   ExplorerDialogPolicy dialogs = ExplorerDialogPolicy::kSuppress;
   std::vector<std::string> execute_javascript_origins;

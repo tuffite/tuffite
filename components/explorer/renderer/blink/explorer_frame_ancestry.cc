@@ -30,6 +30,8 @@ class Ancestors final : public GarbageCollected<Ancestors> {
   std::optional<FrameToken> parent;
   std::optional<FrameToken> top;
   std::optional<FramePolicy> policy;
+  bool isolated = false;
+  bool has_boundaries = false;
 };
 Ancestors::Ancestors() = default;
 Ancestors::~Ancestors() = default;
@@ -56,7 +58,9 @@ void RefreshPermissions(Frame& frame) {
 void Set(Frame* frame,
          std::optional<FrameToken> parent,
          std::optional<FrameToken> top,
-         std::optional<FramePolicy> policy = std::nullopt) {
+         std::optional<FramePolicy> policy = std::nullopt,
+         bool isolated = false,
+         bool has_boundaries = false) {
   if (!frame) {
     return;
   }
@@ -68,7 +72,7 @@ void Set(Frame* frame,
       }
     }
   }
-  if (!parent && !top) {
+  if (!parent && !top && !policy) {
     Map().erase(frame);
     RefreshPermissions(*frame);
     return;
@@ -77,6 +81,8 @@ void Set(Frame* frame,
   value->parent = parent;
   value->top = top;
   value->policy = std::move(policy);
+  value->isolated = isolated;
+  value->has_boundaries = has_boundaries;
   Map().Set(frame, value);
   RefreshPermissions(*frame);
 }
@@ -103,14 +109,37 @@ const FramePolicy* ExplorerFrameOwnerPolicy(Frame& frame) {
                                                       : nullptr;
 }
 Frame* ExplorerParentFrame(Frame& frame) {
-  return frame.Parent() ? nullptr : Lookup(frame, false);
+  auto found = Map().find(&frame);
+  return frame.Parent() || (found != Map().end() && found->value->isolated)
+             ? nullptr
+             : Lookup(frame, false);
 }
 Frame* ExplorerTopFrame(Frame& frame) {
-  return Lookup(*frame.Top(), true);
+  // Remote inner-main-frame proxies may live in their embedder's native Page
+  // tree. Stop before traversing that physical parent as well.
+  auto* root = &frame;
+  while (!ExplorerIsolatedFrame(*root) && root->Parent()) {
+    root = root->Parent();
+  }
+  return ExplorerIsolatedFrame(*root) ? root : Lookup(*root, true);
 }
-bool SetExplorerFrameAncestors(WebFrame* web_frame,
-                               const std::vector<FrameToken>& ancestors,
-                               const std::optional<FramePolicy>& policy) {
+bool ExplorerIsolatedFrame(Frame& frame) {
+  auto found = Map().find(&frame);
+  return found != Map().end() && found->value->isolated;
+}
+Frame* ExplorerPermissionsPolicyParent(Frame& frame) {
+  // DOM ancestry may hide a real native parent on an inner-main-frame proxy.
+  // Permissions inheritance must retain that parent too.
+  if (auto* owner = Lookup(frame, false)) {
+    return owner;
+  }
+  return frame.Parent();
+}
+bool SetExplorerFrameAncestors(
+    WebFrame* web_frame,
+    const std::vector<FrameToken>& ancestors,
+    const std::vector<std::optional<FramePolicy>>& policies,
+    const std::vector<bool>& isolation_boundaries) {
   if (!web_frame) {
     return false;
   }
@@ -123,13 +152,44 @@ bool SetExplorerFrameAncestors(WebFrame* web_frame,
   if (!frame) {
     return false;
   }
-  if (ancestors.empty()) {
-    Set(frame, {}, {});
+  if (!isolation_boundaries.empty() &&
+      isolation_boundaries.size() != ancestors.size() + 1) {
+    return false;
+  }
+  if (!policies.empty() && policies.size() != ancestors.size() + 1) {
+    return false;
+  }
+  const bool has_boundaries = !isolation_boundaries.empty();
+  auto previous = Map().find(frame);
+  if (!has_boundaries && previous != Map().end() &&
+      previous->value->has_boundaries) {
     return true;
   }
-  Set(frame, ancestors.front(), ancestors.back(), policy);
+  const auto policy = [&](size_t index) -> std::optional<FramePolicy> {
+    return policies.empty() ? std::nullopt : policies[index];
+  };
+  const auto isolated = [&](size_t index) {
+    return !isolation_boundaries.empty() && isolation_boundaries[index];
+  };
+  const auto top = [&](size_t start) -> std::optional<FrameToken> {
+    if (start >= ancestors.size()) {
+      return std::nullopt;
+    }
+    for (size_t i = start; i < ancestors.size(); ++i) {
+      if (isolated(i + 1)) {
+        return ancestors[i];
+      }
+    }
+    return ancestors.back();
+  };
+  if (ancestors.empty()) {
+    Set(frame, {}, {}, policy(0), isolated(0), has_boundaries);
+    return true;
+  }
+  Set(frame, ancestors.front(), top(0), policy(0), isolated(0), has_boundaries);
   bool ready = true;
-  for (size_t i = 0; i < ancestors.size(); ++i) {
+  // Initialize permissions from outermost owner to child.
+  for (size_t i = ancestors.size(); i-- > 0;) {
     auto* remote = Resolve(ancestors[i]);
     if (!remote) {
       ready = false;
@@ -140,17 +200,34 @@ bool SetExplorerFrameAncestors(WebFrame* web_frame,
     if (ancestors[i].Is<LocalFrameToken>()) {
       continue;
     }
-    auto found = Map().find(remote);
-    auto ancestor_policy =
-        found != Map().end() ? found->value->policy : std::nullopt;
+    auto previous_ancestor = Map().find(remote);
+    if (!has_boundaries && previous_ancestor != Map().end() &&
+        previous_ancestor->value->has_boundaries) {
+      continue;
+    }
+    auto ancestor_policy = policy(i + 1);
     Set(remote,
         i + 1 < ancestors.size() ? std::make_optional(ancestors[i + 1])
                                  : std::nullopt,
-        i + 1 < ancestors.size() ? std::make_optional(ancestors.back())
-                                 : std::nullopt,
-        std::move(ancestor_policy));
+        top(i + 1), std::move(ancestor_policy), isolated(i + 1),
+        has_boundaries);
   }
   RefreshPermissions(*frame);
   return ready;
+}
+bool InitializeExplorerFrameAncestors(
+    WebFrame* web_frame,
+    const std::vector<FrameToken>& ancestors,
+    const std::optional<FramePolicy>& policy) {
+  std::vector<std::optional<FramePolicy>> policies(ancestors.size() + 1);
+  policies.front() = policy;
+  for (size_t i = 0; i < ancestors.size(); ++i) {
+    auto* remote = Resolve(ancestors[i]);
+    auto found = remote ? Map().find(remote) : Map().end();
+    if (found != Map().end()) {
+      policies[i + 1] = found->value->policy;
+    }
+  }
+  return SetExplorerFrameAncestors(web_frame, ancestors, policies);
 }
 }  // namespace blink

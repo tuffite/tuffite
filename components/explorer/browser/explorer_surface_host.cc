@@ -22,6 +22,7 @@
 #include "content/public/browser/web_contents.h"
 #include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "third_party/blink/public/common/messaging/transferable_message.h"
+#include "tuffite/components/explorer/browser/content/explorer_frame_ancestry.h"
 #include "tuffite/components/explorer/browser/content/explorer_isolation.h"
 #include "tuffite/components/explorer/browser/explorer_host.h"
 #include "tuffite/components/explorer/browser/explorer_policy_provider.h"
@@ -92,8 +93,10 @@ bool ExplorerSurfaceHost::IsCurrentPrimaryDocument() const {
 
 void ExplorerSurfaceHost::GetFrameAncestors(
     GetFrameAncestorsCallback callback) {
-  std::move(callback).Run(ExplorerFrameAncestors(render_frame_host()),
-                          ExplorerFrameOwnerPolicy(render_frame_host()));
+  std::move(callback).Run(
+      ExplorerFrameAncestors(render_frame_host()),
+      ExplorerFrameOwnerPolicies(render_frame_host()),
+      ExplorerFrameIsolationBoundaries(render_frame_host()));
 }
 void ExplorerSurfaceHost::UpdateFrameAncestors(
     content::WebContents* contents,
@@ -107,7 +110,7 @@ void ExplorerSurfaceHost::UpdateFrameAncestors(
   }
   std::vector<base::WeakPtr<ExplorerSurfaceHost>> targets;
   for (auto* surface : ExplorerRouter::Get(contents).surfaces()) {
-    if (surface->IsCurrentPrimaryDocument() && surface->client_ &&
+    if (surface->render_frame_host().IsActive() && surface->client_ &&
         std::find(tree.begin(), tree.end(),
                   ContentsFor(surface->render_frame_host())) != tree.end()) {
       targets.push_back(surface->weak_factory_.GetWeakPtr());
@@ -150,7 +153,8 @@ void ExplorerSurfaceHost::UpdateFrameAncestors(
     }
     surface->client_->DidChangeAncestors(
         ExplorerFrameAncestors(surface->render_frame_host()),
-        ExplorerFrameOwnerPolicy(surface->render_frame_host()),
+        ExplorerFrameOwnerPolicies(surface->render_frame_host()),
+        ExplorerFrameIsolationBoundaries(surface->render_frame_host()),
         mojo::WrapCallbackWithDefaultInvokeIfNotRun(
             base::BindOnce(
                 [](base::WeakPtr<content::WebContents> contents,
@@ -174,7 +178,7 @@ void ExplorerSurfaceHost::UpdateFrameAncestors(
 }
 void ExplorerSurfaceHost::BindClient(
     mojo::PendingRemote<mojom::ExplorerSurfaceClient> client) {
-  if (IsCurrentPrimaryDocument()) {
+  if (render_frame_host().IsActive()) {
     if (client_.is_bound()) {
       return;
     }

@@ -14,6 +14,7 @@ struct ExplorerCreateParams {
   string partition;
   string navigation;
   string dialogs;
+  bool isolated = false;
   bool context_menu_enabled;
   blink.mojom.FramePolicy frame_policy;
 };
@@ -89,7 +90,7 @@ interface ExplorerHost {
 // Main-document request controllers, native ancestry updates, and WindowInfo
 // message delivery. WindowProxy messages use Chromium's normal frame IPC.
 interface ExplorerSurfaceClient {
-  DidChangeAncestors(array<blink.mojom.FrameToken> ancestors, blink.mojom.FramePolicy? frame_policy) => (bool ready);
+  DidChangeAncestors(array<blink.mojom.FrameToken> ancestors, array<blink.mojom.FramePolicy?> frame_policies, array<bool> isolation_boundaries) => (bool ready);
   DidFinishRequest(string kind, string key, bool canceled);
   DidReceiveOpen(string event_type, string request_json);
   DidReceiveDialog(uint64 request_id, string type, string message,
@@ -97,7 +98,7 @@ interface ExplorerSurfaceClient {
 };
 
 interface ExplorerSurfaceHost {
-  [Sync] GetFrameAncestors() => (array<blink.mojom.FrameToken> ancestors, blink.mojom.FramePolicy? frame_policy);
+  [Sync] GetFrameAncestors() => (array<blink.mojom.FrameToken> ancestors, array<blink.mojom.FramePolicy?> frame_policies, array<bool> isolation_boundaries);
   PostWindowMessage(int64 window_id, blink.mojom.TransferableMessage message, string target_origin);
   BindClient(pending_remote<ExplorerSurfaceClient> client);
   DiscardWindow(string token) => (bool accepted);

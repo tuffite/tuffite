@@ -1,5 +1,6 @@
 source_set("browser") {
   public = [
+    "//tuffite/components/explorer/browser/content/explorer_frame_ancestry.h",
     "//tuffite/components/explorer/browser/content/explorer_isolation.h",
     "explorer_browser_support.h",
     "explorer_host.h",
@@ -11,6 +12,7 @@ source_set("browser") {
     "explorer_surface_host.h",
   ]
   sources = [
+    "//tuffite/components/explorer/browser/content/explorer_frame_ancestry.h",
     "//tuffite/components/explorer/browser/content/explorer_isolation.h",
     "explorer_browser_support.cc",
     "explorer_browser_support.h",

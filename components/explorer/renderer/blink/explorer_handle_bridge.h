@@ -27,7 +27,15 @@ class WebFrame;
 TUFFITE_EXPLORER_BRIDGE_EXPORT bool SetExplorerFrameAncestors(
     WebFrame*,
     const std::vector<FrameToken>&,
-    const std::optional<FramePolicy>& = std::nullopt);
+    const std::vector<std::optional<FramePolicy>>& = {},
+    const std::vector<bool>& isolation_boundaries = {});
+// CreateView carries initial ancestry before the document's full snapshot
+// arrives. It must not overwrite metadata already installed during context
+// creation.
+TUFFITE_EXPLORER_BRIDGE_EXPORT bool InitializeExplorerFrameAncestors(
+    WebFrame*,
+    const std::vector<FrameToken>&,
+    const std::optional<FramePolicy>&);
 TUFFITE_EXPLORER_BRIDGE_EXPORT void PostExplorerSurfaceMessage(
     const v8::FunctionCallbackInfo<v8::Value>&);
 TUFFITE_EXPLORER_BRIDGE_EXPORT void PostExplorerWindowMessage(

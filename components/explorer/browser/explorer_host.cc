@@ -334,6 +334,7 @@ void ExplorerHost::Attach(const std::string& token,
     std::move(callback).Run("SecurityError");
     return;
   }
+  policy.isolated_browsing_context = params->isolated;
   policy.navigation = params->navigation == "emit"
                           ? ExplorerNavigationPolicy::kEmit
                           : ExplorerNavigationPolicy::kAllow;
@@ -352,6 +353,8 @@ void ExplorerHost::Attach(const std::string& token,
                << static_cast<int>(record->policy().navigation)
                << " dialogs=" << static_cast<int>(policy.dialogs) << "/"
                << static_cast<int>(record->policy().dialogs)
+               << " isolated=" << policy.isolated_browsing_context << "/"
+               << record->policy().isolated_browsing_context
                << " execute=" << policy.allow_execute_javascript << "/"
                << record->policy().allow_execute_javascript
                << " origins=" << policy.execute_javascript_origins.size() << "/"
@@ -435,7 +438,8 @@ void ExplorerHost::AttachTransferred(blink::FramePolicy frame_policy,
   auto* outer = content::WebContents::FromRenderFrameHost(&render_frame_host());
   outer->AttachInnerWebContents(std::move(owned), frame, false);
   SetExplorerOwner(WebContentsObserver::web_contents(), &render_frame_host(),
-                   record->policy().allow_parent_messages, frame_policy);
+                   record->policy().allow_parent_messages, frame_policy,
+                   record->policy().isolated_browsing_context);
   WebContentsObserver::web_contents()->UpdateWebContentsVisibility(
       outer->GetVisibility());
   attaching_transfer_.reset();
@@ -485,6 +489,7 @@ void ExplorerHost::Create(mojom::ExplorerCreateParamsPtr params,
     std::move(callback).Run(false);
     return;
   }
+  policy.isolated_browsing_context = params->isolated;
   policy.navigation = *navigation;
   policy.dialogs = *dialogs;
   content::RenderFrameHost* child =
@@ -635,7 +640,8 @@ void ExplorerHost::AttachPrepared(
   // startup postMessages can create an ordinary proxy in the same group before
   // AttachInnerWebContents attempts to create its outer-delegate proxy.
   SetExplorerOwner(attached, &render_frame_host(),
-                   policy_->allow_parent_messages, frame_policy);
+                   policy_->allow_parent_messages, frame_policy,
+                   policy_->isolated_browsing_context);
   attached->UpdateWebContentsVisibility(outer->GetVisibility());
   pending_create_callback_ = std::move(callback);
   preparing_attachment_ = false;

@@ -92,10 +92,21 @@ impl WebServer {
             )
         });
         if let Err(error) = ready {
-            drop(process);
+            if let Err(cleanup_error) =
+                runtime.block_on(process.shutdown(Duration::from_millis(200)))
+            {
+                tracing::error!(%cleanup_error, "Web server cleanup failed after readiness error");
+            }
             return Err(error);
         }
         Ok(Self { process })
+    }
+
+    pub(super) fn shutdown(self, runtime: &Runtime) -> Result<(), String> {
+        runtime
+            .block_on(self.process.shutdown(Duration::from_millis(200)))
+            .map(|_| ())
+            .map_err(|error| format!("stop Web development server: {error}"))
     }
 }
 fn probe_server(url: &Url, token: &str) -> Result<bool, String> {
@@ -227,6 +238,81 @@ fn is_loopback_host(host: Option<&Host<&str>>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "subprocess fixture for Web server tree cleanup"]
+    fn shutdown_fixture() {
+        let Some(root) = std::env::var_os("TUFFITE_TEST_WEB_SERVER_ROOT") else {
+            return;
+        };
+        if std::env::var_os("TUFFITE_TEST_WEB_SERVER_CHILD").is_some() {
+            let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            std::fs::write(
+                PathBuf::from(root).join("port"),
+                listener.local_addr().unwrap().port().to_string(),
+            )
+            .unwrap();
+            loop {
+                std::thread::sleep(Duration::from_secs(60));
+            }
+        }
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "cli::dev::server::tests::shutdown_fixture",
+                "--ignored",
+            ])
+            .env("TUFFITE_TEST_WEB_SERVER_CHILD", "1")
+            .spawn()
+            .unwrap();
+        let _ = child.wait();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_shutdown_releases_a_descendants_listening_port() {
+        let root =
+            std::env::temp_dir().join(format!("tuffite-server-cleanup-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let process = runtime
+            .block_on(
+                ProcessCommand::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "cli::dev::server::tests::shutdown_fixture",
+                        "--ignored",
+                    ])
+                    .env("TUFFITE_TEST_WEB_SERVER_ROOT", root.as_os_str())
+                    .stdout(StdioMode::Null)
+                    .stderr(StdioMode::Null)
+                    .start(),
+            )
+            .unwrap();
+        let server = WebServer { process };
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let port = loop {
+            if let Ok(port) = std::fs::read_to_string(root.join("port")) {
+                break Some(port.parse::<u16>().unwrap());
+            }
+            if Instant::now() >= deadline {
+                break None;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        server.shutdown(&runtime).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+        let port = port.expect("descendant starts listening");
+        assert!(
+            std::net::TcpListener::bind(("127.0.0.1", port)).is_ok(),
+            "shutdown must release descendant-owned sockets before returning"
+        );
+    }
+
     #[test]
     fn relative_commands_resolve_against_server_working_directory() {
         let root =

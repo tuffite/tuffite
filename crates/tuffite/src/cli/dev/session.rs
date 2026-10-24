@@ -55,7 +55,7 @@ impl<'a> DevelopmentSession<'a> {
     }
 
     pub(super) fn run(mut self) -> Result<(), String> {
-        let mut application = DevelopmentApplication::prepare(
+        let application = DevelopmentApplication::prepare(
             self.framework.as_deref(),
             self.processes.as_ref(),
             &self.configuration,
@@ -74,6 +74,25 @@ impl<'a> DevelopmentSession<'a> {
         let token = DevelopmentToken::new()?;
         let mut server = WebServer::start(&self.runtime, &self.configuration.server, &token)?;
         tracing::info!(url = %self.configuration.server.url, "development Web server is ready");
+        let result = self.run_application_loop(application, &mut server, &token);
+        let cleanup = server.shutdown(&self.runtime);
+        match result {
+            Err(error) => {
+                if let Err(cleanup_error) = cleanup {
+                    tracing::error!(%cleanup_error, "Web server cleanup failed after development error");
+                }
+                Err(error)
+            }
+            Ok(()) => cleanup,
+        }
+    }
+
+    fn run_application_loop(
+        &mut self,
+        mut application: DevelopmentApplication,
+        server: &mut WebServer,
+        token: &DevelopmentToken,
+    ) -> Result<(), String> {
         loop {
             let watch_root = (!self.options.no_watch && self.configuration.manifest.is_some())
                 .then_some(self.configuration.root.as_path());
@@ -81,7 +100,7 @@ impl<'a> DevelopmentSession<'a> {
             tracing::info!(executable = %application.executable.display(), "launching development application");
             let command = application.command(&Launch {
                 url: &self.configuration.server.url,
-                token: &token,
+                token,
                 args: &self.options.app_arg,
                 devtools_port: self.configuration.devtools_port,
             });
@@ -89,14 +108,17 @@ impl<'a> DevelopmentSession<'a> {
                 .runtime
                 .block_on(command.start())
                 .map_err(|error| format!("launch {}: {error}", application.executable.display()))?;
-            let outcome = self.wait(&mut process, &mut server, &application.executable, &watcher);
-            if matches!(outcome, Ok(SessionExit::SourcesChanged)) {
-                // Reap the old process tree before replacing its loaded library.
-                self.runtime
-                    .block_on(process.shutdown(Duration::from_millis(200)))
-                    .map_err(|error| format!("stop application before rebuilding: {error}"))?;
-            } else {
-                drop(process);
+            let outcome = self.wait(&mut process, server, &application.executable, &watcher);
+            // Finish tree teardown while the process runtime is alive, including crashes
+            // and interruption. Drop alone may schedule work that runtime destruction cancels.
+            let cleanup = self
+                .runtime
+                .block_on(process.shutdown(Duration::from_millis(200)));
+            if let Err(error) = cleanup {
+                if outcome.is_ok() {
+                    return Err(format!("stop development application: {error}"));
+                }
+                tracing::error!(%error, "application cleanup failed after development error");
             }
             match outcome? {
                 SessionExit::Finished => return Ok(()),

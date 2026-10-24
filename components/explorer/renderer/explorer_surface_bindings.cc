@@ -141,10 +141,48 @@ ExplorerSurfaceBindings::ExplorerSurfaceBindings(content::RenderFrame* frame)
     : content::RenderFrameObserver(frame) {}
 ExplorerSurfaceBindings::~ExplorerSurfaceBindings() = default;
 
+void ExplorerSurfaceBindings::DidCreateDocumentElement() {
+  // Documents without page scripts still need current ancestry and permissions.
+  SyncAncestors();
+  if (!render_frame()->IsMainFrame() && !receiver_.is_bound()) {
+    GetRemote().BindClient(receiver_.BindNewPipeAndPassRemote());
+  }
+}
+
+void ExplorerSurfaceBindings::SyncAncestors(unsigned attempt) {
+  std::vector<blink::FrameToken> ancestors;
+  std::vector<std::optional<blink::FramePolicy>> policies;
+  std::vector<bool> isolation_boundaries;
+  if (GetRemote().GetFrameAncestors(&ancestors, &policies,
+                                    &isolation_boundaries)) {
+    if (!blink::SetExplorerFrameAncestors(render_frame()->GetWebFrame(),
+                                          ancestors, policies,
+                                          isolation_boundaries) &&
+        attempt < 64) {
+      // Refetch instead of replaying an old snapshot across
+      // navigation/transfer.
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+          FROM_HERE,
+          base::BindOnce(&ExplorerSurfaceBindings::SyncAncestors,
+                         weak_factory_.GetWeakPtr(), attempt + 1),
+          base::Milliseconds(1));
+    }
+  }
+}
+
 void ExplorerSurfaceBindings::DidCreateScriptContext(
     v8::Local<v8::Context> context,
     int32_t world_id) {
-  if (world_id != kMainWorldId || !render_frame()->IsMainFrame()) {
+  if (world_id != kMainWorldId) {
+    return;
+  }
+  // Out-of-process iframe renderers also need the authoritative boundaries on
+  // their remote ancestor proxies before the first page script reads top.
+  SyncAncestors();
+  if (!render_frame()->IsMainFrame()) {
+    if (!receiver_.is_bound()) {
+      GetRemote().BindClient(receiver_.BindNewPipeAndPassRemote());
+    }
     return;
   }
   v8::Isolate* isolate =
@@ -243,12 +281,8 @@ void ExplorerSurfaceBindings::DidCreateScriptContext(
     return;
   }
   context_.Reset(isolate, context);
-  GetRemote().BindClient(receiver_.BindNewPipeAndPassRemote());
-  std::vector<blink::FrameToken> ancestors;
-  std::optional<blink::FramePolicy> policy;
-  if (GetRemote().GetFrameAncestors(&ancestors, &policy)) {
-    blink::SetExplorerFrameAncestors(render_frame()->GetWebFrame(), ancestors,
-                                     policy);
+  if (!receiver_.is_bound()) {
+    GetRemote().BindClient(receiver_.BindNewPipeAndPassRemote());
   }
 }
 
@@ -440,17 +474,20 @@ void ExplorerSurfaceBindings::DidFinishRequest(const std::string& kind,
 }
 void ExplorerSurfaceBindings::DidChangeAncestors(
     const std::vector<blink::FrameToken>& ancestors,
-    const std::optional<blink::FramePolicy>& policy,
+    const std::vector<std::optional<blink::FramePolicy>>& policies,
+    const std::vector<bool>& isolation_boundaries,
     DidChangeAncestorsCallback callback) {
-  ApplyAncestors(ancestors, policy, std::move(callback), 0);
+  ApplyAncestors(ancestors, policies, isolation_boundaries, std::move(callback),
+                 0);
 }
 void ExplorerSurfaceBindings::ApplyAncestors(
     std::vector<blink::FrameToken> ancestors,
-    std::optional<blink::FramePolicy> policy,
+    std::vector<std::optional<blink::FramePolicy>> policies,
+    std::vector<bool> isolation_boundaries,
     DidChangeAncestorsCallback callback,
     unsigned attempt) {
   if (blink::SetExplorerFrameAncestors(render_frame()->GetWebFrame(), ancestors,
-                                       policy)) {
+                                       policies, isolation_boundaries)) {
     std::move(callback).Run(true);
     return;
   }
@@ -462,7 +499,8 @@ void ExplorerSurfaceBindings::ApplyAncestors(
       FROM_HERE,
       base::BindOnce(&ExplorerSurfaceBindings::ApplyAncestors,
                      weak_factory_.GetWeakPtr(), std::move(ancestors),
-                     std::move(policy), std::move(callback), attempt + 1),
+                     std::move(policies), std::move(isolation_boundaries),
+                     std::move(callback), attempt + 1),
       base::Milliseconds(1));
 }
 void ExplorerSurfaceBindings::DidReceiveOpen(const std::string& event_type,

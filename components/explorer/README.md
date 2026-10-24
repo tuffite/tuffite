@@ -283,13 +283,32 @@ profiles and element-selected capabilities are not supported.
 | --- | --- | --- |
 | `src` | Initial/current requested URL; assigning it uses the `load()` path | yes |
 | `partition` | omitted, `persist:<name>`, `memory:<name>`, `inherit+persist:<name>`, or `inherit+memory:<name>` | no |
+| `isolated` | Boolean; omission (or JS property false) preserves composed DOM ancestry; presence makes this Explorer its own `window.parent/top` root | no |
 | `navigation` | `emit` intercepts renderer current-tab navigation; `allow` navigates inside | no |
 | `dialogs` | `emit` forwards authorized dialogs; `suppress` rejects them | no |
 | `contextMenuEnabled` | Enables the browser-owned native context menu | yes |
 
 Creation attributes are frozen for that WebContents. Remove and recreate the
-element to change its partition, navigation, or dialog policy.
+element to change its partition, isolated mode, navigation, or dialog policy.
 `partition="shared"` is intentionally invalid: `shared` is an internal partition kind; omission is the public element syntax.
+
+## Independent browsing context
+
+Use `<explorer isolated>` (also `isolated="true"`) or set `element.isolated = true`
+before creating an external login/browser surface. Its root sees
+`window.parent === window.top === window`, and ordinary iframes inside it target
+that Explorer root with `top.location`. This allows cross-origin QR/OAuth frames
+to return to the login page's origin under Chromium's existing navigation rules.
+The application window is outside that DOM ancestor chain. The default is false
+and preserves existing composed parent/top ancestry. As an HTML boolean attribute,
+`isolated="false"` is still present/true; remove it or assign the JS property false.
+
+Browser ownership, partitions, capability checks, and element `allow` policy remain
+in force. Native ownership/message authorization still follows the actual surface
+tree. Hosts can use `explorer.postMessage(...)`; the guest can reply using the
+received `MessageEvent.source`. `parent.postMessage` and `top.postMessage` stay in
+the isolated DOM context. Detach/attach receivers must select the source's isolated
+mode; mismatched policy is rejected without consuming the transferred handle.
 
 ## Storage partitions
 

@@ -143,6 +143,16 @@ String HTMLExplorerElement::navigation() const {
 void HTMLExplorerElement::setNavigation(const String& value) {
   setAttribute(AtomicString("navigation"), AtomicString(value));
 }
+bool HTMLExplorerElement::isolated() const {
+  return hasAttribute(AtomicString("isolated"));
+}
+void HTMLExplorerElement::setIsolated(bool value) {
+  if (value) {
+    setAttribute(AtomicString("isolated"), AtomicString(""));
+  } else {
+    removeAttribute(AtomicString("isolated"));
+  }
+}
 String HTMLExplorerElement::dialogs() const {
   return FrozenAttribute("dialogs", "suppress");
 }
@@ -752,6 +762,7 @@ HTMLExplorerElement::CreateParams() const {
   params->partition = partition();
   params->navigation = navigation();
   params->dialogs = dialogs();
+  params->isolated = isolated();
   params->context_menu_enabled = context_menu_enabled_;
   params->frame_policy = GetFramePolicy();
   return params;
