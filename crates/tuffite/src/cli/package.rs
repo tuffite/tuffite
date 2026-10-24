@@ -59,7 +59,7 @@ const ASSET_ROOT: &str = "assets";
 pub struct Options {
     /// Application configuration; otherwise search the current directory and its parents.
     #[arg(long)]
-    manifest: Option<PathBuf>,
+    pub(super) manifest: Option<PathBuf>,
     #[arg(long)]
     destination: Option<PathBuf>,
     #[arg(long)]

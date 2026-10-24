@@ -104,10 +104,28 @@ impl Cli {
     pub fn run(self) -> anyhow::Result<()> {
         Self::init_tracing(self.verbose);
         tracing::debug!(command = ?self.command, "running Tuffite CLI command");
-        let mut context = context::registry(matches!(
-            &self.command,
-            Command::Dev(options) if options.force_download_framework
-        ))
+        let manifest = match &self.command {
+            Command::Build(options) => {
+                Some(options.manifest.resolve().map_err(anyhow::Error::msg)?)
+            }
+            Command::Doctor(options) => {
+                Some(options.manifest.resolve().map_err(anyhow::Error::msg)?)
+            }
+            Command::Package(options) => Some(
+                config::resolve_manifest(options.manifest.as_deref())
+                    .map_err(anyhow::Error::msg)?,
+            ),
+            Command::Dev(options) => config::discover_manifest(options.manifest.as_deref())
+                .map_err(anyhow::Error::msg)?,
+            _ => None,
+        };
+        let mut context = context::registry_for_manifest(
+            matches!(
+                &self.command,
+                Command::Dev(options) if options.force_download_framework
+            ),
+            manifest,
+        )
         .map_err(anyhow::Error::msg)?;
         context.freeze();
         self.command.run(&context)

@@ -6,15 +6,27 @@ use std::sync::Arc;
 
 pub(super) struct Invocation {
     refresh_framework: bool,
+    manifest: Option<std::path::PathBuf>,
 }
 
 trait FrameworkSource: Send + Sync {
-    fn resolve(&self, refresh: bool) -> Result<Distribution, String>;
+    fn resolve(
+        &self,
+        refresh: bool,
+        manifest: Option<&std::path::Path>,
+    ) -> Result<Distribution, String>;
 }
 struct NativeFrameworkSource;
 impl FrameworkSource for NativeFrameworkSource {
-    fn resolve(&self, refresh: bool) -> Result<Distribution, String> {
+    fn resolve(
+        &self,
+        refresh: bool,
+        manifest: Option<&std::path::Path>,
+    ) -> Result<Distribution, String> {
         let mut resolver = Resolver::from_env()?;
+        if let Some(manifest) = manifest {
+            resolver = resolver.manifest(manifest)?;
+        }
         if refresh {
             tracing::info!("forcing a fresh Tuffite Framework Release download");
             resolver = resolver.managed().auto_download(true).force_download(true);
@@ -32,23 +44,41 @@ impl Factory<Invocation> for FrameworkFactory {
     ) -> Result<Arc<Distribution>, String> {
         let invocation = build.context();
         let source = build.depends_on::<Service<dyn FrameworkSource>>()?;
-        source.resolve(invocation.refresh_framework).map(Arc::new)
+        source
+            .resolve(invocation.refresh_framework, invocation.manifest.as_deref())
+            .map(Arc::new)
     }
 }
 
-pub(super) fn registry(refresh_framework: bool) -> Result<Registry<Invocation>, String> {
-    registry_with_sources(
-        refresh_framework,
+pub(super) fn registry_for_manifest(
+    refresh: bool,
+    manifest: Option<std::path::PathBuf>,
+) -> Result<Registry<Invocation>, String> {
+    registry_with_manifest_sources(
+        refresh,
+        manifest,
         Arc::new(NativeFrameworkSource),
         Arc::new(NativeProcesses),
     )
 }
+#[cfg(test)]
 fn registry_with_sources(
     refresh_framework: bool,
     source: Arc<dyn FrameworkSource>,
     processes: Arc<dyn Processes>,
 ) -> Result<Registry<Invocation>, String> {
-    let mut registry = Registry::new(Arc::new(Invocation { refresh_framework }));
+    registry_with_manifest_sources(refresh_framework, None, source, processes)
+}
+fn registry_with_manifest_sources(
+    refresh_framework: bool,
+    manifest: Option<std::path::PathBuf>,
+    source: Arc<dyn FrameworkSource>,
+    processes: Arc<dyn Processes>,
+) -> Result<Registry<Invocation>, String> {
+    let mut registry = Registry::new(Arc::new(Invocation {
+        refresh_framework,
+        manifest,
+    }));
     registry.inject(source)?;
     registry.inject(processes)?;
     registry.register(FrameworkFactory)?;
@@ -62,7 +92,11 @@ mod tests {
 
     struct UnavailableSource(Arc<AtomicUsize>);
     impl FrameworkSource for UnavailableSource {
-        fn resolve(&self, refresh: bool) -> Result<Distribution, String> {
+        fn resolve(
+            &self,
+            refresh: bool,
+            _manifest: Option<&std::path::Path>,
+        ) -> Result<Distribution, String> {
             assert!(refresh);
             self.0.fetch_add(1, Ordering::SeqCst);
             Err("offline fixture".to_owned())

@@ -21,7 +21,7 @@ use crate::{
 pub struct Options {
     /// Application configuration; otherwise search the current directory and its parents.
     #[arg(long)]
-    manifest: Option<PathBuf>,
+    pub(super) manifest: Option<PathBuf>,
     /// Unpacked development package to create or refresh.
     #[arg(long)]
     package: Option<PathBuf>,

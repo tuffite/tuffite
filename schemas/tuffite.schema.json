@@ -184,6 +184,20 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "framework": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "releaseTag": {
+              "type": "string",
+              "minLength": 1
+            },
+            "repository": {
+              "type": "string",
+              "pattern": "^[^/]+/[^/]+$"
+            }
+          }
+        },
         "devPackage": {
           "type": "string"
         },

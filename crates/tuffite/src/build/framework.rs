@@ -347,6 +347,24 @@ impl Default for Resolver {
     }
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ReleaseConfig {
+    pub(crate) release_tag: Option<String>,
+    pub(crate) repository: Option<String>,
+}
+impl ReleaseConfig {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if let Some(tag) = &self.release_tag {
+            validate_release_identifier(tag, "build.framework.releaseTag")?;
+        }
+        if let Some(repository) = &self.repository {
+            resolve_repository(Some(repository))?;
+        }
+        Ok(())
+    }
+}
+
 impl Resolver {
     #[must_use]
     pub const fn new() -> Self {
@@ -388,6 +406,23 @@ impl Resolver {
         }
         resolver.progress = progress_enabled()?;
         Ok(resolver)
+    }
+
+    /// Reads shared release defaults from `build.framework` in tuffite.json.
+    /// Environment or explicit builder selections take precedence.
+    pub fn manifest(mut self, path: impl AsRef<Path>) -> Result<Self, String> {
+        let path = path.as_ref();
+        let bytes = fs::read(path).map_err(|error| format!("read {}: {error}", path.display()))?;
+        let root: serde_json::Value = serde_json::from_slice(&bytes)
+            .map_err(|error| format!("parse {}: {error}", path.display()))?;
+        if let Some(value) = root.pointer("/build/framework") {
+            let config: ReleaseConfig = serde_json::from_value(value.clone())
+                .map_err(|error| format!("build.framework: {error}"))?;
+            config.validate()?;
+            self.release_tag = self.release_tag.or(config.release_tag);
+            self.repository = self.repository.or(config.repository);
+        }
+        Ok(self)
     }
 
     /// Uses an existing developer-managed Distribution and never replaces it.
@@ -533,6 +568,8 @@ impl Resolver {
                     ensure_runtime_compatibility(&distribution.manifest().target)?;
                     tracing::info!(
                         framework = %distribution.root().display(),
+                        repository,
+                        tag,
                         "using cached Tuffite Framework Distribution"
                     );
                     return Ok(distribution);
@@ -546,6 +583,8 @@ impl Resolver {
                         tracing::info!(
                             framework = %distribution.root().display(),
                             cache_root = %root.display(),
+                            repository,
+                            tag,
                             "using cached Tuffite Framework Distribution"
                         );
                         return Ok(distribution);
@@ -1200,6 +1239,7 @@ fn hash_file(path: &Path) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::io::Read as _;
 
     use super::{
@@ -1273,6 +1313,62 @@ mod tests {
             select_release_asset(&both, &targets),
             Some(("aarch64-apple-darwin", 8))
         );
+    }
+
+    #[test]
+    fn manifest_release_defaults_match_cli_and_build_script_cache_identity() {
+        let root = std::env::temp_dir().join(format!("tuffite-release-pin-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let manifest = root.join("tuffite.json");
+        fs::write(
+            &manifest,
+            r#"{"build":{"framework":{"releaseTag":"v0.1.1","repository":"tuffite/tuffite"}}}"#,
+        )
+        .unwrap();
+        let resolver = Resolver::new()
+            .cache_root(&root)
+            .manifest(&manifest)
+            .unwrap();
+        assert_eq!(resolver.release_tag.as_deref(), Some("v0.1.1"));
+        let target = super::host_target();
+        let fixture = LocalFixture::new();
+        let resolver = resolver
+            .cache_root(&fixture.0)
+            .target(&target)
+            .auto_download(false);
+        // A valid default-tag cache must not satisfy a different manifest pin.
+        fixture.artifact(&format!("{}/{target}", env!("CARGO_PKG_VERSION")), &target);
+        assert!(resolver.clone().resolve().is_err());
+        let cache = resolver
+            .managed_cache_root("tuffite/tuffite", "v0.1.1")
+            .unwrap();
+        let path = cache
+            .strip_prefix(&fixture.0)
+            .unwrap()
+            .join(env!("CARGO_PKG_VERSION"))
+            .join(&target);
+        let expected = fixture.artifact(path.to_str().unwrap(), &target);
+        assert_eq!(resolver.resolve().unwrap().root(), expected);
+        let explicit = Resolver::new()
+            .release_tag("v-override")
+            .manifest(&manifest)
+            .unwrap();
+        assert_eq!(explicit.release_tag.as_deref(), Some("v-override"));
+        for config in [
+            r#"{"releaseTag":""}"#,
+            r#"{"releaseTag":"../bad"}"#,
+            r#"{"repository":"bad"}"#,
+            r#"{"release_tag":"v0.1.1"}"#,
+            "null",
+        ] {
+            fs::write(
+                &manifest,
+                format!(r#"{{"build":{{"framework":{config}}}}}"#),
+            )
+            .unwrap();
+            assert!(Resolver::new().manifest(&manifest).is_err(), "{config}");
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

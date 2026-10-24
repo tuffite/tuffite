@@ -201,6 +201,30 @@ previous artifacts are not renamed or treated as compatible.
 | `TUFFITE_FRAMEWORK_DIST_RELEASE_TAG` | Override the Release tag |
 | `TUFFITE_GITHUB_REPOSITORY` | Release repository as owner/name |
 
+Applications can share native release defaults in `tuffite.json`:
+
+```json
+{
+  "build": {
+    "framework": { "releaseTag": "v0.1.1", "repository": "tuffite/tuffite" }
+  }
+}
+```
+
+Add this optional object to the existing complete manifest. `tuff build`,
+`doctor`, `dev`, and `package` read it from the discovered or explicit
+`--manifest` path before resolving the Distribution. For direct Cargo builds,
+use `Resolver::from_env()?.manifest("tuffite.json")?` in `build.rs`. Environment
+and explicit builder selections override these defaults; existing local
+Distribution paths keep their precedence. Release tags have separate cache
+namespaces and do not relax SDK/Distribution version or ABI compatibility.
+Changing only `build.rs.release_tag(...)` cannot change a Distribution already
+selected by `tuff` and passed to Cargo through `TUFFITE_FRAMEWORK_DIST`.
+
+This manifest option requires a CLI/SDK containing this change. Applications
+pinned to older SDKs can put `TUFFITE_FRAMEWORK_DIST_RELEASE_TAG` in their
+committed Mise `[env]` configuration so CLI and Cargo receive the same tag.
+
 The Rust build API is `tuffite::build::framework::Resolver` with
 `tuffite::build::Builder::new().add(resolver)`. Applications use
 `#[tuffite::main(browser = PlaygroundBrowser)]` and `tuffite::generate_handler!`.

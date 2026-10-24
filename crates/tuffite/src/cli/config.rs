@@ -504,8 +504,15 @@ fn check_build(value: &Value) -> Result<(), String> {
             "beforePackageCommand",
             "devtoolsPort",
             "profile",
+            "framework",
         ],
     )?;
+    if let Some(framework) = build.get("framework") {
+        let config: crate::build::framework::ReleaseConfig =
+            serde_json::from_value(framework.clone())
+                .map_err(|error| format!("build.framework: {error}"))?;
+        config.validate()?;
+    }
     check_mojom_sources(required(build, "mojomSources", "build.mojomSources")?)?;
     for hook in ["beforeBuildCommand", "beforePackageCommand"] {
         if let Some(command) = build.get(hook) {
