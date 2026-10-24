@@ -1216,7 +1216,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "playground"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures-executor",
  "serde_json",
@@ -1529,7 +1529,7 @@ dependencies = [
 
 [[package]]
 name = "spo"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1781,7 +1781,7 @@ dependencies = [
 
 [[package]]
 name = "tuffite"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1820,15 +1820,15 @@ dependencies = [
 
 [[package]]
 name = "tuffite-abi"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "tuffite-ioc"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "tuffite-macros"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1837,7 +1837,7 @@ dependencies = [
 
 [[package]]
 name = "tuffite-mojom"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "miette",
  "serde_json",
@@ -1846,7 +1846,7 @@ dependencies = [
 
 [[package]]
 name = "tuffite-runtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures-executor",
  "serde",

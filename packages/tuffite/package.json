@@ -1,6 +1,6 @@
 {
   "name": "tuffite",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "JavaScript runtime and tooling surface for Tuffite applications",
   "type": "module",
   "exports": {
