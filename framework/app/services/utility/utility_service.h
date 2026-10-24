@@ -16,6 +16,7 @@ class UtilityService : public KeyedService {
   virtual void SetUtilityStartupConfigurations(
       std::map<std::string, std::vector<uint8_t>> configurations) {}
   virtual void SetUtilityModuleResolver(UtilityModuleResolver resolver) {}
+  virtual void SetUtilityModuleCanceller(UtilityModuleCanceller canceller) {}
   virtual void SetUtilityRegistrationChecker(
       UtilityRegistrationChecker checker) = 0;
   virtual bool IsRegisteredUtility(std::string_view name) const = 0;

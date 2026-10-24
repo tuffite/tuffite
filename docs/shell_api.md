@@ -93,7 +93,7 @@ fn main() -> tuffite::app::Builder<App> { tuffite::app::Builder::new() }
 `main` selects process implementation types. Browser installs interface registries
 from its attribute. All interfaces on a Worker share one supervised process and
 instance. Registration rejects duplicate ownership and Browser/Utility conflicts.
-Utility initialization uses `Default` or `factory = create_worker` beside
+Utility initialization uses `Default` or an asynchronous `factory = create_worker` beside
 `interfaces(...)`; the factory accepts `UtilityContext` and returns
 `ApplicationResult<Worker>`. Its internal owner name is `module_path!()` + `::` +
 the struct name, also exposed by `UtilityContext::name()`. Optional startup JSON

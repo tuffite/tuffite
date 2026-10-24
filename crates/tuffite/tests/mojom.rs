@@ -6,6 +6,53 @@ mod generated {
 
 use tuffite::__private::mojom::Struct;
 
+#[tuffite::utility(interfaces(generated::Diagnostics), factory = create_worker)]
+struct AsyncWorker {
+    value: u32,
+}
+
+async fn create_worker(
+    context: tuffite::UtilityContext,
+) -> tuffite::ApplicationResult<AsyncWorker> {
+    let mut yielded = false;
+    std::future::poll_fn(|cx| {
+        if yielded {
+            std::task::Poll::Ready(())
+        } else {
+            yielded = true;
+            cx.waker().wake_by_ref();
+            std::task::Poll::Pending
+        }
+    })
+    .await;
+    Ok(AsyncWorker {
+        value: u32::from(context.configuration()[0]),
+    })
+}
+
+impl generated::Diagnostics for AsyncWorker {
+    fn process_id(&self) -> Result<u32, tuffite::CommandError> {
+        Ok(self.value)
+    }
+}
+
+#[test]
+fn typed_utility_factory_can_await_before_exposing_its_instance() {
+    use std::future::Future;
+    use std::task::{Context, Poll, Waker};
+    use tuffite::Utility;
+    let mut future = std::pin::pin!(AsyncWorker::new(tuffite::UtilityContext::new_for_test(
+        "worker",
+        vec![42],
+    )));
+    let mut cx = Context::from_waker(Waker::noop());
+    assert!(future.as_mut().poll(&mut cx).is_pending());
+    let Poll::Ready(Ok(worker)) = future.as_mut().poll(&mut cx) else {
+        panic!("factory must complete after its asynchronous preparation");
+    };
+    assert_eq!(generated::Diagnostics::process_id(&worker).unwrap(), 42);
+}
+
 #[test]
 fn cargo_only_generated_types_match_cpp_wire_fixture() {
     let hex = include_str!("../../../components/dispatch/test/mojom_sample.inc")

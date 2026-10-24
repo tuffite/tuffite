@@ -511,14 +511,31 @@ to avoid a circular dependency between context and concrete factories.
 
 ## Manifest ownership and browser policy
 
-`ManifestService` is eagerly registered with the application graph.
-ManifestServiceFactory loads and validates configuration, applies development
-URL overrides before publication, and returns a fully initialized service.
-MainDelegate transfers this unique service to ApplicationContext as a one-time
-bootstrap input. The factory consumes that input when the application graph is
-created; there is no separate manifest model and no public configuration mutator.
-Scheme and
-network bootstrap reads still run before the application service graph exists.
+`ManifestService` is eagerly registered with the application graph, but does not
+load files or assemble startup policy. Before service creation, MainDelegate runs:
+
+1. `app::ManifestLoader::Load(package_root)` parses and validates the package into
+   an owned `ManifestDefinition`.
+2. `app::ConfigurationAssembler::Build(definition, environment, options)` merges
+   authenticated launch context and typed host options into `EffectiveConfiguration`.
+3. `ManifestServiceFactory::Create(configuration)` creates the read-only service.
+
+`StartupEnvironment` owns the development URL. `BrowserOptions` owns host security
+restrictions. Host denials are validated and merged before development-origin
+aliases are applied, so the alias inherits both manifest and host restrictions.
+Host restrictions cannot introduce ShellAPI or Explorer grants. Neither input is
+retained by reference; the effective snapshot owns all compiled values. Mutable
+schema data stays in a private header, and only the assembler can construct an
+effective snapshot. The service retains it as const storage with no mutator.
+
+The original validated package bytes remain the Rust runtime configuration;
+effective startup window URLs and origin policy are queried separately. Utility
+configuration bytes are compiled once by the loader, not reparsed by the service.
+Scheme and network bootstrap reads belong to ManifestLoader and still run before
+custom scheme registration and the application service graph exist.
+
+MainDelegate transfers the unique service to ApplicationContext as a one-time
+bootstrap input. The factory consumes that input when the service graph is created.
 
 Consumers query application information, startup windows, network limits,
 origin grants, paths and runtime serialization through explicit service APIs.

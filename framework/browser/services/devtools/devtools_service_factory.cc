@@ -4,6 +4,7 @@
 #include "tuffite/framework/browser/services/devtools/devtools_service_factory.h"
 
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
+#include "tuffite/framework/browser/browser_context.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service_impl.h"
 #include "tuffite/framework/browser/services/window/window_service_factory.h"
 
@@ -28,6 +29,7 @@ std::unique_ptr<KeyedService>
 DevToolsServiceFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
   return std::make_unique<DevToolsServiceImpl>(
-      *context, *window::WindowServiceFactory::GetForBrowserContext(context));
+      *context, *window::WindowServiceFactory::GetForBrowserContext(context),
+      BrowserContext::GetFrom(*context).manifest_service());
 }
 }  // namespace tuffite

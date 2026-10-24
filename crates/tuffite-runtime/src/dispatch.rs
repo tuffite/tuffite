@@ -29,7 +29,9 @@ use std::time::{Duration, Instant};
 use tuffite_abi::{RuntimeEventKind, Status};
 
 use crate::abi::NativeHost;
-use crate::browser::{Browser, Command};
+#[cfg(test)]
+use crate::browser::Browser;
+use crate::browser::{Command, ErasedBrowser};
 use crate::protocol;
 
 /// Default number of requests permitted to sit in the dispatch queue between
@@ -106,15 +108,20 @@ pub(crate) struct DispatchScheduler {
     // joining. Once removed, `enqueue` returns InvalidState.
     sender: Option<DispatchSender>,
     // Held only so the worker thread can be joined explicitly on shutdown.
-    worker: Option<std::thread::JoinHandle<Box<dyn Browser>>>,
+    worker: Option<std::thread::JoinHandle<Box<dyn ErasedBrowser>>>,
     stopping: Arc<AtomicBool>,
+    ready: Arc<AtomicBool>,
+    initialize: Option<mpsc::Sender<InitializeCallback>>,
 }
+
+type InitializeCallback = Box<dyn FnOnce(Result<(), crate::ApplicationError>) + Send>;
 
 impl DispatchScheduler {
     pub(crate) fn start(
         runtime_identity: &Arc<AtomicU64>,
-        application: Box<dyn Browser>,
+        application: Box<dyn ErasedBrowser>,
         callbacks: NativeHost,
+        stop: crate::StopSignal,
     ) -> Self {
         Self::start_with_bounds(
             runtime_identity,
@@ -122,15 +129,17 @@ impl DispatchScheduler {
             callbacks,
             DEFAULT_MAX_QUEUE_DEPTH,
             DEFAULT_QUEUE_DEADLINE,
+            stop,
         )
     }
 
     pub(crate) fn start_with_bounds(
         runtime_identity: &Arc<AtomicU64>,
-        application: Box<dyn Browser>,
+        application: Box<dyn ErasedBrowser>,
         callbacks: NativeHost,
         max_queue_depth: usize,
         queue_deadline: Duration,
+        stop: crate::StopSignal,
     ) -> Self {
         let (tx, rx) = mpsc::sync_channel::<DispatchTask>(max_queue_depth);
         let in_flight = Arc::new(AtomicU64::new(0));
@@ -138,10 +147,28 @@ impl DispatchScheduler {
         let worker_identity = Arc::clone(runtime_identity);
         let stopping = Arc::new(AtomicBool::new(false));
         let worker_stopping = Arc::clone(&stopping);
+        let (initialize, initializing) = mpsc::channel::<InitializeCallback>();
+        let ready = Arc::new(AtomicBool::new(false));
+        let worker_ready = ready.clone();
         let name = "tuffite-dispatch";
         let worker = std::thread::Builder::new()
             .name(name.to_owned())
             .spawn(move || {
+                let mut application = application;
+                if let Ok(reply) = initializing.recv() {
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        crate::lifecycle::run_until(
+                            application.initialize(),
+                            &stop.0,
+                            Instant::now() + crate::lifecycle::LIFECYCLE_TIMEOUT,
+                        )
+                    }))
+                    .unwrap_or_else(|_| {
+                        Err(crate::ApplicationError::new("Browser initialize panicked"))
+                    });
+                    worker_ready.store(result.is_ok(), Ordering::Release);
+                    reply(result);
+                }
                 run_worker(
                     &worker_identity,
                     rx,
@@ -161,13 +188,23 @@ impl DispatchScheduler {
             }),
             worker: Some(worker),
             stopping,
+            ready,
+            initialize: Some(initialize),
         }
+    }
+
+    pub(crate) fn initialize(&mut self, callback: InitializeCallback) -> Result<(), Status> {
+        let sender = self.initialize.take().ok_or(Status::InvalidState)?;
+        sender.send(callback).map_err(|_| Status::InvalidState)
     }
 
     /// Enqueues one dispatch onto the worker. Returns the same status codes
     /// as [`DispatchSender::enqueue`] and additionally
     /// [`Status::InvalidState`] once [`shutdown`] has been called.
     pub(crate) fn enqueue(&self, request_id: u64, event: Vec<u8>) -> Result<(), Status> {
+        if !self.ready.load(Ordering::Acquire) {
+            return Err(Status::InvalidState);
+        }
         let Some(sender) = self.sender.as_ref() else {
             return Err(Status::InvalidState);
         };
@@ -178,11 +215,12 @@ impl DispatchScheduler {
     /// waits for the worker to drain any in-flight items. Any items still in
     /// the queue are surfaced to Framework as scheduler-cancelled responses so
     /// pending browser-side callbacks can complete instead of leaking.
-    pub(crate) fn shutdown(&mut self) -> Option<Box<dyn Browser>> {
+    pub(crate) fn shutdown(&mut self) -> Option<Box<dyn ErasedBrowser>> {
         // Admission/removal is serialized by the runtime handle table. Once
         // removed, this scheduler has one owner; no sender/worker lock is needed.
         self.stopping.store(true, Ordering::Release);
         self.sender.take();
+        self.initialize.take();
         self.worker.take().and_then(|worker| {
             if let Ok(application) = worker.join() {
                 Some(application)
@@ -201,12 +239,12 @@ impl DispatchScheduler {
 fn run_worker(
     runtime_identity: &Arc<AtomicU64>,
     rx: mpsc::Receiver<DispatchTask>,
-    mut application: Box<dyn Browser>,
+    mut application: Box<dyn ErasedBrowser>,
     callbacks: NativeHost,
     in_flight: &Arc<AtomicU64>,
     queue_deadline: Duration,
     stopping: &AtomicBool,
-) -> Box<dyn Browser> {
+) -> Box<dyn ErasedBrowser> {
     while let Ok(task) = rx.recv() {
         let _span =
             tracing::debug_span!("runtime.dispatch", request_id = task.request_id).entered();
@@ -350,7 +388,7 @@ mod tests {
             post_task: Some(reject_task),
             query_extension: None,
         });
-        let application: Box<dyn Browser> = Box::new(NeverDispatch);
+        let application: Box<dyn ErasedBrowser> = Box::new(NeverDispatch);
         let in_flight = Arc::new(AtomicU64::new(1));
         run_worker(
             &Arc::new(AtomicU64::new(1)),

@@ -20,17 +20,58 @@
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/devtools_socket_factory.h"
 #include "content/public/browser/global_routing_id.h"
+#include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_contents_observer.h"
+#include "content/public/browser/web_contents_user_data.h"
 #include "content/public/common/content_switches.h"
 #include "net/base/net_errors.h"
 #include "net/log/net_log_source.h"
 #include "net/socket/tcp_server_socket.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/services/devtools/devtools_frontend.h"
+#include "tuffite/framework/browser/services/devtools/devtools_service_factory.h"
 #include "tuffite/framework/browser/services/window/window_service.h"
 
 namespace tuffite {
 namespace {
+// A session admitted before a navigation commits must not keep inspecting a
+// document whose new origin is denied by the manifest.
+class DevToolsPolicyObserver final
+    : public content::WebContentsObserver,
+      public content::WebContentsUserData<DevToolsPolicyObserver> {
+ public:
+  ~DevToolsPolicyObserver() override = default;
+
+ private:
+  friend class content::WebContentsUserData<DevToolsPolicyObserver>;
+  DevToolsPolicyObserver(content::WebContents* contents,
+                         const ManifestService& manifest)
+      : content::WebContentsObserver(contents),
+        content::WebContentsUserData<DevToolsPolicyObserver>(*contents),
+        manifest_(manifest.GetWeakPtr()) {}
+  void DidFinishNavigation(content::NavigationHandle* navigation) override {
+    if (!navigation->HasCommitted() || !navigation->IsInPrimaryMainFrame() ||
+        !manifest_ ||
+        manifest_->IsDevToolsAllowed(
+            navigation->GetRenderFrameHost()->GetLastCommittedOrigin())) {
+      return;
+    }
+    auto* contents = web_contents();
+    if (content::DevToolsAgentHost::HasFor(contents)) {
+      content::DevToolsAgentHost::GetOrCreateFor(contents)
+          ->ForceDetachAllSessions();
+    }
+    if (auto tab = content::DevToolsAgentHost::GetForTab(contents)) {
+      tab->ForceDetachAllSessions();
+    }
+  }
+  base::WeakPtr<const ManifestService> manifest_;
+  WEB_CONTENTS_USER_DATA_KEY_DECL();
+};
+WEB_CONTENTS_USER_DATA_KEY_IMPL(DevToolsPolicyObserver);
+
 // Chromium provides one remote debugging server per process. This weak lease
 // prevents one profile's shutdown from stopping another profile's
 // server.
@@ -44,6 +85,8 @@ class DevToolsManagerDelegate final : public content::DevToolsManagerDelegate {
   content::BrowserContext* GetBrowserContext(const std::string& id) override;
   std::string GetDiscoveryPageHTML() override;
   bool HasBundledFrontendResources() override;
+  bool AllowInspectingRenderFrameHost(content::RenderFrameHost* frame) override;
+  bool AllowInspectingTarget(content::DevToolsAgentHost* target) override;
 };
 content::BrowserContext* DevToolsManagerDelegate::GetDefaultBrowserContext() {
   return ServerOwner() ? ServerOwner()->browser_context() : nullptr;
@@ -111,14 +154,42 @@ fetch('/json/list').then(response => response.json()).then(targets => {
 </script>)HTML";
 }
 
+bool DevToolsManagerDelegate::AllowInspectingRenderFrameHost(
+    content::RenderFrameHost* frame) {
+  if (!frame) {
+    return false;
+  }
+  auto* contents = content::WebContents::FromRenderFrameHost(frame);
+  if (!contents) {
+    return false;
+  }
+  auto* service = DevToolsServiceFactory::GetForBrowserContext(
+      contents->GetBrowserContext());
+  return service && service->IsInspectionAllowed(contents, frame);
+}
+bool DevToolsManagerDelegate::AllowInspectingTarget(
+    content::DevToolsAgentHost* target) {
+  if (!target) {
+    return false;
+  }
+  auto* contents = target->GetWebContents();
+  if (!contents) {
+    return true;
+  }
+  auto* service = DevToolsServiceFactory::GetForBrowserContext(
+      contents->GetBrowserContext());
+  return service && service->IsInspectionAllowed(contents);
+}
+
 bool DevToolsManagerDelegate::HasBundledFrontendResources() {
   return true;
 }
 
 }  // namespace
 DevToolsServiceImpl::DevToolsServiceImpl(content::BrowserContext& context,
-                                         window::WindowService& windows)
-    : browser_context_(&context), windows_(windows) {}
+                                         window::WindowService& windows,
+                                         const ManifestService& manifest)
+    : browser_context_(&context), windows_(windows), manifest_(manifest) {}
 DevToolsServiceImpl::~DevToolsServiceImpl() {
   Shutdown();
 }
@@ -159,11 +230,25 @@ void DevToolsServiceImpl::StartIfRequested(content::BrowserContext* context) {
     LOG(ERROR) << "The DevTools server is already owned by another profile";
   }
 }
+bool DevToolsServiceImpl::IsInspectionAllowed(
+    content::WebContents* contents,
+    content::RenderFrameHost* frame) const {
+  if (stopped_ || !contents) {
+    return false;
+  }
+  DevToolsPolicyObserver::CreateForWebContents(contents, manifest_.get());
+  auto* main = contents->GetPrimaryMainFrame();
+  return main && manifest_->IsDevToolsAllowed(main->GetLastCommittedOrigin()) &&
+         (!frame ||
+          manifest_->IsDevToolsAllowed(frame->GetLastCommittedOrigin()));
+}
+
 void DevToolsServiceImpl::InspectElement(content::WebContents* contents,
                                          content::RenderFrameHost* frame,
                                          int x,
                                          int y) {
-  if (contents && frame && Start(contents->GetBrowserContext(), 0)) {
+  if (contents && frame && IsInspectionAllowed(contents, frame) &&
+      Start(contents->GetBrowserContext(), 0)) {
     ShowFrontendWhenReady(contents->GetWeakPtr(), frame->GetGlobalId(), x, y,
                           200);
   }
@@ -174,7 +259,7 @@ void DevToolsServiceImpl::ShowFrontendWhenReady(
     int x,
     int y,
     int attempts) {
-  if (!inspected || stopped_) {
+  if (!inspected || stopped_ || !IsInspectionAllowed(inspected.get())) {
     return;
   }
   if (content::DevToolsAgentHost::GetRemoteDebuggingServerAddress().empty()) {

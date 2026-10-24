@@ -44,7 +44,12 @@ impl Browser for PlaygroundBrowser {
         })
     }
 
-    fn shutdown(&mut self) -> ApplicationResult<()> {
+    async fn initialize(&mut self) -> ApplicationResult<()> {
+        tracing::info!("playground browser services ready");
+        Ok(())
+    }
+
+    async fn shutdown(&mut self, _context: tuffite::ShutdownContext) -> ApplicationResult<()> {
         tracing::info!("playground application shutdown");
         Ok(())
     }

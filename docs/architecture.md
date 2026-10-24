@@ -285,7 +285,7 @@ Rust utility declarations use `#[tuffite::utility(name = "stable_name")]` on a
 concrete Utility impl; only types listed in the main macro are exported.
 
 JavaScript uses a native V8 backend declared with `utility::V8` and the same
-`#[tuffite::utility(name = "parser")]` attribute. `V8::entry` declares a relative entry or HTTPS/file URL. `V8::resolve(url)`
+`#[tuffite::utility(name = "parser")]` attribute. `V8::setup(builder)` selects a relative entry or HTTPS/file URL through `builder.entry(...)`; the Framework default is `entry.mjs`. `V8::resolve(request)`
 returns Result<Option<ModuleSource>, Error> on supervised Browser workers.
 Some overrides resources; None (the default) falls back to app.assets; Err
 fails creation. Relative paths use the app scheme and a service.utility host.
@@ -424,10 +424,91 @@ maximum); request payloads and session init remain separate. Context clones own
 the configuration and observe service stopping. Restart reconstructs child state.
 
 `V8::new(V8Context)` constructs one Browser-side resource provider lazily per
-name per Browser runtime. `entry(&self)` and `resolve(&self, url)` can use its
-instance fields. The context exposes service configuration, the Browser manifest,
+name per Browser runtime. `setup(builder)` configures and freezes its entry before construction.
+`resolve(&self, request)` can use its instance fields. The context exposes service configuration, the Browser manifest,
 executor, typed shared state, and stopping. `BrowserContext::set_state(Arc<T>)`
 shares application state with provider `state::<T>()` inside Browser only.
 Concurrent provider calls require synchronized mutable fields. Each JS session
 has a distinct Utility-side isolate; session-specific resolver state is not
 available through the service/name/URL callback.
+
+
+## Rust application lifecycle
+
+Public Browser, Utility and V8 traits return native `impl Future + Send` values.
+Implementations may use `async fn`; boxed futures and object-safe adapters are
+runtime internals. No separate lifecycle trait or public LifecycleFuture exists.
+Async hooks do not install an ambient Tokio runtime or a JS event loop; applications
+using runtime-specific I/O must own and schedule work on that runtime.
+
+Browser startup is `setup -> new -> native BrowserContext/task-runner binding ->
+initialize -> startup windows/business dispatch`. `new` constructs state but
+must not assume BrowserContext-scoped native services are ready. `initialize`
+runs on the Rust dispatch worker, while Chromium UI continues processing native
+calls. It is invoked once, has a 30-second deadline and observes Browser stop.
+Failure rejects business dispatch, prevents startup windows, and produces a
+nonzero application exit status. Runtime `Started` still means that the Rust
+runtime was constructed; it is not a window/document readiness event.
+
+Utility uses asynchronous `new` directly, with no separate initialize stage.
+V8 uses a synchronous Browser-side provider constructor, asynchronous module
+resolution and asynchronous provider shutdown. Each isolate remains an independent
+native session; provider hooks are not isolate hooks.
+
+Shutdown closes admission and publishes ordinary-work stop signals before joining
+operations. Native Utility hosts close sessions before Rust Browser teardown.
+Resolver workers drain, V8 providers clean up, and Browser `shutdown(context)`
+runs on a dedicated Rust shutdown worker while Chromium executor submissions
+remain available. The synchronous stop ABI joins that worker; hooks and Browser
+instance destruction do not run on Chromium UI. Only then are the
+executor, native BrowserContext services and ABI state released. UI-dependent
+ShellAPI/Utility operations reject during shutdown; cleanup must not wait for new
+UI work after the main loop exits. There is one asynchronous shutdown method,
+with no synchronous fallback.
+
+`ShutdownContext` provides `reason()`, `deadline()`, `remaining()` and an awaitable
+`cancelled()` signal for cleanup expiration, separate from Context's ordinary-work
+stop signal. Completed Browser constructors receive cleanup even if initialize
+fails (`InitializationFailed`). Utility constructors that fail own their partial
+rollback; there is no constructed instance to shut down. Cooperative pending
+futures are dropped at their deadline. Blocking future polls, destructors and
+ordinary synchronous handlers cannot be forcibly interrupted safely in Browser.
+Crashes and forced termination do not guarantee cleanup hooks.
+
+
+## Effective application configuration
+
+Package parsing, launch-time assembly and runtime queries are separate phases:
+
+```text
+ManifestLoader::Load(package_root) -> ManifestDefinition
+ConfigurationAssembler::Build(definition, StartupEnvironment, BrowserOptions)
+    -> EffectiveConfiguration
+ManifestServiceFactory::Create(configuration) -> read-only ManifestService
+```
+
+The factory accepts no development URL or feature-specific policy parameters.
+Loader owns file I/O and schema validation; assembler owns development aliases and
+host restrictions. The immutable effective snapshot owns its values independently
+of caller options and package files. Original package bytes remain available to
+Rust unchanged; native queries use compiled effective window and policy data.
+See [Manifest ownership](../framework/app/services/README.md#manifest-ownership-and-browser-policy).
+
+### Owned setup builders
+
+Browser, Rust Utility, and V8 providers receive an owned builder and return
+`ApplicationResult<Builder>` from their static synchronous `setup` hook. Framework
+defaults are installed before the hook; Rust Utility and V8 builders also contain
+the selected manifest service configuration. Applications can compose setup
+functions by passing builder ownership. Framework validates the returned options
+and freezes them before `new`; build/finalization is not application-accessible.
+
+`browser::Builder` only adds DevTools origin denials. Native merges these with
+manifest policy, so setup cannot relax existing denials. `utility::Builder`
+configures service-local startup bytes; `utility::v8::Builder` additionally selects
+the entry module, defaulting to `entry.mjs`. These bytes are business configuration,
+not capability grants. Both preserve the 64 KiB startup limit after setup. V8 entry
+URLs are canonicalized and validated before provider construction. Utility setup
+runs for each child construction; V8 setup runs once per lazy provider, with
+initialization errors retained for that Browser runtime. Setup errors prevent
+construction; asynchronous work belongs in the existing runtime lifecycle hooks.

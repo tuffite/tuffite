@@ -4,14 +4,18 @@
 //! use [`Utility`]; V8 definitions use [`V8`] and [`v8::ModuleSource`].
 //! Both use supervised Chromium utility processes and session transport.
 
+use crate::lifecycle::BoxFuture;
 use crate::supervisor::CancellationToken;
 use crate::utility_session::{UtilitySession, UtilitySessionRequest};
 use crate::{ApplicationError, ApplicationResult, CommandResult};
+use crate::{ShutdownContext, ShutdownReason, StopSignal};
 use std::collections::HashMap;
 use std::future::Future;
-use std::pin::Pin;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Instant;
+
+mod builder;
+pub use builder::Builder;
 
 /// Dispatches one typed Mojom command inside a Utility, preserving its envelope.
 /// Native routing and origin/service/endpoint authorization happen before delivery.
@@ -54,14 +58,21 @@ impl UtilityContext {
         &self.name
     }
 
-    /// Returns only this service's serialized startup configuration, not the app manifest.
-    /// Missing configuration is an empty byte slice. Session init is independent.
+    /// Returns this service's frozen startup data after `setup`, not the app manifest.
+    /// Framework seeds setup from the service's manifest configuration; missing
+    /// configuration is an empty byte slice. Session init is independent.
     #[must_use]
     pub fn configuration(&self) -> &[u8] {
         &self.configuration
     }
 
     /// Reports service shutdown; retained context clones observe the same signal.
+    #[must_use]
+    pub fn stop_signal(&self) -> StopSignal {
+        StopSignal(self.cancellation.clone())
+    }
+
+    /// Returns whether the ordinary-work stop signal has fired.
     #[must_use]
     pub fn is_stopping(&self) -> bool {
         self.cancellation.is_cancelled()
@@ -86,7 +97,8 @@ impl V8Context {
         &self.name
     }
 
-    /// Returns this service's serialized startup configuration.
+    /// Returns this service's frozen startup data after `setup`.
+    /// Framework seeds setup from the service's manifest configuration.
     #[must_use]
     pub fn configuration(&self) -> &[u8] {
         &self.configuration
@@ -112,13 +124,19 @@ impl V8Context {
 
     /// Reports Browser shutdown.
     #[must_use]
+    pub fn stop_signal(&self) -> StopSignal {
+        StopSignal(self.cancellation.clone())
+    }
+
+    /// Returns whether the ordinary-work stop signal has fired.
+    #[must_use]
     pub fn is_stopping(&self) -> bool {
         self.cancellation.is_cancelled()
     }
 }
 
-type V8Factory = fn(V8Context) -> ApplicationResult<Arc<dyn V8>>;
-type ProviderCell = OnceLock<ApplicationResult<Arc<dyn V8>>>;
+type V8Factory = fn(V8Context) -> ApplicationResult<Arc<dyn ErasedV8>>;
+type ProviderCell = OnceLock<ApplicationResult<Arc<dyn ErasedV8>>>;
 
 pub(crate) struct V8Providers {
     configuration: Arc<[u8]>,
@@ -126,6 +144,8 @@ pub(crate) struct V8Providers {
     state: crate::browser::SharedState,
     cancellation: CancellationToken,
     providers: Mutex<HashMap<String, Arc<ProviderCell>>>,
+    sessions: Mutex<HashMap<(String, u64), CancellationToken>>,
+    construction: RwLock<()>,
 }
 
 impl V8Providers {
@@ -140,10 +160,17 @@ impl V8Providers {
             state,
             cancellation: CancellationToken::new(),
             providers: Mutex::new(HashMap::new()),
+            sessions: Mutex::new(HashMap::new()),
+            construction: RwLock::new(()),
         }
     }
 
-    pub(crate) fn get(&self, name: &str) -> ApplicationResult<Arc<dyn V8>> {
+    pub(crate) fn get(&self, name: &str) -> ApplicationResult<Arc<dyn ErasedV8>> {
+        // Fence constructors started through Host clones as well as resolver workers.
+        let _construction = self
+            .construction
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if self.cancellation.is_cancelled() {
             return Err(ApplicationError::new("Browser is stopping"));
         }
@@ -177,19 +204,74 @@ impl V8Providers {
             .map_err(|error| ApplicationError::new(error.to_string()))
     }
 
+    pub(crate) fn session_signal(&self, name: &str, session: u64) -> StopSignal {
+        StopSignal(
+            self.sessions
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .entry((name.to_owned(), session))
+                .or_default()
+                .clone(),
+        )
+    }
+    pub(crate) fn cancel_session(&self, name: &str, session: u64) {
+        let token = self
+            .sessions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&(name.to_owned(), session));
+        if let Some(token) = token {
+            token.cancel();
+        }
+    }
     pub(crate) fn stop(&self) {
         self.cancellation.cancel();
+        let sessions = std::mem::take(
+            &mut *self
+                .sessions
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
+        for (_, token) in sessions {
+            token.cancel();
+        }
     }
 
-    pub(crate) fn release(&self) {
+    pub(crate) fn release(&self) -> ApplicationResult<()> {
+        let construction = self
+            .construction
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let providers = std::mem::take(
             &mut *self
                 .providers
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
         );
-        // User destructors run without the registry lock after resolver workers are joined.
+        drop(construction);
+        // No registry lock or resolver worker is held while user cleanup runs.
+        let context = ShutdownContext::new(
+            ShutdownReason::Requested,
+            Instant::now() + crate::lifecycle::LIFECYCLE_TIMEOUT,
+        );
+        let mut failed = false;
+        for cell in providers.values() {
+            if let Some(Ok(provider)) = cell.get() {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    context.run(provider.shutdown(context.clone()))
+                }));
+                if !matches!(result, Ok(Ok(()))) {
+                    failed = true;
+                    tracing::error!("V8 provider cleanup failed");
+                }
+            }
+        }
         drop(providers);
+        if failed {
+            Err(ApplicationError::new("V8 provider cleanup failed"))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -208,14 +290,16 @@ pub(crate) fn service_configuration(manifest: &[u8], name: &str) -> Vec<u8> {
         .unwrap_or_default()
 }
 
-pub(crate) fn resolve_source(
-    provider: &dyn V8,
+pub(crate) async fn resolve_source(
+    provider: &dyn ErasedV8,
     name: &str,
-    url: &str,
+    request: v8::ModuleRequest,
 ) -> ApplicationResult<Option<Vec<u8>>> {
-    v8::validate_url(name, url, None).map_err(|error| ApplicationError::new(error.to_string()))?;
+    let url = request.url().to_owned();
+    v8::validate_url(name, &url, None).map_err(|error| ApplicationError::new(error.to_string()))?;
     let Some(module) = provider
-        .resolve(url)
+        .resolve(request)
+        .await
         .map_err(|error| ApplicationError::new(error.to_string()))?
     else {
         return Ok(None);
@@ -277,19 +361,25 @@ impl UtilityRequest {
     }
 }
 
-/// Future returned by an asynchronous utility-service invocation.
-pub type UtilityFuture<'a> = Pin<Box<dyn Future<Output = CommandResult> + Send + 'a>>;
-
 /// Stateful Rust implementation hosted in a sandboxed Chromium process.
 pub trait Utility: Send + Sync + 'static {
-    /// Creates service state after Chromium launches the utility process.
-    fn new(context: UtilityContext) -> ApplicationResult<Self>
+    /// Configures this child before state construction. Framework supplies manifest defaults.
+    fn setup(builder: Builder) -> ApplicationResult<Builder>
+    where
+        Self: Sized,
+    {
+        Ok(builder)
+    }
+
+    /// Asynchronously creates state inside the launched sandboxed child.
+    /// Ready is reported only after this future succeeds; failure owns its partial rollback.
+    fn new(context: UtilityContext) -> impl Future<Output = ApplicationResult<Self>> + Send
     where
         Self: Sized;
 
     /// Handles one binary request without blocking the Chromium utility sequence.
     /// Implementations should observe `request.is_cancelled()` during long work.
-    fn invoke(&self, request: UtilityRequest) -> UtilityFuture<'_>;
+    fn invoke(&self, request: UtilityRequest) -> impl Future<Output = CommandResult> + Send;
 
     /// Creates one long-lived session in this supervised Utility process.
     fn create_session(
@@ -300,12 +390,39 @@ pub trait Utility: Send + Sync + 'static {
     }
 
     /// Performs service-specific cleanup before the process becomes idle.
-    fn shutdown(&self) -> ApplicationResult<()> {
-        Ok(())
+    fn shutdown(
+        &self,
+        _context: ShutdownContext,
+    ) -> impl Future<Output = ApplicationResult<()>> + Send {
+        async { Ok(()) }
     }
 }
 
-type UtilityFactory = fn(UtilityContext) -> ApplicationResult<Box<dyn Utility>>;
+pub(crate) trait ErasedUtility: Send + Sync {
+    fn invoke(&self, request: UtilityRequest) -> BoxFuture<'_, CommandResult>;
+    fn create_session(
+        &self,
+        request: UtilitySessionRequest,
+    ) -> ApplicationResult<Box<dyn UtilitySession>>;
+    fn shutdown(&self, context: ShutdownContext) -> BoxFuture<'_, ApplicationResult<()>>;
+}
+impl<S: Utility> ErasedUtility for S {
+    fn invoke(&self, request: UtilityRequest) -> BoxFuture<'_, CommandResult> {
+        Box::pin(Utility::invoke(self, request))
+    }
+    fn create_session(
+        &self,
+        request: UtilitySessionRequest,
+    ) -> ApplicationResult<Box<dyn UtilitySession>> {
+        Utility::create_session(self, request)
+    }
+    fn shutdown(&self, context: ShutdownContext) -> BoxFuture<'_, ApplicationResult<()>> {
+        Box::pin(Utility::shutdown(self, context))
+    }
+}
+
+type UtilityFactory =
+    fn(UtilityContext) -> BoxFuture<'static, ApplicationResult<Box<dyn ErasedUtility>>>;
 
 /// Static registration for an application-defined utility service.
 #[derive(Clone, Copy)]
@@ -369,15 +486,22 @@ impl UtilityServiceRegistration {
         self.name
     }
 
-    pub(crate) fn create(&self, context: UtilityContext) -> ApplicationResult<Box<dyn Utility>> {
+    pub(crate) fn create(
+        &self,
+        context: UtilityContext,
+    ) -> BoxFuture<'static, ApplicationResult<Box<dyn ErasedUtility>>> {
         (self.factory)(context)
     }
 }
 
-fn native_utility(_: UtilityContext) -> ApplicationResult<Box<dyn Utility>> {
-    Err(ApplicationError::new(
-        "V8 utilities are created by the native backend",
-    ))
+fn native_utility(
+    _: UtilityContext,
+) -> BoxFuture<'static, ApplicationResult<Box<dyn ErasedUtility>>> {
+    Box::pin(async {
+        Err(ApplicationError::new(
+            "V8 utilities are created by the native backend",
+        ))
+    })
 }
 
 /// Stateful Browser-side resource provider for the native V8 utility backend.
@@ -386,13 +510,19 @@ fn native_utility(_: UtilityContext) -> ApplicationResult<Box<dyn Utility>> {
 /// creates one reusable Rust provider per name and Browser runtime; native creates
 /// an independent JS isolate for each session. Provider methods may run concurrently.
 pub trait V8: Send + Sync + 'static {
+    /// Configures a lazy Browser-side provider before construction.
+    /// Framework supplies entry.mjs and this service's manifest configuration.
+    fn setup(builder: v8::Builder) -> ApplicationResult<v8::Builder>
+    where
+        Self: Sized,
+    {
+        Ok(builder)
+    }
+
     /// Creates Browser-side provider state on first use. A failure is retained for this runtime.
     fn new(context: V8Context) -> ApplicationResult<Self>
     where
         Self: Sized;
-
-    /// Returns a relative entry path or an absolute HTTPS/file module URL.
-    fn entry(&self) -> &str;
 
     /// Resolves a canonical `app-scheme://service.utility/path.mjs`, HTTPS or file URL in the browser's worker runtime.
     ///
@@ -402,8 +532,47 @@ pub trait V8: Send + Sync + 'static {
     /// fail loading without fallback. The default uses app.assets exclusively.
     /// Called on demand for an entry or static import. Each URL is requested
     /// once per session; the utility caches compiled modules and never reads files.
-    fn resolve(&self, _url: &str) -> Result<Option<v8::ModuleSource>, v8::Error> {
-        Ok(None)
+    fn resolve(
+        &self,
+        _request: v8::ModuleRequest,
+    ) -> impl Future<Output = Result<Option<v8::ModuleSource>, v8::Error>> + Send {
+        async { Ok(None) }
+    }
+
+    /// Releases shared Browser-side resources after module workers have drained.
+    fn shutdown(
+        &self,
+        _context: ShutdownContext,
+    ) -> impl Future<Output = ApplicationResult<()>> + Send {
+        async { Ok(()) }
+    }
+}
+
+pub(crate) trait ErasedV8: Send + Sync {
+    fn entry(&self) -> &str;
+    fn resolve(
+        &self,
+        request: v8::ModuleRequest,
+    ) -> BoxFuture<'_, Result<Option<v8::ModuleSource>, v8::Error>>;
+    fn shutdown(&self, context: ShutdownContext) -> BoxFuture<'_, ApplicationResult<()>>;
+}
+struct ConfiguredV8<S> {
+    provider: S,
+    entry: String,
+}
+
+impl<S: V8> ErasedV8 for ConfiguredV8<S> {
+    fn entry(&self) -> &str {
+        &self.entry
+    }
+    fn resolve(
+        &self,
+        request: v8::ModuleRequest,
+    ) -> BoxFuture<'_, Result<Option<v8::ModuleSource>, v8::Error>> {
+        Box::pin(self.provider.resolve(request))
+    }
+    fn shutdown(&self, context: ShutdownContext) -> BoxFuture<'_, ApplicationResult<()>> {
+        Box::pin(self.provider.shutdown(context))
     }
 }
 
@@ -414,19 +583,13 @@ pub mod v8;
 #[derive(Clone)]
 pub struct Host {
     sessions: crate::UtilitySessionHost,
-    app_scheme: Option<String>,
     providers: Arc<V8Providers>,
 }
 
 impl Host {
-    pub(crate) fn new(
-        sessions: crate::UtilitySessionHost,
-        app_scheme: Option<String>,
-        providers: Arc<V8Providers>,
-    ) -> Self {
+    pub(crate) fn new(sessions: crate::UtilitySessionHost, providers: Arc<V8Providers>) -> Self {
         Self {
             sessions,
-            app_scheme,
             providers,
         }
     }
@@ -450,43 +613,43 @@ impl Host {
     {
         let provider = self.providers.get(name)?;
         let entry = provider.entry();
-        if url::Url::parse(entry).is_err() {
-            crate::javascript_extension::validate_module_name(entry)
-                .map_err(|error| ApplicationError::new(error.to_string()))?;
-        }
-        let scheme = self
-            .app_scheme
-            .as_deref()
-            .ok_or_else(|| ApplicationError::new("application scheme is unavailable"))?;
-        let entry = v8::entry_url(scheme, name, entry)
-            .map_err(|error| ApplicationError::new(error.to_string()))?;
         crate::JavaScriptExtensionHost::new(self.sessions.clone())
-            .create_resolved(name, &entry, on_closed, on_created)
+            .create_resolved(name, entry, on_closed, on_created)
             .map_err(|error| ApplicationError::new(error.to_string()))
     }
 }
 
-fn create_utility<S: Utility>(context: UtilityContext) -> ApplicationResult<Box<dyn Utility>> {
-    S::new(context).map(|service| Box::new(service) as Box<dyn Utility>)
+fn create_utility<S: Utility>(
+    mut context: UtilityContext,
+) -> BoxFuture<'static, ApplicationResult<Box<dyn ErasedUtility>>> {
+    Box::pin(async move {
+        let builder = Builder::default().configuration(context.configuration().to_vec());
+        context.configuration = S::setup(builder)?.finish()?.into();
+        S::new(context)
+            .await
+            .map(|service| Box::new(service) as Box<dyn ErasedUtility>)
+    })
 }
 
-fn create_v8<S: V8>(context: V8Context) -> ApplicationResult<Arc<dyn V8>> {
-    S::new(context).map(|provider| Arc::new(provider) as Arc<dyn V8>)
+fn create_v8<S: V8>(mut context: V8Context) -> ApplicationResult<Arc<dyn ErasedV8>> {
+    let builder = v8::Builder::default().configuration(context.configuration().to_vec());
+    let scheme = v8::app_scheme(context.application_configuration())
+        .ok_or_else(|| ApplicationError::new("application scheme is unavailable"))?;
+    let (configuration, entry) = S::setup(builder)?.finish(&scheme, context.name())?;
+    context.configuration = configuration.into();
+    let provider = S::new(context)?;
+    Ok(Arc::new(ConfiguredV8 { provider, entry }))
 }
 
 impl std::fmt::Debug for Host {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Host")
-            .field("app_scheme", &self.app_scheme)
-            .finish_non_exhaustive()
+        f.debug_struct("Host").finish_non_exhaustive()
     }
 }
 
 /// Rust utility implementation and session contracts.
 pub mod rust {
-    pub use super::{
-        Utility, UtilityContext, UtilityFuture, UtilityRequest, UtilityServiceRegistration,
-    };
+    pub use super::{Builder, Utility, UtilityContext, UtilityRequest, UtilityServiceRegistration};
     pub use crate::utility_host::{
         UtilitySessionClosed, UtilitySessionHandle, UtilitySessionHost, UtilitySessionHostError,
         UtilitySessionOptions,

@@ -70,7 +70,8 @@ class UtilitySessionClient final : public mojom::UtilitySessionClient {
       UtilitySessionClosedCallback closed_callback,
       base::RepeatingClosure abort_callback,
       base::RepeatingCallback<void(std::string, UtilityResponseCallback)>
-          resolver)
+          resolver,
+      base::OnceClosure cancel_modules)
       : session_id_(session_id),
         available_credits_(initial_event_credits),
         max_credits_(initial_event_credits),
@@ -79,7 +80,14 @@ class UtilitySessionClient final : public mojom::UtilitySessionClient {
         closed_callback_(std::move(closed_callback)),
         abort_callback_(std::move(abort_callback)),
         resolver_(std::move(resolver)),
+        cancel_modules_(std::move(cancel_modules)),
         receiver_(this) {}
+
+  ~UtilitySessionClient() override {
+    if (cancel_modules_) {
+      std::move(cancel_modules_).Run();
+    }
+  }
 
   mojo::PendingRemote<mojom::UtilitySessionClient> Bind() {
     return receiver_.BindNewPipeAndPassRemote();
@@ -157,6 +165,7 @@ class UtilitySessionClient final : public mojom::UtilitySessionClient {
   UtilitySessionClosedCallback closed_callback_;
   base::RepeatingClosure abort_callback_;
   base::RepeatingCallback<void(std::string, UtilityResponseCallback)> resolver_;
+  base::OnceClosure cancel_modules_;
   size_t module_requests_ = 0;
   mojo::Receiver<mojom::UtilitySessionClient> receiver_;
 };
@@ -171,10 +180,12 @@ class UtilityServiceHost {
   UtilityServiceHost(std::string name,
                      UtilityProcessLauncher& launcher,
                      UtilityModuleResolver resolver,
+                     UtilityModuleCanceller canceller,
                      std::vector<uint8_t> configuration)
       : name_(std::move(name)),
         launcher_(launcher),
         resolver_(std::move(resolver)),
+        canceller_(std::move(canceller)),
         configuration_(std::move(configuration)) {}
 
   UtilityServiceHost(const UtilityServiceHost&) = delete;
@@ -280,14 +291,24 @@ class UtilityServiceHost {
                             weak_factory_.GetWeakPtr(), request.session_id),
         base::BindRepeating(
             [](UtilityModuleResolver resolver, std::string name,
-               std::string url, UtilityResponseCallback reply) {
+               uint64_t session_id, std::string url,
+               UtilityResponseCallback reply) {
               if (!resolver) {
                 std::move(reply).Run(TUFFITE_STATUS_INVALID_STATE, {});
                 return;
               }
-              resolver.Run(std::move(name), std::move(url), std::move(reply));
+              resolver.Run(std::move(name), session_id, std::move(url),
+                           std::move(reply));
             },
-            resolver_, name_));
+            resolver_, name_, request.session_id),
+        base::BindOnce(
+            [](UtilityModuleCanceller cancel, std::string name,
+               uint64_t session) {
+              if (cancel) {
+                cancel.Run(std::move(name), session);
+              }
+            },
+            canceller_, name_, request.session_id));
     auto client_remote = client->Bind();
     mojo::Remote<mojom::UtilitySession> session_remote;
     auto session_receiver = session_remote.BindNewPipeAndPassReceiver();
@@ -704,6 +725,7 @@ class UtilityServiceHost {
   const std::string name_;
   const raw_ref<UtilityProcessLauncher> launcher_;
   UtilityModuleResolver resolver_;
+  UtilityModuleCanceller canceller_;
   const std::vector<uint8_t> configuration_;
   State state_ = State::kStopped;
   int consecutive_crashes_ = 0;
@@ -736,6 +758,11 @@ class UtilityServiceImpl final : public UtilityService {
   void SetUtilityModuleResolver(UtilityModuleResolver resolver) override {
     if (!stopped_) {
       resolver_ = std::move(resolver);
+    }
+  }
+  void SetUtilityModuleCanceller(UtilityModuleCanceller canceller) override {
+    if (!stopped_) {
+      canceller_ = std::move(canceller);
     }
   }
   void SetUtilityRegistrationChecker(
@@ -882,7 +909,7 @@ class UtilityServiceImpl final : public UtilityService {
     auto [entry, inserted] = hosts_.try_emplace(name, nullptr);
     if (inserted) {
       entry->second = std::make_unique<UtilityServiceHost>(
-          name, *launcher_, resolver_, configurations_[name]);
+          name, *launcher_, resolver_, canceller_, configurations_[name]);
     }
     entry->second->Invoke(request_id, std::move(request), std::move(callback));
   }
@@ -914,7 +941,7 @@ class UtilityServiceImpl final : public UtilityService {
     auto [entry, inserted] = hosts_.try_emplace(name, nullptr);
     if (inserted) {
       entry->second = std::make_unique<UtilityServiceHost>(
-          name, *launcher_, resolver_, configurations_[name]);
+          name, *launcher_, resolver_, canceller_, configurations_[name]);
     }
     entry->second->CreateSession(
         session_id, std::move(init), initial_event_credits, max_event_bytes,
@@ -940,6 +967,7 @@ class UtilityServiceImpl final : public UtilityService {
     stopped_ = true;
     checker_.Reset();
     resolver_.Reset();
+    canceller_.Reset();
     auto hosts = std::exchange(hosts_, {});
     for (auto& entry : hosts) {
       entry.second->Shutdown();
@@ -956,6 +984,7 @@ class UtilityServiceImpl final : public UtilityService {
   UtilityRegistrationChecker checker_;
   UtilityInterfaceResolver interface_resolver_;
   UtilityModuleResolver resolver_;
+  UtilityModuleCanceller canceller_;
   SEQUENCE_CHECKER(sequence_checker_);
   base::WeakPtrFactory<UtilityServiceImpl> weak_factory_{this};
 };

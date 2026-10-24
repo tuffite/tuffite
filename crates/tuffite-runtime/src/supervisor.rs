@@ -17,24 +17,85 @@ impl HandleType for TaskTag {
 
 pub(crate) type InternalTaskHandle = Handle<TaskTag>;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct CancellationToken {
-    cancelled: Arc<AtomicBool>,
+    state: Arc<CancellationState>,
+}
+
+#[derive(Default)]
+struct CancellationState {
+    cancelled: AtomicBool,
+    next_waiter: std::sync::atomic::AtomicU64,
+    waiters: Mutex<std::collections::HashMap<u64, std::task::Waker>>,
 }
 
 impl CancellationToken {
     pub(crate) fn new() -> Self {
-        Self {
-            cancelled: Arc::new(AtomicBool::new(false)),
-        }
+        Self::default()
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Acquire)
+        self.state.cancelled.load(Ordering::Acquire)
     }
 
     pub(crate) fn cancel(&self) {
-        self.cancelled.store(true, Ordering::Release);
+        let waiters = {
+            let mut waiters = self
+                .state
+                .waiters
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            self.state.cancelled.store(true, Ordering::Release);
+            std::mem::take(&mut *waiters)
+        };
+        for (_, waiter) in waiters {
+            waiter.wake();
+        }
+    }
+
+    pub(crate) fn cancelled(&self) -> Cancelled {
+        Cancelled {
+            token: self.clone(),
+            id: self.state.next_waiter.fetch_add(1, Ordering::Relaxed),
+        }
+    }
+}
+
+pub(crate) struct Cancelled {
+    token: CancellationToken,
+    id: u64,
+}
+
+impl std::future::Future for Cancelled {
+    type Output = ();
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<()> {
+        let mut waiters = self
+            .token
+            .state
+            .waiters
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if self.token.is_cancelled() {
+            waiters.remove(&self.id);
+            std::task::Poll::Ready(())
+        } else {
+            waiters.insert(self.id, cx.waker().clone());
+            std::task::Poll::Pending
+        }
+    }
+}
+
+impl Drop for Cancelled {
+    fn drop(&mut self) {
+        self.token
+            .state
+            .waiters
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&self.id);
     }
 }
 
@@ -108,5 +169,40 @@ impl TaskSupervisor {
 
     pub(crate) fn is_worker_thread() -> bool {
         IS_RUNTIME_WORKER.get()
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    use std::future::Future;
+    use std::task::{Context, Poll, Wake, Waker};
+
+    struct Counter(std::sync::atomic::AtomicUsize);
+    impl Wake for Counter {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn cancellation_wakes_all_live_waiters_and_removes_dropped_ones() {
+        let token = CancellationToken::new();
+        let counter = Arc::new(Counter(std::sync::atomic::AtomicUsize::new(0)));
+        let waker = Waker::from(counter.clone());
+        let mut cx = Context::from_waker(&waker);
+        let mut first = Box::pin(token.cancelled());
+        let mut second = Box::pin(token.cancelled());
+        assert!(first.as_mut().poll(&mut cx).is_pending());
+        assert!(second.as_mut().poll(&mut cx).is_pending());
+        drop(second);
+        assert_eq!(token.state.waiters.lock().unwrap().len(), 1);
+        token.cancel();
+        assert_eq!(counter.0.load(Ordering::SeqCst), 1);
+        assert_eq!(first.as_mut().poll(&mut cx), Poll::Ready(()));
+        assert!(token.state.waiters.lock().unwrap().is_empty());
     }
 }

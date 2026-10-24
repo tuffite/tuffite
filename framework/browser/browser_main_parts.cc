@@ -11,6 +11,8 @@
 #include "base/command_line.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/logging.h"
 #include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
@@ -124,16 +126,23 @@ int BrowserMainParts::PreMainMessageLoopRun() {
       std::make_unique<BrowserContext>(std::move(profile), *application_);
   DevToolsServiceFactory::GetForBrowserContext(browser_context_.get())
       ->StartIfRequested(browser_context_.get());
-  InitializeMessageLoopContext();
+  bridge_->BindBrowserTaskRunner();
+  bridge_->InitializeBrowser(base::BindOnce(
+      &BrowserMainParts::OnBrowserInitialized, weak_factory_.GetWeakPtr()));
   return 0;
 }
 
 void BrowserMainParts::WillRunMainMessageLoop(
     std::unique_ptr<base::RunLoop>& run_loop) {
-  Window::SetQuitClosure(run_loop->QuitClosure());
+  quit_ = run_loop->QuitClosure();
+  Window::SetQuitClosure(quit_);
+  if (bridge_->initialization_failed()) {
+    quit_.Run();
+  }
 }
 
 void BrowserMainParts::PostMainMessageLoopRun() {
+  weak_factory_.InvalidateWeakPtrs();
   window_surface_test_observer_.reset();
   smoke_test_observer_.reset();
   if (auto* devtools = DevToolsServiceFactory::GetForBrowserContext(
@@ -142,6 +151,7 @@ void BrowserMainParts::PostMainMessageLoopRun() {
   }
   bridge_->BeginShutdown();
   application_->GetService<UtilityService>()->Shutdown();
+  bridge_->Stop();
   Window::SetQuitClosure({});
   Window::Shutdown();
   browser_context_.reset();
@@ -153,8 +163,18 @@ void BrowserMainParts::PostMainMessageLoopRun() {
   views_delegate_.reset();
 }
 
+void BrowserMainParts::OnBrowserInitialized(bool ok) {
+  if (!ok) {
+    LOG(ERROR) << "Tuffite Browser initialization failed";
+    if (quit_) {
+      quit_.Run();
+    }
+    return;
+  }
+  InitializeMessageLoopContext();
+}
+
 void BrowserMainParts::InitializeMessageLoopContext() {
-  bridge_->BindBrowserTaskRunner();
   const ManifestService* manifest = application_->GetService<ManifestService>();
   CHECK(manifest);
   const base::CommandLine* command_line =

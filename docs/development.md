@@ -625,3 +625,19 @@ downloads the release; subsequent builds reuse its verified cache. An explicit
 `download_directory` is caller-managed and can be refreshed with
 `force_download(true)`. The release tag can differ from the SDK version, but the
 artifact's declared Framework version and ABI must remain compatible with the SDK.
+
+### Origin-scoped DevTools policy
+
+A capability may set `"devtools": false` for its `origins`. This applies to
+both root application windows and Explorer documents. Any matching denial wins;
+page scripts cannot override it. Omitted fields retain the
+previous inspection behavior. The local CLI validates this boolean alongside the
+other capability fields. See `components/explorer/README.md` for an example.
+
+Rust Browser implementations may use the static trait method
+`fn setup(builder: browser::Builder) -> ApplicationResult<browser::Builder>`
+and return `Ok(builder.disable_devtools_for_origin(origin))` before native services and
+windows are created. It adds denials to the manifest policy. Setup errors and
+invalid patterns abort startup. The optional ABI tail preserves older application
+tables; hosts using this hook need a Framework that implements browser setup.
+Explorer element types are shipped as `tuffite/explorer` by the npm SDK.

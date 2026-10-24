@@ -2,7 +2,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use tuffite::{ApplicationResult, Browser, BrowserContext, Utility, UtilityFuture, UtilityRequest};
+use tuffite::{ApplicationResult, Browser, BrowserContext, Utility, UtilityRequest};
 
 static BROWSER_STARTS: AtomicUsize = AtomicUsize::new(0);
 
@@ -18,22 +18,22 @@ impl Browser for Backend {
 struct Indexer;
 #[tuffite::utility(name = "indexer")]
 impl Utility for Indexer {
-    fn new(_: tuffite::UtilityContext) -> ApplicationResult<Self> {
+    async fn new(_: tuffite::UtilityContext) -> ApplicationResult<Self> {
         Ok(Self)
     }
-    fn invoke(&self, _: UtilityRequest) -> UtilityFuture<'_> {
-        Box::pin(async { Ok(Vec::new()) })
+    async fn invoke(&self, _: UtilityRequest) -> tuffite::CommandResult {
+        Ok(Vec::new())
     }
 }
 
 struct Parser;
 #[tuffite::utility(name = "parser")]
 impl Utility for Parser {
-    fn new(_: tuffite::UtilityContext) -> ApplicationResult<Self> {
+    async fn new(_: tuffite::UtilityContext) -> ApplicationResult<Self> {
         Ok(Self)
     }
-    fn invoke(&self, _: UtilityRequest) -> UtilityFuture<'_> {
-        Box::pin(async { Ok(Vec::new()) })
+    async fn invoke(&self, _: UtilityRequest) -> tuffite::CommandResult {
+        Ok(Vec::new())
     }
 }
 
@@ -43,14 +43,12 @@ impl tuffite::utility::V8 for V8Parser {
     fn new(_: tuffite::V8Context) -> ApplicationResult<Self> {
         Ok(Self)
     }
-    fn entry(&self) -> &'static str {
-        "entry.mjs"
-    }
 
-    fn resolve(
+    async fn resolve(
         &self,
-        url: &str,
+        request: tuffite::utility::v8::ModuleRequest,
     ) -> Result<Option<tuffite::utility::v8::ModuleSource>, tuffite::utility::v8::Error> {
+        let url = request.url();
         Ok(Some(tuffite::utility::v8::ModuleSource::new(
             url.to_owned(),
             "export default {ping: () => 'pong'};",
@@ -63,9 +61,6 @@ struct AssetsParser;
 impl tuffite::utility::V8 for AssetsParser {
     fn new(_: tuffite::V8Context) -> ApplicationResult<Self> {
         Ok(Self)
-    }
-    fn entry(&self) -> &'static str {
-        "entry.mjs"
     }
 }
 

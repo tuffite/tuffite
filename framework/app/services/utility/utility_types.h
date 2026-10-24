@@ -16,7 +16,9 @@ using UtilitySessionEventCallback =
 using UtilitySessionClosedCallback =
     base::OnceCallback<void(int32_t, uint64_t, std::vector<uint8_t>)>;
 using UtilityModuleResolver = base::RepeatingCallback<
-    void(std::string, std::string, UtilityResponseCallback)>;
+    void(std::string, uint64_t, std::string, UtilityResponseCallback)>;
+using UtilityModuleCanceller =
+    base::RepeatingCallback<void(std::string, uint64_t)>;
 using UtilityRegistrationChecker =
     base::RepeatingCallback<bool(std::string_view)>;
 using UtilityInterfaceResolver =

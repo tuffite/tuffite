@@ -8,13 +8,15 @@ use std::time::{Duration, Instant};
 
 use tuffite_abi::{ByteSlice, Handle as FfiHandle, Status, UtilityReplyFn, UtilitySessionEventFn};
 
+#[cfg(test)]
+use crate::Utility;
+use crate::UtilityRequest;
 use crate::application::Registrations;
 use crate::handle::{Handle, HandleError, HandleKind, HandleTable, HandleType, RawHandle};
 use crate::supervisor::CancellationToken;
 use crate::utility_session::{
     UtilitySession, UtilitySessionCommand, UtilitySessionEmitter, UtilitySessionRequest,
 };
-use crate::{Utility, UtilityRequest};
 
 enum UtilityTag {}
 
@@ -26,7 +28,7 @@ type UtilityHandle = Handle<UtilityTag>;
 // The service is already Sync. This gate protects only operation lifetime:
 // stop closes admission, cancels work, and drains admitted readers before cleanup.
 struct UtilityInstance {
-    implementation: Box<dyn Utility>,
+    implementation: Box<dyn crate::utility::ErasedUtility>,
     activity: RwLock<()>,
     closing: AtomicBool,
     cancellation: CancellationToken,
@@ -317,7 +319,13 @@ pub unsafe extern "C" fn start_utility_with_context<A: Registrations>(
         let cancellation = CancellationToken::new();
         let context =
             crate::utility::UtilityContext::new(name, configuration, cancellation.clone());
-        let service = match catch_unwind(AssertUnwindSafe(|| registration.create(context))) {
+        let service = match catch_unwind(AssertUnwindSafe(|| {
+            crate::lifecycle::run_until(
+                registration.create(context),
+                &cancellation,
+                Instant::now() + UTILITY_DEADLINE,
+            )
+        })) {
             Ok(Ok(service)) => service,
             Ok(Err(_)) => {
                 cancellation.cancel();
@@ -890,7 +898,11 @@ pub unsafe extern "C" fn stop_utility(service: FfiHandle) -> Status {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .close(0);
         }
-        match implementation.implementation.shutdown() {
+        let context = crate::ShutdownContext::new(
+            crate::ShutdownReason::Requested,
+            Instant::now() + crate::lifecycle::LIFECYCLE_TIMEOUT,
+        );
+        match context.run(implementation.implementation.shutdown(context.clone())) {
             Ok(()) => Status::Ok,
             Err(_) => Status::Internal,
         }
@@ -907,8 +919,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        ApplicationResult, CommandResult, UtilityFuture, UtilityServiceRegistration,
-        UtilitySessionFuture,
+        ApplicationResult, CommandResult, UtilityServiceRegistration, UtilitySessionFuture,
     };
 
     static REPLY: Mutex<Option<(Status, Vec<u8>)>> = Mutex::new(None);
@@ -922,9 +933,6 @@ mod tests {
         impl crate::utility::V8 for Assets {
             fn new(_: crate::V8Context) -> ApplicationResult<Self> {
                 Ok(Self)
-            }
-            fn entry(&self) -> &'static str {
-                "entry.mjs"
             }
         }
         let existing = [crate::UtilityServiceRegistration::v8::<Assets>("Parser")];
@@ -1075,17 +1083,15 @@ mod tests {
     }
 
     impl Utility for EchoService {
-        fn new(context: crate::UtilityContext) -> ApplicationResult<Self> {
+        async fn new(context: crate::UtilityContext) -> ApplicationResult<Self> {
             *STARTUP_CONTEXT.lock().unwrap() = Some(context);
             Ok(Self)
         }
 
-        fn invoke(&self, request: UtilityRequest) -> UtilityFuture<'_> {
-            Box::pin(async move {
-                let mut response = b"utility: ".to_vec();
-                response.extend_from_slice(request.payload());
-                Ok(response)
-            })
+        async fn invoke(&self, request: UtilityRequest) -> crate::CommandResult {
+            let mut response = b"utility: ".to_vec();
+            response.extend_from_slice(request.payload());
+            Ok(response)
         }
 
         fn create_session(

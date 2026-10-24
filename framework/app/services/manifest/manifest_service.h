@@ -44,6 +44,7 @@ class ManifestService : public KeyedService {
                                            uint64_t command_id) const = 0;
   virtual bool IsShellApiOriginAllowed(const url::Origin& origin) const = 0;
   virtual bool IsAllShellApiAllowed(const url::Origin& origin) const = 0;
+  virtual bool IsDevToolsAllowed(const url::Origin& origin) const = 0;
   virtual bool IsExplorerOriginAllowed(const url::Origin& origin) const = 0;
   virtual bool IsShellApiCommandAllowed(const url::Origin& origin,
                                         std::string_view channel) const = 0;

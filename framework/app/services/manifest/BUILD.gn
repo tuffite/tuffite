@@ -4,15 +4,17 @@ import("//tuffite/tuffite_in_chromium.gni")
 assert(tuffite_in_chromium)
 import("//testing/test.gni")
 
-
-
 source_set("manifest") {
   public = [
     "app_config.h",
+    "manifest_configuration.h",
     "manifest_service.h",
     "manifest_service_factory.h",
   ]
   sources = public + [
+              "configuration_assembler.cc",
+              "manifest_configuration_data.h",
+              "manifest_loader.cc",
               "manifest_service_factory.cc",
               "manifest_service_impl.cc",
               "manifest_service_impl.h",

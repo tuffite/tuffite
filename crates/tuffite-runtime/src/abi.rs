@@ -10,7 +10,7 @@ use std::sync::{Mutex, OnceLock};
 use tuffite_abi::{ByteSlice, Handle as FfiHandle, Host, RuntimeEventKind, Status};
 
 use crate::Runtime;
-use crate::browser::{Browser, BrowserContext};
+use crate::browser::{Browser, BrowserContext, ErasedBrowser};
 use crate::dispatch::DispatchScheduler;
 use crate::executor::ChromiumExecutor;
 use crate::handle::{Handle, HandleError, HandleKind, HandleTable, HandleType, RawHandle};
@@ -166,8 +166,10 @@ unsafe fn discover_capabilities(
 
 fn abandon_browser(providers: &crate::utility::V8Providers, executor: &ChromiumExecutor) {
     providers.stop();
+    std::thread::scope(|scope| {
+        let _ = scope.spawn(|| providers.release()).join();
+    });
     executor.close_and_wait();
-    providers.release();
 }
 
 struct RuntimeInstance {
@@ -178,6 +180,8 @@ struct RuntimeInstance {
     runtime_identity: Arc<AtomicU64>,
     scheduler: DispatchScheduler,
     executor: ChromiumExecutor,
+    stop: crate::StopSignal,
+    initialized: Arc<std::sync::atomic::AtomicBool>,
 }
 
 type RuntimeHandle = Handle<RuntimeTag>;
@@ -286,30 +290,35 @@ pub unsafe extern "C" fn start_browser<B: Browser>(
         );
         let executor = context.executor();
         let providers = context.providers();
+        let stop = context.stop_signal();
+        let initialized = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let browser = match catch_unwind(AssertUnwindSafe(|| B::new(context))) {
-            Ok(Ok(browser)) => Box::new(browser) as Box<dyn Browser>,
+            Ok(Ok(browser)) => Box::new(browser) as Box<dyn ErasedBrowser>,
             result => {
+                stop.0.cancel();
                 abandon_browser(&providers, &executor);
                 if let Ok(Err(error)) = result {
-                    tracing::error!(error = %error, "Tuffite browser initialization failed");
+                    tracing::error!(error = %error, "Tuffite browser construction failed");
                     return Status::InvalidState;
                 }
                 return Status::Internal;
             }
         };
-        let runtime = Runtime::new();
         // Start the scheduler with an atomic runtime handle initialized to 0.
         // The worker will only post_event once the handle has been published,
         // which happens after we insert the instance into the table below.
-        let scheduler = DispatchScheduler::start(&runtime_identity, browser, callbacks);
+        let scheduler =
+            DispatchScheduler::start(&runtime_identity, browser, callbacks, stop.clone());
         let instance = RuntimeInstance {
-            runtime,
+            runtime: Runtime::new(),
             providers,
             app_scheme,
             callbacks,
             runtime_identity: Arc::clone(&runtime_identity),
             scheduler,
             executor,
+            stop,
+            initialized,
         };
         let Ok(handle) = runtimes()
             .lock()
@@ -329,12 +338,8 @@ pub unsafe extern "C" fn start_browser<B: Browser>(
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .remove(handle);
-            if let Ok(mut instance) = removed {
-                instance.providers.stop();
-                let _ = instance.scheduler.shutdown();
-                instance.executor.close_and_wait();
-                let _ = instance.runtime.stop();
-                instance.providers.release();
+            if let Ok(instance) = removed {
+                let _ = stop_instance(instance, handle);
             }
             return status;
         }
@@ -349,6 +354,46 @@ pub unsafe extern "C" fn start_browser<B: Browser>(
         // SAFETY: `runtime_out` is writable by the function's ABI contract.
         unsafe { runtime_out.write(handle.raw().as_u64()) };
         Status::Ok
+    })
+}
+
+/// Schedules initialization after native `BrowserContext` services are bound.
+/// # Safety
+/// Accepted callback state stays valid and thread-safe until exactly one reply.
+pub unsafe extern "C" fn initialize_browser(
+    runtime: FfiHandle,
+    data: *mut c_void,
+    reply: Option<tuffite_abi::UtilityReplyFn>,
+) -> Status {
+    ffi_guard(|| {
+        let Some(reply) = reply else {
+            return Status::InvalidArgument;
+        };
+        let handle = match parse_runtime_handle(runtime) {
+            Ok(handle) => handle,
+            Err(status) => return status,
+        };
+        let mut table = runtimes()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Ok(instance) = table.get_mut(handle) else {
+            return Status::InvalidHandle;
+        };
+        let callback = ModuleReply { data, reply };
+        let initialized = instance.initialized.clone();
+        match instance.scheduler.initialize(Box::new(move |result| {
+            initialized.store(result.is_ok(), Ordering::Release);
+            match result {
+                Ok(()) => callback.deliver(Status::Ok, &[]),
+                Err(error) => {
+                    tracing::error!(%error, "Browser initialization failed");
+                    callback.deliver(Status::InvalidState, &[]);
+                }
+            }
+        })) {
+            Ok(()) => Status::Ok,
+            Err(status) => status,
+        }
     })
 }
 
@@ -438,6 +483,40 @@ impl ModuleReply {
     }
 }
 
+/// Cancels module requests admitted for a closing native session.
+/// # Safety
+/// Name bytes are readable for the duration of the call.
+#[must_use]
+pub unsafe extern "C" fn cancel_v8_session(
+    runtime: FfiHandle,
+    name: ByteSlice,
+    session: u64,
+) -> Status {
+    ffi_guard(|| {
+        if name.len > 128 || session == 0 {
+            return Status::InvalidArgument;
+        }
+        let Ok(name) = (unsafe { borrowed_bytes(name.data, name.len) })
+            .and_then(|value| std::str::from_utf8(value).map_err(|_| Status::InvalidArgument))
+        else {
+            return Status::InvalidArgument;
+        };
+        let Ok(handle) = parse_runtime_handle(runtime) else {
+            return Status::InvalidHandle;
+        };
+        let table = runtimes()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Ok(instance) = table.get(handle) else {
+            return Status::InvalidHandle;
+        };
+        let providers = instance.providers.clone();
+        drop(table);
+        providers.cancel_session(name, session);
+        Status::Ok
+    })
+}
+
 /// Resolves a V8 source on a supervised browser worker, joined during stop.
 ///
 /// # Safety
@@ -445,6 +524,7 @@ impl ModuleReply {
 /// valid and thread-safe until one reply; rejection does not invoke the callback.
 pub unsafe extern "C" fn resolve_v8(
     runtime: FfiHandle,
+    session_id: u64,
     name: tuffite_abi::ByteSlice,
     url: tuffite_abi::ByteSlice,
     data: *mut c_void,
@@ -487,16 +567,25 @@ pub unsafe extern "C" fn resolve_v8(
         if crate::utility::v8::validate_url(name, url, instance.app_scheme.as_deref()).is_err() {
             return Status::InvalidArgument;
         }
+        if session_id == 0 {
+            return Status::InvalidArgument;
+        }
         let callback = ModuleReply { data, reply };
-        let url = url.to_owned();
+        let signal = instance.providers.session_signal(name, session_id);
+        let request =
+            crate::utility::v8::ModuleRequest::new(url.to_owned(), session_id, signal.clone());
         let name = name.to_owned();
         let providers = instance.providers.clone();
         match instance.runtime.spawn("v8-resolve", move |context| {
             let result = catch_unwind(AssertUnwindSafe(|| {
                 let provider = providers.get(&name)?;
-                crate::utility::resolve_source(provider.as_ref(), &name, &url)
+                crate::lifecycle::run_until(
+                    crate::utility::resolve_source(provider.as_ref(), &name, request.clone()),
+                    &signal.0,
+                    request.deadline(),
+                )
             }));
-            let (status, bytes) = if context.is_cancelled() {
+            let (status, bytes) = if context.is_cancelled() || signal.is_stopping() {
                 (Status::InvalidState, Vec::new())
             } else {
                 match result {
@@ -525,7 +614,7 @@ pub extern "C" fn stop_browser(runtime: FfiHandle) -> Status {
             Ok(handle) => handle,
             Err(status) => return status,
         };
-        let mut instance = match runtimes()
+        let instance = match runtimes()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(handle)
@@ -533,33 +622,103 @@ pub extern "C" fn stop_browser(runtime: FfiHandle) -> Status {
             Ok(instance) => instance,
             Err(error) => return map_handle_error(error),
         };
-        // Publish lifecycle control before waiting for application work. The
-        // Framework can immediately reject new/pending requests even when a
-        // business handler is slow. Clearing the worker-visible identity then
-        // prevents late CommandResponse events from crossing the stopping
-        // boundary while shutdown joins the worker.
-        let _ = post_event(instance.callbacks, handle, RuntimeEventKind::Stopping, &[]);
-        instance.providers.stop();
-        instance.runtime_identity.store(0, Ordering::Release);
-        let application = instance.scheduler.shutdown();
-        instance.executor.close_and_wait();
-        let shutdown_status = match application {
-            Some(mut application) => {
-                match catch_unwind(AssertUnwindSafe(|| application.shutdown())) {
-                    Ok(Ok(())) => Status::Ok,
-                    Ok(Err(_)) | Err(_) => Status::Internal,
+        stop_instance(instance, handle)
+    })
+}
+
+fn stop_instance(instance: RuntimeInstance, handle: RuntimeHandle) -> Status {
+    // Stop is a synchronous ABI boundary after the native main loop exits, but
+    // application futures and destructors still belong on a Rust worker.
+    match std::thread::Builder::new()
+        .name("tuffite-shutdown".into())
+        .spawn(move || finish_stop(instance, handle))
+    {
+        Ok(worker) => worker.join().unwrap_or(Status::Internal),
+        Err(_) => Status::Internal,
+    }
+}
+
+fn finish_stop(mut instance: RuntimeInstance, handle: RuntimeHandle) -> Status {
+    // Publish lifecycle control before waiting for application work. The
+    // Framework can immediately reject new/pending requests even when a
+    // business handler is slow. Clearing the worker-visible identity then
+    // prevents late CommandResponse events from crossing the stopping
+    // boundary while shutdown joins the worker.
+    let _ = post_event(instance.callbacks, handle, RuntimeEventKind::Stopping, &[]);
+    instance.stop.0.cancel();
+    instance.providers.stop();
+    instance.runtime_identity.store(0, Ordering::Release);
+    let application = instance.scheduler.shutdown();
+    // Resolver futures observe stop before being joined. Provider teardown
+    // and Browser cleanup retain the Chromium executor until both finish.
+    let runtime_status = instance.runtime.stop();
+    let provider_status = instance.providers.release();
+    let shutdown_status = match application {
+        Some(mut application) => {
+            let reason = if instance.initialized.load(Ordering::Acquire) {
+                crate::ShutdownReason::Requested
+            } else {
+                crate::ShutdownReason::InitializationFailed
+            };
+            let context = crate::ShutdownContext::new(
+                reason,
+                std::time::Instant::now() + crate::lifecycle::LIFECYCLE_TIMEOUT,
+            );
+            match catch_unwind(AssertUnwindSafe(|| {
+                context.run(application.shutdown(context.clone()))
+            })) {
+                Ok(Ok(())) => Status::Ok,
+                Ok(Err(error)) => {
+                    tracing::error!(%error, "Browser cleanup failed");
+                    Status::Internal
                 }
+                Err(_) => Status::Internal,
             }
-            None => Status::Internal,
-        };
-        let runtime_status = instance.runtime.stop();
-        instance.providers.release();
-        match (shutdown_status, runtime_status) {
-            (Status::Ok, Ok(())) => Status::Ok,
-            (status, _) if status != Status::Ok => status,
-            (_, Err(_)) => Status::InvalidState,
-            _ => Status::Internal,
         }
+        None => Status::Internal,
+    };
+    instance.executor.close_and_wait();
+    match (shutdown_status, provider_status, runtime_status) {
+        (Status::Ok, Ok(()), Ok(())) => Status::Ok,
+        (status, _, _) if status != Status::Ok => status,
+        (_, _, Err(_)) => Status::InvalidState,
+        _ => Status::Internal,
+    }
+}
+
+/// Trusted browser setup adapter. The sink copies each borrowed string.
+///
+/// # Safety
+/// Sink context and callback must remain valid throughout this synchronous call.
+pub(crate) unsafe extern "C" fn setup_browser<B: Browser>(
+    user_data: *mut c_void,
+    emit: Option<tuffite_abi::LaunchArgumentFn>,
+) -> Status {
+    ffi_guard(|| {
+        let Some(emit) = emit else {
+            return Status::InvalidArgument;
+        };
+        let setup = match B::setup(crate::browser::Builder::default()) {
+            Ok(setup) => setup,
+            Err(error) => {
+                tracing::error!(%error, "Tuffite browser setup failed");
+                return Status::InvalidState;
+            }
+        };
+        if setup.devtools_denied_origins.len() > 256 {
+            return Status::ResourceExhausted;
+        }
+        for origin in setup.devtools_denied_origins {
+            if origin.is_empty() || origin.len() > 4096 || origin.contains('\0') {
+                return Status::InvalidArgument;
+            }
+            // SAFETY: Forwarded sink contract; the origin lives through the call.
+            let status = unsafe { emit(user_data, ByteSlice::from_slice(origin.as_bytes())) };
+            if status != Status::Ok {
+                return status;
+            }
+        }
+        Status::Ok
     })
 }
 
@@ -577,6 +736,65 @@ mod tests {
     static EVENTS: Mutex<Vec<(FfiHandle, RuntimeEventKind, Vec<u8>)>> = Mutex::new(Vec::new());
     static EVENT_READY: std::sync::Condvar = std::sync::Condvar::new();
     static SHUTDOWN_CALLED: AtomicBool = AtomicBool::new(false);
+
+    #[test]
+    fn owned_browser_setup_emits_composed_denials_without_constructing_state() {
+        struct Configured;
+        impl Browser for Configured {
+            fn setup(
+                builder: crate::browser::Builder,
+            ) -> crate::ApplicationResult<crate::browser::Builder> {
+                fn common(builder: crate::browser::Builder) -> crate::browser::Builder {
+                    builder.disable_devtools_for_origin("myapp://main")
+                }
+                Ok(common(builder).disable_devtools_for_origin("https://private.example.com"))
+            }
+            fn new(_: BrowserContext) -> crate::ApplicationResult<Self> {
+                panic!("setup must not construct Browser state")
+            }
+        }
+        unsafe extern "C" fn collect(data: *mut c_void, origin: ByteSlice) -> Status {
+            // SAFETY: This test supplies a live Vec and setup borrows valid UTF-8 until return.
+            let values = unsafe { &mut *data.cast::<Vec<String>>() };
+            let bytes = unsafe { std::slice::from_raw_parts(origin.data, origin.len) };
+            values.push(std::str::from_utf8(bytes).unwrap().to_owned());
+            Status::Ok
+        }
+        let mut origins = Vec::<String>::new();
+        // SAFETY: The vector and synchronous copying sink live throughout setup.
+        assert_eq!(
+            unsafe { setup_browser::<Configured>((&raw mut origins).cast(), Some(collect)) },
+            Status::Ok
+        );
+        assert_eq!(origins, ["myapp://main", "https://private.example.com"]);
+    }
+
+    #[test]
+    fn browser_setup_error_does_not_publish_configuration() {
+        struct Rejected;
+        impl Browser for Rejected {
+            fn setup(
+                builder: crate::browser::Builder,
+            ) -> crate::ApplicationResult<crate::browser::Builder> {
+                let _builder = builder.disable_devtools_for_origin("myapp://main");
+                Err(crate::ApplicationError::new("setup rejected"))
+            }
+            fn new(_: BrowserContext) -> crate::ApplicationResult<Self> {
+                unreachable!()
+            }
+        }
+        static EMITTED: AtomicBool = AtomicBool::new(false);
+        unsafe extern "C" fn reject_emit(_: *mut c_void, _: ByteSlice) -> Status {
+            EMITTED.store(true, Ordering::SeqCst);
+            Status::Internal
+        }
+        // SAFETY: This rejected setup never dereferences the null sink context.
+        assert_eq!(
+            unsafe { setup_browser::<Rejected>(std::ptr::null_mut(), Some(reject_emit)) },
+            Status::InvalidState
+        );
+        assert!(!EMITTED.load(Ordering::SeqCst));
+    }
 
     struct TestBrowser {
         configuration: Vec<u8>,
@@ -599,7 +817,10 @@ mod tests {
             Ok(response)
         }
 
-        fn shutdown(&mut self) -> crate::ApplicationResult<()> {
+        async fn shutdown(
+            &mut self,
+            _context: crate::ShutdownContext,
+        ) -> crate::ApplicationResult<()> {
             SHUTDOWN_CALLED.store(true, Ordering::Release);
             Ok(())
         }
@@ -652,6 +873,133 @@ mod tests {
             post_task: Some(run_task),
             query_extension: None,
         }
+    }
+
+    unsafe extern "C" fn quiet(
+        _: *mut c_void,
+        _: FfiHandle,
+        _: RuntimeEventKind,
+        _: ByteSlice,
+    ) -> Status {
+        Status::Ok
+    }
+
+    unsafe extern "C" fn initialized(data: *mut c_void, status: Status, _: ByteSlice) -> Status {
+        // SAFETY: Acceptance transfers this owned sender to exactly one reply.
+        let tx = unsafe { Box::from_raw(data.cast::<std::sync::mpsc::Sender<Status>>()) };
+        tx.send(status).unwrap();
+        Status::Ok
+    }
+
+    fn initialize_and_wait(runtime: FfiHandle) {
+        let (tx, rx) = std::sync::mpsc::channel::<Status>();
+        assert_eq!(
+            unsafe {
+                initialize_browser(
+                    runtime,
+                    Box::into_raw(Box::new(tx)).cast(),
+                    Some(initialized),
+                )
+            },
+            Status::Ok
+        );
+        assert_eq!(
+            rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap(),
+            Status::Ok
+        );
+    }
+
+    #[test]
+    fn failed_initialization_rejects_dispatch_and_cleanup_keeps_executor_alive() {
+        static CLEANED: AtomicBool = AtomicBool::new(false);
+        struct FailingBrowser {
+            context: BrowserContext,
+            created_on: std::thread::ThreadId,
+        }
+        impl Browser for FailingBrowser {
+            fn new(context: BrowserContext) -> crate::ApplicationResult<Self> {
+                Ok(Self {
+                    context,
+                    created_on: std::thread::current().id(),
+                })
+            }
+            async fn initialize(&mut self) -> crate::ApplicationResult<()> {
+                // Exercise a future that yields, rather than a synchronous error.
+                let mut yielded = false;
+                std::future::poll_fn(|cx| {
+                    if yielded {
+                        std::task::Poll::Ready(())
+                    } else {
+                        yielded = true;
+                        cx.waker().wake_by_ref();
+                        std::task::Poll::Pending
+                    }
+                })
+                .await;
+                Err(crate::ApplicationError::new("fixture startup failure"))
+            }
+            async fn shutdown(
+                &mut self,
+                shutdown: crate::ShutdownContext,
+            ) -> crate::ApplicationResult<()> {
+                assert_ne!(std::thread::current().id(), self.created_on);
+                assert_eq!(
+                    shutdown.reason(),
+                    crate::ShutdownReason::InitializationFailed
+                );
+                assert!(self.context.stop_signal().is_stopping());
+                assert!(shutdown.remaining() > std::time::Duration::ZERO);
+                self.context
+                    .executor()
+                    .post(crate::TaskPriority::UserVisible, false, || {
+                        CLEANED.store(true, Ordering::Release);
+                    })
+                    .unwrap();
+                Ok(())
+            }
+        }
+        let mut native = host();
+
+        native.post_event = Some(quiet);
+        let mut runtime = 0;
+        // SAFETY: Host and writable output remain live through runtime stop.
+        assert_eq!(
+            unsafe {
+                start_browser::<FailingBrowser>(&raw const native, ptr::null(), 0, &raw mut runtime)
+            },
+            Status::Ok
+        );
+        let event = request(99, 1, &[]);
+        assert_eq!(
+            unsafe { dispatch_browser(runtime, event.as_ptr(), event.len()) },
+            Status::InvalidState
+        );
+        let (tx, rx) = std::sync::mpsc::channel::<Status>();
+
+        assert_eq!(
+            unsafe {
+                initialize_browser(
+                    runtime,
+                    Box::into_raw(Box::new(tx)).cast(),
+                    Some(initialized),
+                )
+            },
+            Status::Ok
+        );
+        assert_eq!(
+            rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap(),
+            Status::InvalidState
+        );
+        assert_eq!(
+            unsafe { initialize_browser(runtime, ptr::null_mut(), Some(initialized)) },
+            Status::InvalidState
+        );
+        assert_eq!(
+            unsafe { dispatch_browser(runtime, event.as_ptr(), event.len()) },
+            Status::InvalidState
+        );
+        assert_eq!(stop_browser(runtime), Status::Ok);
+        assert!(CLEANED.load(Ordering::Acquire));
     }
 
     #[test]
@@ -876,6 +1224,7 @@ mod tests {
             Status::Ok
         );
         assert_ne!(runtime, 0);
+        initialize_and_wait(runtime);
         let first = request(7, 42, b"binary-event");
         // SAFETY: Payload is readable for its declared length.
         assert_eq!(

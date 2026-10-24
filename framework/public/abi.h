@@ -347,6 +347,7 @@ typedef tuffite_status_t (*tuffite_utility_runtime_fn)(const uint8_t* name,
 // A NOT_FOUND reply requests app.assets fallback; other errors fail loading.
 typedef tuffite_status_t (*tuffite_resolve_v8_fn)(
     tuffite_handle_t runtime,
+    uint64_t session_id,
     tuffite_byte_slice_t name,
     tuffite_byte_slice_t url,
     void* user_data,
@@ -366,6 +367,23 @@ typedef tuffite_status_t (*tuffite_resolve_utility_route_fn)(
     tuffite_byte_slice_t name,
     tuffite_byte_slice_t* owner_out);
 
+// Browser-only trusted setup, before services/windows. Emits denied origin
+// patterns through a synchronous copying sink. Absent in older tables.
+typedef tuffite_status_t (*tuffite_setup_browser_fn)(
+    void* user_data,
+    tuffite_launch_argument_fn emit);
+
+// Acceptance owns exactly one reply from a Rust worker; rejection owns none.
+typedef tuffite_status_t (*tuffite_initialize_browser_fn)(
+    tuffite_handle_t runtime,
+    void* user_data,
+    tuffite_utility_reply_fn reply);
+
+typedef tuffite_status_t (*tuffite_cancel_v8_session_fn)(
+    tuffite_handle_t runtime,
+    tuffite_byte_slice_t name,
+    uint64_t session_id);
+
 typedef struct tuffite_application {
   tuffite_abi_header header;
   tuffite_application_start_fn start;
@@ -378,6 +396,9 @@ typedef struct tuffite_application {
   tuffite_resolve_v8_fn resolve_v8;
   tuffite_utility_start_with_context_fn utility_start_with_context;
   tuffite_resolve_utility_route_fn resolve_utility_route;
+  tuffite_setup_browser_fn setup_browser;
+  tuffite_initialize_browser_fn initialize_browser;
+  tuffite_cancel_v8_session_fn cancel_v8_session;
 } tuffite_application;
 
 #if defined(_WIN32)

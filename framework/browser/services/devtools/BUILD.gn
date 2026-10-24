@@ -28,6 +28,7 @@ source_set("devtools") {
     "//services/network/public/cpp",
     "//services/network/public/mojom",
     "//tuffite/framework/browser:support",
+    "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/browser/services/window",
     "//url",
   ]

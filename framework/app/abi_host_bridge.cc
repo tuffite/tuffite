@@ -139,6 +139,9 @@ std::unique_ptr<AbiHostBridge> AbiHostBridge::Create(
       .resolve_v8 = nullptr,
       .utility_start_with_context = nullptr,
       .resolve_utility_route = nullptr,
+      .setup_browser = nullptr,
+      .initialize_browser = nullptr,
+      .cancel_v8_session = nullptr,
   };
   const tuffite_abi_version startup_version = tuffite_abi_baseline_version();
   if (application->header.struct_size >=
@@ -167,8 +170,20 @@ std::unique_ptr<AbiHostBridge> AbiHostBridge::Create(
     snapshot.utility_start_with_context =
         application->utility_start_with_context;
   }
-  if (application->header.struct_size >= sizeof(tuffite_application)) {
+  if (application->header.struct_size >=
+      offsetof(tuffite_application, setup_browser)) {
     snapshot.resolve_utility_route = application->resolve_utility_route;
+  }
+  if (application->header.struct_size >=
+      offsetof(tuffite_application, initialize_browser)) {
+    snapshot.setup_browser = application->setup_browser;
+  }
+  if (application->header.struct_size >=
+      offsetof(tuffite_application, cancel_v8_session)) {
+    snapshot.initialize_browser = application->initialize_browser;
+  }
+  if (application->header.struct_size >= sizeof(tuffite_application)) {
+    snapshot.cancel_v8_session = application->cancel_v8_session;
   }
   return base::WrapUnique(new AbiHostBridge(snapshot));
 }
@@ -255,6 +270,7 @@ bool AbiHostBridge::Start(std::string_view configuration) {
     return false;
   }
   runtime_.store(runtime);
+  browser_initialized_ = !application_.initialize_browser;
   if (application_context_) {
     ConfigureUtilityHostRuntime(
         *application_context_->GetService<UtilityService>(),
@@ -262,6 +278,49 @@ bool AbiHostBridge::Start(std::string_view configuration) {
         runtime);
   }
   return true;
+}
+
+void AbiHostBridge::InitializeBrowser(base::OnceCallback<void(bool)> callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(browser_sequence_checker_);
+  if (!accepting_requests_ || !runtime_.load()) {
+    std::move(callback).Run(false);
+    return;
+  }
+  if (!application_.initialize_browser) {
+    std::move(callback).Run(true);
+    return;
+  }
+  struct Pending {
+    scoped_refptr<base::SequencedTaskRunner> runner;
+    base::OnceCallback<void(bool)> completion;
+  };
+  auto* pending =
+      new Pending{browser_task_runner_,
+                  base::BindOnce(
+                      [](base::WeakPtr<AbiHostBridge> bridge,
+                         base::OnceCallback<void(bool)> callback, bool ok) {
+                        if (!bridge || !bridge->accepting_requests_) {
+                          return;
+                        }
+                        bridge->browser_initialized_ = ok;
+                        bridge->initialization_failed_ = !ok;
+                        std::move(callback).Run(ok);
+                      },
+                      weak_this_, std::move(callback))};
+  const auto status = application_.initialize_browser(
+      runtime_.load(), pending,
+      [](void* data, tuffite_status_t status, tuffite_byte_slice_t) {
+        std::unique_ptr<Pending> pending(static_cast<Pending*>(data));
+        pending->runner->PostTask(FROM_HERE,
+                                  base::BindOnce(std::move(pending->completion),
+                                                 status == TUFFITE_STATUS_OK));
+        return TUFFITE_STATUS_OK;
+      });
+  if (status != TUFFITE_STATUS_OK) {
+    std::unique_ptr<Pending> rejected(pending);
+    rejected->runner->PostTask(
+        FROM_HERE, base::BindOnce(std::move(rejected->completion), false));
+  }
 }
 
 void AbiHostBridge::BindBrowserTaskRunner() {
@@ -288,7 +347,8 @@ bool AbiHostBridge::Dispatch(std::vector<uint8_t> event,
   uint64_t request_id;
   // Bound browser-side state even when the host finishes faster than the UI can
   // consume replies. Zero is reserved, and IDs must never wrap and collide.
-  if (!accepting_requests_ || pending_.size() >= 256 || next_request_id_ == 0) {
+  if (!accepting_requests_ || !browser_initialized_ || pending_.size() >= 256 ||
+      next_request_id_ == 0) {
     request_id = 0;
   } else {
     request_id = next_request_id_++;
@@ -373,6 +433,7 @@ void AbiHostBridge::Stop() {
       LOG(ERROR) << "Tuffite Runtime stop failed: " << status;
     }
   }
+  accepting_tasks_ = false;
   runtime_start_ = nullptr;
   runtime_dispatch_ = nullptr;
   runtime_stop_ = nullptr;
@@ -554,7 +615,7 @@ tuffite_status_t AbiHostBridge::PostTask(void* user_data,
   if (!user_data || !task_data || !run || !destroy || may_block > 1) {
     return TUFFITE_STATUS_INVALID_ARGUMENT;
   }
-  if (!static_cast<AbiHostBridge*>(user_data)->accepting_requests_) {
+  if (!static_cast<AbiHostBridge*>(user_data)->accepting_tasks_) {
     return TUFFITE_STATUS_INVALID_STATE;
   }
   base::TaskPriority task_priority;

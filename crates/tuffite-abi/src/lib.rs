@@ -553,6 +553,7 @@ pub type UtilityRuntimeFn =
 /// A `NotFound` reply defers to native app.assets; all other errors fail loading.
 pub type ResolveV8Fn = unsafe extern "C" fn(
     runtime: Handle,
+    session_id: u64,
     name: ByteSlice,
     url: ByteSlice,
     user_data: *mut c_void,
@@ -597,7 +598,25 @@ pub struct Application {
     pub utility_start_with_context: Option<UtilityStartWithContextFn>,
     /// Optional pure lookup. Returns a borrowed static owner for an interface or typed owner.
     pub resolve_utility_route: Option<ResolveUtilityRouteFn>,
+    /// Optional trusted browser setup; emits additional DevTools-denied origins.
+    pub setup_browser: Option<SetupBrowserFn>,
+    /// Initializes Browser asynchronously after native services are bound.
+    pub initialize_browser: Option<InitializeBrowserFn>,
+    /// Cancels outstanding module requests when an isolate session closes.
+    pub cancel_v8_session: Option<CancelV8SessionFn>,
 }
+
+pub type CancelV8SessionFn = unsafe extern "C" fn(Handle, ByteSlice, u64) -> Status;
+
+/// Accepted initialization owns one reply, delivered from a Rust worker.
+pub type InitializeBrowserFn =
+    unsafe extern "C" fn(Handle, *mut c_void, Option<UtilityReplyFn>) -> Status;
+
+/// Runs once before browser services and windows are created. Each emitted UTF-8
+/// string is a DevTools-denied origin pattern; native validation is fail-closed.
+/// The sink copies each borrowed string before returning.
+pub type SetupBrowserFn =
+    unsafe extern "C" fn(user_data: *mut c_void, emit: Option<LaunchArgumentFn>) -> Status;
 
 /// Resolves typed interface ownership without launching a process. The output
 /// borrows application-lifetime storage and must be copied by the caller.
@@ -811,7 +830,15 @@ mod header_parity {
             offset_of!(Application, resolve_utility_route),
             header + 14 * pointer
         );
-        assert_eq!(size_of::<Application>(), header + 15 * pointer);
+        assert_eq!(
+            offset_of!(Application, setup_browser),
+            header + 15 * pointer
+        );
+        assert_eq!(
+            offset_of!(Application, initialize_browser),
+            header + 16 * pointer
+        );
+        assert_eq!(size_of::<Application>(), header + 18 * pointer);
         assert_eq!(offset_of!(UtilitySessionService, header), 0);
         assert_eq!(offset_of!(UtilitySessionService, create), header);
         assert_eq!(

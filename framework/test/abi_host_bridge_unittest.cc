@@ -47,6 +47,21 @@ class ShellApiServiceFactoryTestPeer {
 };
 
 namespace {
+std::unique_ptr<ManifestService> LoadManifest(
+    const base::FilePath& root,
+    std::string* error,
+    const app::StartupEnvironment& environment = {},
+    const app::BrowserOptions& options = {}) {
+  auto definition = app::ManifestLoader::Load(root, error);
+  if (!definition) {
+    return nullptr;
+  }
+  auto configuration = app::ConfigurationAssembler::Build(
+      std::move(*definition), environment, options, error);
+  return configuration
+             ? ManifestServiceFactory::Create(std::move(*configuration))
+             : nullptr;
+}
 
 class DeferredPath final : public shell_api::generated::Path {
  public:
@@ -332,6 +347,82 @@ TEST(AbiHostBridgeTest, OptionalUtilityRouteTailPreservesStartupContext) {
   EXPECT_EQ(bridge->application().resolve_utility_route, nullptr);
 }
 
+TEST(AbiHostBridgeTest, OptionalSetupTailPreservesOlderApplicationTables) {
+  auto application = FakeApplication();
+  application.resolve_utility_route = [](auto...) {
+    return TUFFITE_STATUS_NOT_FOUND;
+  };
+  application.setup_browser = [](void*, tuffite_launch_argument_fn) {
+    return TUFFITE_STATUS_OK;
+  };
+  auto bridge = AbiHostBridge::Create(&application);
+  ASSERT_TRUE(bridge);
+  EXPECT_NE(bridge->application().setup_browser, nullptr);
+  application.header.struct_size = offsetof(tuffite_application, setup_browser);
+  bridge = AbiHostBridge::Create(&application);
+  ASSERT_TRUE(bridge);
+  EXPECT_EQ(bridge->application().setup_browser, nullptr);
+  EXPECT_NE(bridge->application().resolve_utility_route, nullptr);
+}
+
+TEST(AbiHostBridgeTest, BrowserInitializationCompletesOnBrowserSequence) {
+  base::test::TaskEnvironment environment;
+  auto application = FakeApplication();
+  application.start = [](const tuffite_host*, const uint8_t*, size_t,
+                         tuffite_handle_t* runtime) {
+    *runtime = 1;
+    return TUFFITE_STATUS_OK;
+  };
+  application.initialize_browser = [](tuffite_handle_t runtime, void* data,
+                                      tuffite_utility_reply_fn reply) {
+    EXPECT_EQ(runtime, 1u);
+    std::thread worker(
+        [=] { reply(data, TUFFITE_STATUS_OK, {.data = nullptr, .len = 0}); });
+    worker.join();
+    return TUFFITE_STATUS_OK;
+  };
+  auto bridge = AbiHostBridge::Create(&application);
+  ASSERT_TRUE(bridge);
+  bridge->BindBrowserTaskRunner();
+  ASSERT_TRUE(bridge->Start("{}"));
+  bool completed = false;
+  bridge->InitializeBrowser(base::BindOnce(
+      [](bool* completed, bool ok) {
+        EXPECT_TRUE(ok);
+        *completed = true;
+      },
+      &completed));
+  EXPECT_FALSE(completed);
+  environment.RunUntilIdle();
+  EXPECT_TRUE(completed);
+}
+
+TEST(AbiHostBridgeTest, BrowserInitializationFailureIsReported) {
+  base::test::TaskEnvironment environment;
+  auto application = FakeApplication();
+  application.start = [](const tuffite_host*, const uint8_t*, size_t,
+                         tuffite_handle_t* runtime) {
+    *runtime = 1;
+    return TUFFITE_STATUS_OK;
+  };
+  application.initialize_browser = [](auto...) {
+    return TUFFITE_STATUS_INVALID_STATE;
+  };
+  auto bridge = AbiHostBridge::Create(&application);
+  ASSERT_TRUE(bridge);
+  bridge->BindBrowserTaskRunner();
+  ASSERT_TRUE(bridge->Start("{}"));
+  bool completed = false;
+  bridge->InitializeBrowser(base::BindOnce(
+      [](bool* completed, bool ok) {
+        EXPECT_FALSE(ok);
+        *completed = true;
+      },
+      &completed));
+  environment.RunUntilIdle();
+  EXPECT_TRUE(completed);
+}
+
 TEST(AbiHostBridgeTest, RejectsIncompatibleAbiMajor) {
   auto application = FakeApplication();
   application.header.version.major ^= 1;
@@ -548,10 +639,11 @@ TEST(ApplicationServiceTest, IsolatesServicesAcrossApplications) {
   ASSERT_TRUE(base::WriteFile(package.GetPath().AppendASCII("tuffite.json"),
                               kManifest));
   std::string error;
-  auto manifest = ManifestServiceFactory::Load(package.GetPath(), &error);
+  auto manifest = LoadManifest(package.GetPath(), &error);
   ASSERT_TRUE(manifest) << error;
-  auto second_manifest = ManifestServiceFactory::Load(
-      package.GetPath(), &error, GURL("http://localhost:5173/"));
+  auto second_manifest =
+      LoadManifest(package.GetPath(), &error,
+                   {.development_url = GURL("http://localhost:5173/")});
   ASSERT_TRUE(second_manifest) << error;
 
   auto callbacks_a = FakeApplication();

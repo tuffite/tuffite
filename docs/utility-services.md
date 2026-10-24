@@ -23,7 +23,7 @@ Rust registration:
 
 ```rust
 use tuffite::{
-    ApplicationResult, CommandError, UtilityFuture,
+    ApplicationResult, CommandError, CommandResult,
     UtilityRequest, Utility,
 };
 
@@ -31,18 +31,16 @@ struct ProjectIndexer;
 
 #[tuffite::utility(name = "project_indexer")]
 impl Utility for ProjectIndexer {
-    fn new(context: tuffite::utility::UtilityContext) -> ApplicationResult<Self> {
+    async fn new(context: tuffite::utility::UtilityContext) -> ApplicationResult<Self> {
         Ok(Self)
     }
 
-    fn invoke(&self, request: UtilityRequest) -> UtilityFuture<'_> {
-        Box::pin(async move {
-            if request.is_cancelled() {
-                return Err(CommandError::Failed("cancelled".to_owned()));
-            }
-            // Decode and return the application's versioned binary protocol.
-            Ok(request.payload().to_vec())
-        })
+    async fn invoke(&self, request: UtilityRequest) -> CommandResult {
+        if request.is_cancelled() {
+            return Err(CommandError::Failed("cancelled".to_owned()));
+        }
+        // Decode and return the application's versioned binary protocol.
+        Ok(request.payload().to_vec())
     }
 }
 
@@ -131,22 +129,29 @@ processes. The public concepts are:
 - policy: maximum processes, in-flight requests, queue depth, memory budget,
   idle timeout, and restart window.
 
-Current safe Rust shape:
+Current safe Rust shape (the public trait requires `Send` futures; implementations
+can use `async fn` directly):
 
 ```rust
 pub trait Utility: Send + Sync + 'static {
-    fn new(context: tuffite::utility::UtilityContext) -> ApplicationResult<Self> where Self: Sized;
-    fn invoke(&self, request: UtilityRequest) -> UtilityFuture<'_>;
-    fn create_session(
-        &self,
-        request: UtilitySessionRequest,
-    ) -> ApplicationResult<Box<dyn UtilitySession>>;
-    fn shutdown(&self) -> ApplicationResult<()> { Ok(()) }
+    fn new(context: UtilityContext)
+        -> impl Future<Output = ApplicationResult<Self>> + Send where Self: Sized;
+    fn invoke(&self, request: UtilityRequest)
+        -> impl Future<Output = CommandResult> + Send;
+    fn create_session(&self, request: UtilitySessionRequest)
+        -> ApplicationResult<Box<dyn UtilitySession>>;
+    fn shutdown(&self, context: ShutdownContext)
+        -> impl Future<Output = ApplicationResult<()>> + Send;
 }
 ```
 
+The child reports Ready only after asynchronous construction succeeds. There is
+no separate Utility `initialize` hook. Runtime adapters erase concrete futures
+internally; applications do not use `UtilityFuture` or `LifecycleFuture`.
+
 `UtilityContext` owns the service name and service-local startup configuration,
-and reports shutdown through `is_stopping()`. Put business state in the service
+and reports shutdown through `is_stopping()` or the awaitable
+`stop_signal().cancelled()`. Put business state in the service
 instance; session init and session state remain separate. Declare startup JSON in
 `app.utilities.<name>.configuration` (64 KiB serialized maximum). ABI 0.1.0 copies
 only that configuration over Mojo when a child starts, including after restart.
@@ -159,8 +164,10 @@ means asynchronous request completion. Unary calls are admitted with bounded
 service-level concurrency (eight active and 64 active plus queued); they share a
 read lock only as a lifecycle barrier and are not serialized by the framework.
 An implementation that mutates shared state must use atomics or a suitably
-fine-grained lock. `shutdown()` takes the lifecycle write barrier after admitted
-calls finish. Implementations must yield or check cancellation during long work.
+fine-grained lock. `shutdown(context)` runs after admission closes and admitted calls finish.
+Its future has a 30-second cleanup budget, separate from the ordinary-work stop
+signal. The supervisor can terminate a child that does not cooperate; Rust code
+blocking inside a future poll cannot be safely interrupted in-process. Implementations must yield or check cancellation during long work.
 Responses remain bounded to 1 MiB. Large or continuous payloads require a
 service-specific Mojo shared-buffer/data-pipe contract with explicit
 backpressure; they are not encoded as application events or a generic ShellAPI
@@ -202,3 +209,16 @@ utility crashes, backoff, cross-process cancellation, and circuit recovery.
 Duplicate request-ID rejection, bounded unary concurrency, long-lived sessions,
 credit exhaustion, acknowledgement, and the 30-second idle boundary already
 have implementation coverage.
+
+### Startup configuration builders
+
+Rust Utility and V8 implementations may override the synchronous static hook
+`fn setup(builder: Builder) -> ApplicationResult<Builder>`. Use `utility::Builder`
+for Rust and `utility::v8::Builder` for V8. Framework supplies the named service's
+manifest configuration; `configuration_bytes()` reads it and the consuming
+`configuration(bytes)` method replaces service-local data. Framework validates
+the 64 KiB limit and freezes the returned builder before constructing state.
+V8 defaults to `entry.mjs`; select another module using `builder.entry(path)`.
+Entry validation runs before provider construction, once per lazy provider.
+These setup methods do not start services, perform async initialization, or grant
+capabilities. Manifest permissions remain enforced by native policy.

@@ -141,6 +141,10 @@ impl<B: Browser> crate::application::Registrations for RegisteredApplication<B> 
 }
 
 impl<B: Browser> Browser for RegisteredBrowser<B> {
+    fn setup(builder: crate::browser::Builder) -> ApplicationResult<crate::browser::Builder> {
+        B::setup(builder)
+    }
+
     fn new(context: BrowserContext) -> ApplicationResult<Self> {
         let commands = &registry()
             .get()
@@ -167,8 +171,12 @@ impl<B: Browser> Browser for RegisteredBrowser<B> {
         Err(crate::CommandError::UnknownCommand)
     }
 
-    fn shutdown(&mut self) -> ApplicationResult<()> {
-        self.browser.shutdown()
+    async fn initialize(&mut self) -> ApplicationResult<()> {
+        self.browser.initialize().await
+    }
+
+    async fn shutdown(&mut self, context: crate::ShutdownContext) -> ApplicationResult<()> {
+        self.browser.shutdown(context).await
     }
 }
 
@@ -455,12 +463,12 @@ mod tests {
     }
 
     impl crate::Utility for Worker {
-        fn new(_: crate::UtilityContext) -> ApplicationResult<Self> {
+        async fn new(_: crate::UtilityContext) -> ApplicationResult<Self> {
             Ok(Self)
         }
 
-        fn invoke(&self, _: crate::UtilityRequest) -> crate::UtilityFuture<'_> {
-            Box::pin(async { Ok(Vec::new()) })
+        async fn invoke(&self, _: crate::UtilityRequest) -> crate::CommandResult {
+            Ok(Vec::new())
         }
     }
 
@@ -495,6 +503,14 @@ mod tests {
         tuffite_abi::Status::InvalidState
     }
 
+    fn module_request(url: &str) -> crate::utility::v8::ModuleRequest {
+        crate::utility::v8::ModuleRequest::new(
+            url.to_owned(),
+            1,
+            crate::StopSignal(crate::supervisor::CancellationToken::new()),
+        )
+    }
+
     #[test]
     fn application_install_and_utility_start_do_not_construct_browser() {
         use std::sync::atomic::Ordering;
@@ -504,6 +520,7 @@ mod tests {
             UtilityServiceRegistration::new::<Worker>("entry_test"),
             UtilityServiceRegistration::v8::<V8Worker>("v8_entry_test"),
             UtilityServiceRegistration::v8::<FailedV8Worker>("failed_v8"),
+            UtilityServiceRegistration::v8::<RejectedV8Worker>("rejected_v8"),
         ];
         let table = Builder::<Backend>::new()
             .before_startup(|launch| {
@@ -593,6 +610,11 @@ mod tests {
         assert_ne!(browser, 0);
         assert_eq!(BROWSER_COUNT.load(Ordering::SeqCst), 1);
         check_resolver_lifecycle(browser, table.resolve_v8.unwrap());
+        check_resolver_cancellation(
+            browser,
+            table.resolve_v8.unwrap(),
+            table.cancel_v8_session.unwrap(),
+        );
         // SAFETY: This test owns the live browser handle and has no pending calls.
         assert_eq!(unsafe { table.stop.unwrap()(browser) }, Status::Ok);
     }
@@ -604,8 +626,9 @@ mod tests {
             status: Status,
             bytes: ByteSlice,
         ) -> Status {
-            // SAFETY: Sender stays alive until the worker has delivered its one reply.
-            let sender = unsafe { &*data.cast::<std::sync::mpsc::Sender<(Status, Vec<u8>)>>() };
+            // SAFETY: Acceptance transfers this allocation to exactly one reply.
+            let sender =
+                unsafe { Box::from_raw(data.cast::<std::sync::mpsc::Sender<(Status, Vec<u8>)>>()) };
             let bytes = if bytes.len == 0 {
                 Vec::new()
             } else {
@@ -616,7 +639,6 @@ mod tests {
             Status::Ok
         }
         let (sender, receiver) = std::sync::mpsc::channel::<(Status, Vec<u8>)>();
-        let context = std::ptr::from_ref(&sender).cast_mut().cast();
         for (url, expected) in [
             ("myapp://v8_entry_test.utility/entry.mjs", Status::Ok),
             ("https://example.com/sdk/runtime.mjs?v=1", Status::Ok),
@@ -633,9 +655,10 @@ mod tests {
                 unsafe {
                     resolve(
                         browser,
+                        1,
                         ByteSlice::from_slice(b"v8_entry_test"),
                         ByteSlice::from_slice(url.as_bytes()),
-                        context,
+                        Box::into_raw(Box::new(sender.clone())).cast(),
                         Some(reply),
                     )
                 },
@@ -664,9 +687,10 @@ mod tests {
                 unsafe {
                     resolve(
                         handle,
+                        1,
                         ByteSlice::from_slice(b"v8_entry_test"),
                         ByteSlice::from_slice(url.as_bytes()),
-                        context,
+                        std::ptr::null_mut(),
                         Some(reply),
                     )
                 },
@@ -679,22 +703,73 @@ mod tests {
         }
     }
 
+    fn check_resolver_cancellation(
+        browser: tuffite_abi::Handle,
+        resolve: tuffite_abi::ResolveV8Fn,
+        cancel: tuffite_abi::CancelV8SessionFn,
+    ) {
+        use tuffite_abi::{ByteSlice, Status};
+        unsafe extern "C" fn reply(
+            data: *mut std::ffi::c_void,
+            status: Status,
+            _: ByteSlice,
+        ) -> Status {
+            // SAFETY: The accepted callback owns its sender allocation.
+            let sender = unsafe { Box::from_raw(data.cast::<std::sync::mpsc::Sender<Status>>()) };
+            sender.send(status).unwrap();
+            Status::Ok
+        }
+        let (tx, rx) = std::sync::mpsc::channel::<Status>();
+        let name = ByteSlice::from_slice(b"v8_entry_test");
+        // SAFETY: Inputs are borrowed only for the call; acceptance owns the sender.
+        assert_eq!(
+            unsafe {
+                resolve(
+                    browser,
+                    2,
+                    name,
+                    ByteSlice::from_slice(b"myapp://v8_entry_test.utility/wait.mjs"),
+                    Box::into_raw(Box::new(tx)).cast(),
+                    Some(reply),
+                )
+            },
+            Status::Ok
+        );
+        assert_eq!(unsafe { cancel(browser, name, 2) }, Status::Ok);
+        assert_eq!(
+            rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap(),
+            Status::InvalidState
+        );
+    }
+
     static V8_RESOURCES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static V8_SHUTDOWNS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
     const PROVIDER_CONFIG: &[u8] =
-        br#"{"app":{"utilities":{"v8_entry_test":{"configuration":{"flag":true}}}}}"#;
+        br#"{"app":{"windows":[{"url":"myapp://main/index.html"}],"utilities":{"v8_entry_test":{"configuration":{"flag":true}}}}}"#;
+    static V8_SETUPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     static V8_STARTS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     static FAILED_V8_STARTS: std::sync::atomic::AtomicUsize =
         std::sync::atomic::AtomicUsize::new(0);
+
+    static REJECTED_V8_SETUPS: std::sync::atomic::AtomicUsize =
+        std::sync::atomic::AtomicUsize::new(0);
+    struct RejectedV8Worker;
+    impl crate::utility::V8 for RejectedV8Worker {
+        fn setup(_: crate::utility::v8::Builder) -> ApplicationResult<crate::utility::v8::Builder> {
+            REJECTED_V8_SETUPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(ApplicationError::new("provider setup rejected"))
+        }
+        fn new(_: crate::V8Context) -> ApplicationResult<Self> {
+            panic!("rejected setup must not construct provider state")
+        }
+    }
 
     struct FailedV8Worker;
     impl crate::utility::V8 for FailedV8Worker {
         fn new(_: crate::V8Context) -> ApplicationResult<Self> {
             FAILED_V8_STARTS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Err(ApplicationError::new("provider startup failed"))
-        }
-        fn entry(&self) -> &'static str {
-            "entry.mjs"
         }
     }
 
@@ -704,9 +779,16 @@ mod tests {
     }
 
     impl crate::utility::V8 for V8Worker {
+        fn setup(
+            builder: crate::utility::v8::Builder,
+        ) -> ApplicationResult<crate::utility::v8::Builder> {
+            assert_eq!(builder.configuration_bytes(), br#"{"flag":true}"#);
+            V8_SETUPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(builder.configuration(br#"{"flag":true,"setup":true}"#.to_vec()))
+        }
         fn new(context: crate::V8Context) -> ApplicationResult<Self> {
             assert_eq!(context.name(), "v8_entry_test");
-            assert_eq!(context.configuration(), br#"{"flag":true}"#);
+            assert_eq!(context.configuration(), br#"{"flag":true,"setup":true}"#);
             assert_eq!(
                 context.state::<String>().as_deref().map(String::as_str),
                 Some("shared")
@@ -718,14 +800,23 @@ mod tests {
                 resolutions: std::sync::atomic::AtomicUsize::new(0),
             })
         }
-        fn entry(&self) -> &'static str {
-            "entry.mjs"
+
+        async fn shutdown(&self, context: crate::ShutdownContext) -> ApplicationResult<()> {
+            assert!(self.context.is_stopping());
+            assert!(context.remaining() > std::time::Duration::ZERO);
+            V8_SHUTDOWNS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
         }
 
-        fn resolve(
+        async fn resolve(
             &self,
-            url: &str,
+            request: crate::utility::v8::ModuleRequest,
         ) -> Result<Option<crate::utility::v8::ModuleSource>, crate::utility::v8::Error> {
+            let url = request.url();
+            if url.ends_with("/wait.mjs") {
+                request.stop_signal().cancelled().await;
+                return Err(std::io::Error::from(std::io::ErrorKind::Interrupted).into());
+            }
             assert!(!self.context.is_stopping());
             let count = self
                 .resolutions
@@ -792,6 +883,24 @@ mod tests {
         ))
     }
 
+    #[test]
+    fn v8_session_cancellation_is_scoped_and_session_ids_can_be_reused() {
+        let providers = test_providers();
+        let first = providers.session_signal("parser", 1);
+        let sibling = providers.session_signal("parser", 2);
+        let other_service = providers.session_signal("other", 1);
+        providers.cancel_session("parser", 1);
+        assert!(first.is_stopping());
+        assert!(!sibling.is_stopping());
+        assert!(!other_service.is_stopping());
+        let replacement = providers.session_signal("parser", 1);
+        assert!(!replacement.is_stopping());
+        providers.stop();
+        assert!(sibling.is_stopping());
+        assert!(other_service.is_stopping());
+        assert!(replacement.is_stopping());
+    }
+
     fn check_v8_definition() {
         use std::sync::atomic::Ordering;
         let host = crate::utility::Host::new(
@@ -799,7 +908,6 @@ mod tests {
                 create: Some(observe_v8_create),
                 ..Default::default()
             }),
-            Some("myapp".to_owned()),
             test_providers(),
         );
         assert_eq!(V8_RESOURCES.load(Ordering::SeqCst), 0);
@@ -828,6 +936,18 @@ mod tests {
             2,
             "one provider per name per runtime"
         );
+        assert_eq!(
+            V8_SETUPS.load(Ordering::SeqCst),
+            V8_STARTS.load(Ordering::SeqCst),
+            "setup runs once per lazy provider"
+        );
+        assert!(providers.get("rejected_v8").is_err());
+        assert!(providers.get("rejected_v8").is_err());
+        assert_eq!(
+            REJECTED_V8_SETUPS.load(Ordering::SeqCst),
+            1,
+            "setup failures are cached"
+        );
         assert!(providers.get("failed_v8").is_err());
         assert!(providers.get("failed_v8").is_err());
         assert_eq!(
@@ -835,26 +955,31 @@ mod tests {
             1,
             "startup failure is cached"
         );
+
         assert!(
-            crate::utility::resolve_source(provider.as_ref(), "v8_entry_test", "../escape.mjs")
-                .is_err()
+            futures_executor::block_on(crate::utility::resolve_source(
+                provider.as_ref(),
+                "v8_entry_test",
+                module_request("../escape.mjs")
+            ))
+            .is_err()
         );
         assert_eq!(V8_RESOURCES.load(Ordering::SeqCst), 0);
         assert!(
-            crate::utility::resolve_source(
+            futures_executor::block_on(crate::utility::resolve_source(
                 provider.as_ref(),
                 "v8_entry_test",
-                "myapp://v8_entry_test.utility/entry.mjs"
-            )
+                module_request("myapp://v8_entry_test.utility/entry.mjs")
+            ))
             .is_ok()
         );
         assert_eq!(V8_RESOURCES.load(Ordering::SeqCst), 1);
         let second = providers.get("v8_entry_test").unwrap();
-        let source = crate::utility::resolve_source(
+        let source = futures_executor::block_on(crate::utility::resolve_source(
             second.as_ref(),
             "v8_entry_test",
-            "myapp://v8_entry_test.utility/entry.mjs",
-        )
+            module_request("myapp://v8_entry_test.utility/entry.mjs"),
+        ))
         .unwrap()
         .unwrap();
         assert!(
@@ -863,6 +988,10 @@ mod tests {
         );
         providers.stop();
         assert!(providers.get("v8_entry_test").is_err());
+        providers.release().unwrap();
+        assert_eq!(V8_SHUTDOWNS.load(Ordering::SeqCst), 1);
+        providers.release().unwrap();
+        assert_eq!(V8_SHUTDOWNS.load(Ordering::SeqCst), 1);
     }
 
     fn check_process_roles(prepare: tuffite_abi::PrepareProcessFn) {

@@ -213,7 +213,7 @@ fn expand_browser(
 
 /// Declares the generated Mojom interfaces owned by a Utility implementation.
 /// Apply to its struct: `#[tuffite::utility(interfaces(api::Echo, api::Aux))]`.
-/// Uses `Default` unless `factory = create_service` supplies a context-aware factory.
+/// Uses `Default` unless `factory = create_service` supplies a context-aware asynchronous factory.
 /// Raw Rust/V8 utilities retain the explicit `name = "..."` form.
 #[proc_macro_attribute]
 pub fn utility(arguments: TokenStream, item: TokenStream) -> TokenStream {
@@ -253,23 +253,23 @@ fn expand_typed_utility(
     let interfaces = &args.interfaces;
     let initialize = args.factory.as_ref().map_or_else(
         || quote! { let _ = context; Ok(<Self as ::std::default::Default>::default()) },
-        |factory| quote! { (#factory)(context) },
+        |factory| quote! { (#factory)(context).await },
     );
     Ok(quote! {
         #definition
         impl ::tuffite::Utility for #ty {
-            fn new(context: ::tuffite::UtilityContext) -> ::tuffite::ApplicationResult<Self> {
+            async fn new(context: ::tuffite::UtilityContext) -> ::tuffite::ApplicationResult<Self> {
                 #initialize
             }
-            fn invoke(&self, request: ::tuffite::UtilityRequest) -> ::tuffite::UtilityFuture<'_> {
-                Box::pin(async move { Ok(::tuffite::utility::dispatch_typed(&request, |command| {
+            async fn invoke(&self, request: ::tuffite::UtilityRequest) -> ::tuffite::CommandResult {
+                Ok(::tuffite::utility::dispatch_typed(&request, |command| {
                     #(
                         if <Self as #interfaces>::__TUFFITE_COMMANDS.iter().any(|entry| entry.id() == command.id()) {
                             return <Self as #interfaces>::__tuffite_dispatch(self, command);
                         }
                     )*
                     Err(::tuffite::CommandError::UnknownCommand)
-                })) })
+                }))
             }
         }
         impl ::tuffite::__private::UtilityDefinition for #ty {

@@ -48,6 +48,9 @@ static UTILITY_SESSION_SERVICE: tuffite_abi::UtilitySessionService =
 pub const fn for_application<B: Browser, R: Registrations>() -> AbiApplication {
     AbiApplication {
         header: Header::for_type::<AbiApplication>(),
+        setup_browser: Some(crate::abi::setup_browser::<B>),
+        initialize_browser: Some(crate::abi::initialize_browser),
+        cancel_v8_session: Some(crate::abi::cancel_v8_session),
         prepare_browser: None,
         prepare_process: None,
         utility_runtime: Some(crate::utility_entry::utility_runtime::<R>),

@@ -4,9 +4,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use tuffite::{
-    ApplicationResult, CommandError, CommandResult, Utility, UtilityFuture, UtilityRequest,
-    UtilitySession, UtilitySessionCommand, UtilitySessionEmitter, UtilitySessionFuture,
-    UtilitySessionRequest,
+    ApplicationResult, CommandError, CommandResult, Utility, UtilityRequest, UtilitySession,
+    UtilitySessionCommand, UtilitySessionEmitter, UtilitySessionFuture, UtilitySessionRequest,
 };
 
 const STATUS: u8 = 0;
@@ -68,7 +67,7 @@ impl EchoUtility {
 
 #[tuffite::utility(name = "echo")]
 impl Utility for EchoUtility {
-    fn new(context: tuffite::UtilityContext) -> ApplicationResult<Self> {
+    async fn new(context: tuffite::UtilityContext) -> ApplicationResult<Self> {
         let config: serde_json::Value = serde_json::from_slice(context.configuration())
             .map_err(|error| tuffite::ApplicationError::new(error.to_string()))?;
         if context.name() != "echo"
@@ -96,71 +95,69 @@ impl Utility for EchoUtility {
         Ok(service)
     }
 
-    fn invoke(&self, request: UtilityRequest) -> UtilityFuture<'_> {
-        Box::pin(async move {
-            if self.context.is_stopping() {
-                return Err(CommandError::Failed("service is stopping".to_owned()));
+    async fn invoke(&self, request: UtilityRequest) -> tuffite::CommandResult {
+        if self.context.is_stopping() {
+            return Err(CommandError::Failed("service is stopping".to_owned()));
+        }
+        let Some((&operation, payload)) = request.payload().split_first() else {
+            return Err(CommandError::InvalidArgument(
+                "utility request is missing its operation byte".to_owned(),
+            ));
+        };
+        self.invocation_count.fetch_add(1, Ordering::Relaxed);
+        match operation {
+            STATUS => Ok(self.snapshot(b"ready")),
+            ECHO => Ok(self.snapshot(payload)),
+            CRASH => {
+                // Only the sandboxed utility process exits. Tuffite fails this
+                // ambiguous request once and restarts lazily with backoff.
+                tracing::warn!(
+                    pid = self.process_id,
+                    instance = self.instance_id,
+                    "intentional utility crash"
+                );
+                std::process::abort();
             }
-            let Some((&operation, payload)) = request.payload().split_first() else {
-                return Err(CommandError::InvalidArgument(
-                    "utility request is missing its operation byte".to_owned(),
-                ));
-            };
-            self.invocation_count.fetch_add(1, Ordering::Relaxed);
-            match operation {
-                STATUS => Ok(self.snapshot(b"ready")),
-                ECHO => Ok(self.snapshot(payload)),
-                CRASH => {
-                    // Only the sandboxed utility process exits. Tuffite fails this
-                    // ambiguous request once and restarts lazily with backoff.
-                    tracing::warn!(
-                        pid = self.process_id,
-                        instance = self.instance_id,
-                        "intentional utility crash"
-                    );
-                    std::process::abort();
-                }
-                DELAY => {
-                    std::thread::sleep(Duration::from_millis(150));
-                    Ok(self.snapshot(b"async-complete"))
-                }
-                CONCURRENT => {
-                    // Each pair must enter the same service before either can finish.
-                    // A serialized host stalls the first call until its deadline.
-                    let ticket = self.concurrent_arrivals.fetch_add(1, Ordering::AcqRel);
-                    let required_arrivals = (ticket / 2 + 1) * 2;
-                    while self.concurrent_arrivals.load(Ordering::Acquire) < required_arrivals {
-                        if request.is_cancelled()
-                            || self.context.is_stopping()
-                            || Instant::now() >= request.deadline()
-                        {
-                            return Err(CommandError::Failed(
-                                "concurrent peer did not arrive".to_owned(),
-                            ));
-                        }
-                        std::thread::sleep(Duration::from_millis(5));
-                    }
-                    Ok(self.snapshot(b"concurrent-complete"))
-                }
-                CANCELLABLE => {
-                    while !request.is_cancelled() && Instant::now() < request.deadline() {
-                        std::thread::sleep(Duration::from_millis(5));
-                    }
-                    if request.is_cancelled() {
-                        Err(CommandError::Failed(
-                            "utility invocation cancelled".to_owned(),
-                        ))
-                    } else {
-                        Err(CommandError::Failed(
-                            "utility invocation deadline reached".to_owned(),
-                        ))
-                    }
-                }
-                _ => Err(CommandError::InvalidArgument(format!(
-                    "unknown utility operation: {operation}"
-                ))),
+            DELAY => {
+                std::thread::sleep(Duration::from_millis(150));
+                Ok(self.snapshot(b"async-complete"))
             }
-        })
+            CONCURRENT => {
+                // Each pair must enter the same service before either can finish.
+                // A serialized host stalls the first call until its deadline.
+                let ticket = self.concurrent_arrivals.fetch_add(1, Ordering::AcqRel);
+                let required_arrivals = (ticket / 2 + 1) * 2;
+                while self.concurrent_arrivals.load(Ordering::Acquire) < required_arrivals {
+                    if request.is_cancelled()
+                        || self.context.is_stopping()
+                        || Instant::now() >= request.deadline()
+                    {
+                        return Err(CommandError::Failed(
+                            "concurrent peer did not arrive".to_owned(),
+                        ));
+                    }
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Ok(self.snapshot(b"concurrent-complete"))
+            }
+            CANCELLABLE => {
+                while !request.is_cancelled() && Instant::now() < request.deadline() {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                if request.is_cancelled() {
+                    Err(CommandError::Failed(
+                        "utility invocation cancelled".to_owned(),
+                    ))
+                } else {
+                    Err(CommandError::Failed(
+                        "utility invocation deadline reached".to_owned(),
+                    ))
+                }
+            }
+            _ => Err(CommandError::InvalidArgument(format!(
+                "unknown utility operation: {operation}"
+            ))),
+        }
     }
 
     fn create_session(
@@ -178,7 +175,7 @@ impl Utility for EchoUtility {
         }))
     }
 
-    fn shutdown(&self) -> ApplicationResult<()> {
+    async fn shutdown(&self, _context: tuffite::ShutdownContext) -> ApplicationResult<()> {
         // A real service flushes indexes and durable checkpoints here.
         tracing::info!(
             pid = self.process_id,
@@ -196,11 +193,12 @@ mod tests {
 
     #[test]
     fn snapshot_is_binary_and_instance_state_is_reused() {
-        let service = EchoUtility::new(tuffite::UtilityContext::new_for_test(
-            "echo",
-            br#"{"service":"echo","fixtureId":"io.tuffite.playground"}"#.to_vec(),
-        ))
-        .expect("service starts");
+        let service =
+            futures_executor::block_on(EchoUtility::new(tuffite::UtilityContext::new_for_test(
+                "echo",
+                br#"{"service":"echo","fixtureId":"io.tuffite.playground"}"#.to_vec(),
+            )))
+            .expect("service starts");
         let first = futures_executor::block_on(
             service.invoke(UtilityRequest::new_for_test(vec![ECHO, b'a'])),
         )
@@ -217,11 +215,12 @@ mod tests {
 
     #[test]
     fn malformed_and_unknown_requests_are_rejected() {
-        let service = EchoUtility::new(tuffite::UtilityContext::new_for_test(
-            "echo",
-            br#"{"service":"echo","fixtureId":"io.tuffite.playground"}"#.to_vec(),
-        ))
-        .expect("service starts");
+        let service =
+            futures_executor::block_on(EchoUtility::new(tuffite::UtilityContext::new_for_test(
+                "echo",
+                br#"{"service":"echo","fixtureId":"io.tuffite.playground"}"#.to_vec(),
+            )))
+            .expect("service starts");
         assert!(matches!(
             futures_executor::block_on(service.invoke(UtilityRequest::new_for_test(Vec::new()))),
             Err(CommandError::InvalidArgument(_))

@@ -3,11 +3,13 @@
 use crate::abi::NativeHost;
 use crate::executor::ChromiumExecutor;
 use crate::javascript_extension::JavaScriptExtensionHost;
+use crate::lifecycle::BoxFuture;
 use crate::shell_api::ShellApiHost;
 use crate::utility_host::UtilitySessionHost;
-use crate::{ApplicationError, ApplicationResult, CommandResult};
+use crate::{ApplicationError, ApplicationResult, CommandResult, ShutdownContext, StopSignal};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use tuffite_abi::{RuntimeEventKind, Status};
@@ -51,6 +53,7 @@ pub struct BrowserContext {
     shell_api: ShellApiHost,
     state: SharedState,
     providers: Arc<crate::utility::V8Providers>,
+    stop: StopSignal,
 }
 
 impl AsRef<Self> for BrowserContext {
@@ -80,6 +83,7 @@ impl BrowserContext {
         ));
         Self {
             configuration,
+            stop: StopSignal(crate::supervisor::CancellationToken::new()),
             state,
             providers,
             events: EventEmitter { runtime, callbacks },
@@ -88,6 +92,12 @@ impl BrowserContext {
             javascript_extensions,
             shell_api,
         }
+    }
+
+    /// Read-only signal fired before draining ordinary Browser work.
+    #[must_use]
+    pub fn stop_signal(&self) -> StopSignal {
+        self.stop.clone()
     }
 
     /// Installs typed state shared with V8 providers in this Browser runtime.
@@ -129,11 +139,7 @@ impl BrowserContext {
     /// Returns the client for explicitly registered Rust and V8 utilities.
     #[must_use]
     pub fn utilities(&self) -> crate::utility::Host {
-        crate::utility::Host::new(
-            self.utility_sessions.clone(),
-            crate::utility::v8::app_scheme(&self.configuration),
-            self.providers.clone(),
-        )
+        crate::utility::Host::new(self.utility_sessions.clone(), self.providers.clone())
     }
 
     /// Returns the trusted Host API for long-lived Utility sessions.
@@ -233,25 +239,82 @@ impl<'a> Command<'a> {
     }
 }
 
+/// Trusted browser configuration collected before native services and windows.
+/// These denials supplement the manifest; neither source can enable an origin
+/// denied by the other. This configuration is never exposed to renderer scripts.
+#[derive(Debug, Default)]
+pub struct Builder {
+    pub(crate) devtools_denied_origins: Vec<String>,
+}
+
+impl Builder {
+    /// Disables `DevTools` for an origin pattern, including root windows.
+    /// Accepts the same origins as manifest capabilities (including `*` and
+    /// wildcard host labels). Invalid patterns abort native startup.
+    #[must_use]
+    pub fn disable_devtools_for_origin(mut self, origin: impl Into<String>) -> Self {
+        self.devtools_denied_origins.push(origin.into());
+        self
+    }
+}
+
 /// Stateful backend created only in the browser process.
 ///
 /// Command dispatch is serialized on the Rust dispatch worker. Shutdown runs
 /// after the backend rejects new commands. Utility children never construct
 /// this state or receive its trusted native capabilities.
 pub trait Browser: Send + 'static {
+    /// Configures trusted native policy once in the browser process, before
+    /// `new`, native service creation, and the first window. No Browser state or
+    /// runtime capabilities are available yet. Errors abort startup.
+    fn setup(builder: Builder) -> ApplicationResult<Builder>
+    where
+        Self: Sized,
+    {
+        Ok(builder)
+    }
+
     /// Creates browser state from validated startup configuration.
     fn new(context: BrowserContext) -> ApplicationResult<Self>
     where
         Self: Sized;
+
+    /// Runs once after `BrowserContext` services and their task runner are bound,
+    /// before startup windows and business dispatch. Runs on the Rust worker.
+    fn initialize(&mut self) -> impl Future<Output = ApplicationResult<()>> + Send {
+        async { Ok(()) }
+    }
 
     /// Handles one binary `ShellAPI` command.
     fn dispatch(&mut self, _command: Command<'_>) -> CommandResult {
         Err(crate::CommandError::UnknownCommand)
     }
 
-    /// Cleans up browser state after new dispatches are denied.
-    fn shutdown(&mut self) -> ApplicationResult<()> {
-        Ok(())
+    /// Cleans up after dispatch, Utility sessions and module workers stop.
+    /// The Chromium executor remains available; UI-dependent host calls reject.
+    /// Pending futures have the supplied cleanup budget; blocking polls cannot be interrupted.
+    fn shutdown(
+        &mut self,
+        _context: ShutdownContext,
+    ) -> impl Future<Output = ApplicationResult<()>> + Send {
+        async { Ok(()) }
+    }
+}
+
+pub(crate) trait ErasedBrowser: Send {
+    fn initialize(&mut self) -> BoxFuture<'_, ApplicationResult<()>>;
+    fn dispatch(&mut self, command: Command<'_>) -> CommandResult;
+    fn shutdown(&mut self, context: ShutdownContext) -> BoxFuture<'_, ApplicationResult<()>>;
+}
+impl<B: Browser> ErasedBrowser for B {
+    fn initialize(&mut self) -> BoxFuture<'_, ApplicationResult<()>> {
+        Box::pin(Browser::initialize(self))
+    }
+    fn dispatch(&mut self, command: Command<'_>) -> CommandResult {
+        Browser::dispatch(self, command)
+    }
+    fn shutdown(&mut self, context: ShutdownContext) -> BoxFuture<'_, ApplicationResult<()>> {
+        Box::pin(Browser::shutdown(self, context))
     }
 }
 

@@ -18,6 +18,12 @@ pub struct ParserState {
 
 #[tuffite::utility(name = "parser")]
 impl tuffite::utility::V8 for Parser {
+    fn setup(
+        builder: tuffite::utility::v8::Builder,
+    ) -> tuffite::ApplicationResult<tuffite::utility::v8::Builder> {
+        Ok(builder.entry("extension/entry.mjs"))
+    }
+
     fn new(context: tuffite::V8Context) -> tuffite::ApplicationResult<Self> {
         let config: serde_json::Value = serde_json::from_slice(context.configuration())
             .map_err(|error| tuffite::ApplicationError::new(error.to_string()))?;
@@ -40,11 +46,11 @@ impl tuffite::utility::V8 for Parser {
         })
     }
 
-    fn entry(&self) -> &'static str {
-        "extension/entry.mjs"
-    }
-
-    fn resolve(&self, url: &str) -> Result<Option<ModuleSource>, Error> {
+    async fn resolve(
+        &self,
+        request: tuffite::utility::v8::ModuleRequest,
+    ) -> Result<Option<ModuleSource>, Error> {
+        let url = request.url();
         if self.context.is_stopping() {
             return Err(std::io::Error::from(std::io::ErrorKind::Interrupted).into());
         }

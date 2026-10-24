@@ -328,7 +328,7 @@ Browser state is `Send` and mutable command dispatch is serialized. Rust utility
 state is `Send + Sync`, unary calls borrow `&self`, and session commands are
 serialized within each session. Both backends use `#[tuffite::utility(name = ...)]`.
 The implemented trait selects Rust (`utility::Utility`) or V8 (`utility::V8`);
-`V8::entry(&self)` declares the entry path and `V8::resolve(&self, url)` supplies each requested source. Native creates the
+`V8::setup(builder)` selects the entry path via `builder.entry(...)` and `V8::resolve(&self, request)` supplies each requested source. Native creates the
 V8 runtime, while Rust services implement new/invoke.
 
 ## Bootstrap and application lifecycle
@@ -361,14 +361,19 @@ sequenceDiagram
     Runtime->>Runtime: Validate and snapshot Host / discovered capabilities
     Runtime->>Runtime: Browser::new(BrowserContext)
     Runtime-->>Framework: Status + process-local runtime handle
+    Framework->>Framework: Bind native BrowserContext services and UI runner
+    Framework->>Runtime: Application.initialize_browser(runtime, context, reply)
+    Runtime->>Runtime: Await Browser::initialize on dispatch worker
+    Runtime-->>Framework: Initialization reply
+    Framework->>Framework: Create startup windows only on success
     Framework->>Runtime: Application.dispatch(runtime, bytes)
     Runtime->>Runtime: Enqueue / run generated handler on Rust worker
     Runtime->>Framework: Host.post_event(CommandResponse)
     Framework->>Runtime: Application.stop(runtime)
-    Runtime->>Runtime: Close admission / join work / Browser::shutdown
+    Runtime->>Runtime: Close admission / join work / await Browser::shutdown(context)
   else Rust utility process
     Framework->>Library: Application.utility_start_with_context(name, config)
-    Library->>Library: Selected Utility::new(UtilityContext) without Browser state
+    Library->>Library: Await selected Utility::new(UtilityContext), then report Ready
   end
   Framework-->>Launcher: Run returns
   Launcher->>Library: Unload library
@@ -422,9 +427,12 @@ impl tuffite::utility::V8 for Parser {
         Ok(Self)
     }
 
-    fn entry(&self) -> &'static str { "entry.mjs" }
+    fn setup(builder: tuffite::utility::v8::Builder) -> tuffite::ApplicationResult<tuffite::utility::v8::Builder> {
+        Ok(builder.entry("entry.mjs"))
+    }
 
-    fn resolve(&self, url: &str) -> Result<Option<ModuleSource>, Error> {
+    async fn resolve(&self, request: tuffite::utility::v8::ModuleRequest) -> Result<Option<ModuleSource>, Error> {
+        let url = request.url();
         let source = match url {
             "myapp://parser.utility/entry.mjs" => include_str!("entry.mjs").to_owned(),
             "myapp://parser.utility/helpers.mjs" => std::fs::read_to_string("helpers.mjs")?,
@@ -452,8 +460,9 @@ fields; `UtilityRequest` and `UtilitySessionRequest` carry independent request
 and session data. Healthy children reuse the service; restarted children construct
 new instances from the same startup configuration.
 
-V8 resource providers implement `V8::new(V8Context)`, `entry(&self)` and
-`resolve(&self, url)` in the Browser process. One provider is created lazily per
+V8 resource providers configure `entry(...)` through the owned `V8::setup` builder,
+then implement `V8::new(V8Context)` and
+`resolve(&self, request)` in the Browser process. One provider is created lazily per
 name per Browser runtime and reused across sessions. Construction is synchronized;
 constructor errors or panic are retained until that runtime ends. Provider methods
 can run concurrently, so mutable fields require locks or atomics. The context
@@ -463,8 +472,10 @@ provides `name()`, service `configuration()`, `application_configuration()`,
 `BrowserContext::set_state(Arc<T>)` and `state::<T>()` share typed state with
 providers within that runtime. Replacing a type affects future lookups; existing
 Arc holders keep their value. No Rust object, Arc, or Browser capability crosses
-IPC. Session-specific provider configuration is not part of this API: the current
-resolver routes by service name and URL, without a session identity.
+IPC. Module requests include the canonical URL, session identity, deadline and
+read-only cancellation signal. Closing a native session cancels its pending
+resolutions. The identity is for correlation and does not grant access. Shared
+providers receive asynchronous shutdown after their resolver workers drain.
 
 ```json
 {
@@ -504,11 +515,23 @@ runtime's lifetime.
 
 ### ABI 0.1.0 on-demand V8 resources
 
-ABI 0.1.0 appends `Application.resolve_v8(runtime, name, url, context, reply)`.
+ABI 0.1.0 appends `Application.resolve_v8(runtime, session_id, name, url, context, reply)`.
 Acceptance returns OK and transfers callback ownership until exactly one reply;
 rejection invokes no callback. Sources are borrowed during the reply and copied
 by native. Workers are joined by browser stop before the business library unloads.
 A panic becomes Internal; a resource error fails session creation.
+
+`Application.initialize_browser(runtime, context, reply)` uses the same accepted
+reply ownership convention. Native invokes it only after BrowserContext services
+and the UI runner are bound. The Rust worker awaits initialization before allowing
+business dispatch; native creates startup windows after a successful reply.
+Failure exits with a bootstrap error after cleanup. `Started` alone does not mean
+that initialization or document loading has completed.
+
+`Application.cancel_v8_session(runtime, name, session_id)` signals module futures
+when native destroys the session client. Signals are scoped by service and session;
+closing one session does not cancel sibling sessions. Browser stop signals all
+module requests before joining their workers and awaiting provider shutdown.
 
 ```mermaid
 sequenceDiagram
@@ -559,10 +582,10 @@ javascript_extensions accessor is deprecated.
 
 ### Resolver override and app.assets fallback
 
-`V8::resolve(&self, url)` returns `Result<Option<ModuleSource>, Error>` and defaults to
+`V8::resolve(&self, request)` asynchronously returns `Result<Option<ModuleSource>, Error>` and defaults to
 `Ok(None)`. Some(source) overrides assets; None replies with ABI 0.1.0 NotFound=7
 and asks native to resolve the same URL through `app.assets`. An error or panic
-fails loading and never falls back. An assets-only service implements `new(V8Context)` and `entry(&self)`;
+fails loading and never falls back. An assets-only service implements `new(V8Context)` and optionally selects an entry in `setup`;
 `resolve` uses the default fallback.
 
 Native shares `AppManifest::ResolveAssetFile` with the frontend URL loader:
@@ -707,7 +730,7 @@ itself static. This requires no allocation, initialization lock or mutable state
 | Lock | Why it remains | Boundary |
 | --- | --- | --- |
 | Runtime/service/session handle tables | Concurrent FFI lookup and removal | Clone/remove objects under the lock; invoke callbacks and join after release |
-| Application implementation | No lock: dispatch worker owns the application | Join returns ownership for shutdown on the stopping thread |
+| Application implementation | No lock: dispatch worker owns the application | Join transfers ownership to the dedicated Rust shutdown worker |
 | Utility operation gate RwLock | Drain admitted unary/session creation operations before service cleanup | Close admission and cancel before waiting; release gate before user shutdown |
 | Session implementation Mutex | Exclusive `&mut` command and close state | Credit acknowledgement/cancellation bypass this lock; no synchronous self-reentry |
 | Session flow Mutex | Credit accounting, ordered event delivery and close barrier | Native event sinks copy/enqueue only; never synchronously acknowledge/reenter |

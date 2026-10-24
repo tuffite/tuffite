@@ -114,8 +114,8 @@ void ConfigureUtilityHostRuntime(UtilityService& service,
   }
   service.SetUtilityModuleResolver(base::BindRepeating(
       [](asset::AssetConfiguration assets, tuffite_resolve_v8_fn resolve,
-         tuffite_handle_t runtime, std::string name, std::string url,
-         UtilityResponseCallback callback) {
+         tuffite_handle_t runtime, std::string name, uint64_t session_id,
+         std::string url, UtilityResponseCallback callback) {
         if (!resolve) {
           ReadModuleAsset(assets.ResolveAssetFile(GURL(url)),
                           std::move(callback));
@@ -130,7 +130,7 @@ void ConfigureUtilityHostRuntime(UtilityService& service,
         // immediately on a worker.
         auto* context = pending.release();
         const auto status = resolve(
-            runtime,
+            runtime, session_id,
             {reinterpret_cast<const uint8_t*>(name.data()), name.size()},
             {reinterpret_cast<const uint8_t*>(url.data()), url.size()}, context,
             &CaptureModuleResolution);
@@ -140,6 +140,16 @@ void ConfigureUtilityHostRuntime(UtilityService& service,
         }
       },
       manifest.assets(), application.resolve_v8, runtime));
+  service.SetUtilityModuleCanceller(base::BindRepeating(
+      [](tuffite_cancel_v8_session_fn cancel, tuffite_handle_t runtime,
+         std::string name, uint64_t session_id) {
+        if (cancel) {
+          cancel(runtime,
+                 {reinterpret_cast<const uint8_t*>(name.data()), name.size()},
+                 session_id);
+        }
+      },
+      application.cancel_v8_session, runtime));
   const tuffite_utility_is_registered_fn utility_is_registered =
       application.utility.is_registered;
   service.SetUtilityRegistrationChecker(base::BindRepeating(

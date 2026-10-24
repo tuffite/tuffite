@@ -231,8 +231,9 @@ int MainDelegate::Run(int argc, const char* const* argv, void* sandbox_info) {
   params.argv = const_cast<const char**>(argv);
 #endif
   const int result = content::ContentMain(std::move(params));
+  const bool initialization_failed = bridge_->initialization_failed();
   Shutdown();
-  return result;
+  return initialization_failed ? kRuntimeBootstrapFailure : result;
 }
 
 std::optional<int> MainDelegate::BasicStartupComplete() {
@@ -275,15 +276,15 @@ std::optional<int> MainDelegate::BasicStartupComplete() {
                                  executable_path);
   std::string manifest_error;
   std::optional<std::string> app_scheme =
-      ManifestServiceFactory::ReadApplicationScheme(executable_directory,
-                                                    &manifest_error);
+      app::ManifestLoader::ReadApplicationScheme(executable_directory,
+                                                 &manifest_error);
   if (!app_scheme) {
     LOG(ERROR) << "Unable to load Tuffite application manifest: "
                << manifest_error;
     return kRuntimeBootstrapFailure;
   }
   command_line->AppendSwitchASCII(kAppSchemeSwitch, *app_scheme);
-  if (ManifestServiceFactory::ReadNetworkDisableHttp2(executable_directory)) {
+  if (app::ManifestLoader::ReadNetworkDisableHttp2(executable_directory)) {
     command_line->AppendSwitch(switches::kDisableHttp2);
   }
   // Blink reads runtime feature switches before PreBrowserMain(). There is no
@@ -332,7 +333,7 @@ std::optional<int> MainDelegate::PreBrowserMain() {
   const std::string development_url =
       base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
           kDevUrlSwitch);
-  std::optional<GURL> requested_development_url;
+  app::StartupEnvironment startup_environment;
   if (!development_url.empty()) {
 #if !BUILDFLAG(TUFFITE_DEV_MODE)
     LOG(ERROR) << "Tuffite development URLs are disabled in this build";
@@ -361,16 +362,44 @@ std::optional<int> MainDelegate::PreBrowserMain() {
       LOG(ERROR) << "Tuffite development URL requires a CLI-issued token";
       return kRuntimeBootstrapFailure;
     }
-    requested_development_url = GURL(development_url);
+    startup_environment.development_url = GURL(development_url);
 #endif
   }
-  auto app_manifest = ManifestServiceFactory::Load(
-      executable_directory, &manifest_error, requested_development_url);
-  if (!app_manifest) {
+  auto definition =
+      app::ManifestLoader::Load(executable_directory, &manifest_error);
+  if (!definition) {
     LOG(ERROR) << "Unable to load Tuffite application manifest: "
                << manifest_error;
     return kRuntimeBootstrapFailure;
   }
+  app::BrowserOptions browser_options;
+  if (const auto setup = bridge().application().setup_browser) {
+    const auto status =
+        setup(&browser_options.security.devtools.denied_origins,
+              [](void* data, tuffite_byte_slice_t origin) -> tuffite_status_t {
+                auto& origins = *static_cast<std::vector<std::string>*>(data);
+                if (!origin.data || !origin.len || origin.len > 4096 ||
+                    origins.size() >= 256) {
+                  return TUFFITE_STATUS_INVALID_ARGUMENT;
+                }
+                origins.emplace_back(reinterpret_cast<const char*>(origin.data),
+                                     origin.len);
+                return TUFFITE_STATUS_OK;
+              });
+    if (status != TUFFITE_STATUS_OK) {
+      LOG(ERROR) << "Tuffite Browser::setup failed";
+      return kRuntimeBootstrapFailure;
+    }
+  }
+  auto configuration = app::ConfigurationAssembler::Build(
+      std::move(*definition), startup_environment, browser_options,
+      &manifest_error);
+  if (!configuration) {
+    LOG(ERROR) << "Unable to assemble Tuffite application configuration: "
+               << manifest_error;
+    return kRuntimeBootstrapFailure;
+  }
+  auto app_manifest = ManifestServiceFactory::Create(std::move(*configuration));
   // Normal renderer children receive these immutable policy switches from
   // ContentBrowserClient::AppendExtraCommandLineSwitches. Mirror that policy
   // in the shared command line used by a single-process smoke/debug run.

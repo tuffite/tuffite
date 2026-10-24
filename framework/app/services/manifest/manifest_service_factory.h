@@ -6,6 +6,7 @@
 
 #include "base/no_destructor.h"
 #include "tuffite/framework/app/services/application_keyed_service_factory.h"
+#include "tuffite/framework/app/services/manifest/manifest_configuration.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 
 namespace tuffite {
@@ -14,16 +15,8 @@ class ManifestServiceFactory final
     : public ApplicationKeyedServiceFactory<ManifestService> {
  public:
   static ManifestServiceFactory* Get();
-  // Parsing completes before the service is published in the application graph.
-  static std::unique_ptr<ManifestService> Load(
-      const base::FilePath& package_root,
-      std::string* error,
-      const std::optional<GURL>& development_url = std::nullopt);
-  // Chromium needs these before URL schemes and the service graph exist.
-  static std::optional<std::string> ReadApplicationScheme(
-      const base::FilePath& package_root,
-      std::string* error);
-  static bool ReadNetworkDisableHttp2(const base::FilePath& package_root);
+  static std::unique_ptr<ManifestService> Create(
+      app::EffectiveConfiguration configuration);
 
  private:
   friend class base::NoDestructor<ManifestServiceFactory>;

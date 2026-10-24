@@ -101,8 +101,11 @@ class TuffiteContextMenu final : public ui::SimpleMenuModel::Delegate {
       }
       model_->AddItem(kSelectAll, u"Select all");
     }
-    model_->AddSeparator(ui::NORMAL_SEPARATOR);
-    model_->AddItem(kInspectElement, u"Inspect element");
+    if (devtools_ &&
+        devtools_->IsInspectionAllowed(web_contents_, &render_frame_host)) {
+      model_->AddSeparator(ui::NORMAL_SEPARATOR);
+      model_->AddItem(kInspectElement, u"Inspect element");
+    }
   }
 
   TuffiteContextMenu(const TuffiteContextMenu&) = delete;
@@ -117,7 +120,9 @@ class TuffiteContextMenu final : public ui::SimpleMenuModel::Delegate {
     }
     switch (command_id) {
       case kInspectElement:
-        return !!devtools_;
+        return devtools_ &&
+               devtools_->IsInspectionAllowed(
+                   web_contents_, content::RenderFrameHost::FromID(frame_id_));
       case kCopyImage:
         return params_.has_image_contents &&
                content::RenderFrameHost::FromID(frame_id_);

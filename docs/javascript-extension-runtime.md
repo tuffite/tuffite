@@ -12,8 +12,17 @@ The browser backend remains the policy authority and owns every privileged resou
 Its `BrowserContext::utilities().create_v8(name, ...)` opens a named definition
 registered with `#[tuffite::utility(name = "parser")]` on an impl of
 `tuffite::utility::V8`. `new(V8Context)` constructs a Browser-side provider on first use.
-`entry(&self)` returns the logical entry path and
-`resolve(&self, url)` returns `Result<Option<utility::v8::ModuleSource>, utility::v8::Error>`.
+`setup(builder: utility::v8::Builder)` returns the configured builder before `new`.
+Framework supplies manifest service configuration and the default `entry.mjs`;
+`builder.entry(path)` selects a different logical entry. The returned options are
+validated and frozen before provider construction.
+
+`resolve(&self, request)` asynchronously returns
+`Result<Option<utility::v8::ModuleSource>, utility::v8::Error>`. The owned
+`ModuleRequest` exposes `url()`, `session_id()`, `deadline()` and `stop_signal()`.
+Closing a native session cancels its outstanding module requests; Browser stop
+cancels all sessions before joining resolver workers. Session IDs are correlation
+identities, not authorization credentials.
 The native utility loader requests its entry and discovered static imports over
 Mojo. Browser dispatches each canonical application, HTTPS or file URL to a supervised Rust worker
 through ABI 0.1.0 `Application.resolve_v8`. ModuleSource accepts embedded, owned
@@ -37,11 +46,13 @@ application manifest, Browser executor, and a cooperative stopping signal.
 `BrowserContext::set_state(Arc<T>)` installs typed state retrieved with
 `V8Context::state::<T>()`; these Arcs stay in Browser. Provider methods can run
 concurrently and constructor failure is retained for that runtime. Session init
-is independent; the resolver currently has no session-specific context.
+is independent. Module requests carry native session identity and cancellation.
+After resolver workers drain, the shared provider receives one asynchronous
+`shutdown(ShutdownContext)` call before Browser cleanup and executor teardown.
 
 ## Host boundary
 
-The Browser supplies only explicitly registered resources. `resolve(url)` must
+The Browser supplies only explicitly registered resources. `resolve(request)` must
 map logical names to trusted embedded sources or an application-controlled store.
 If reading a directory, the application must enforce its canonical root and
 symlink policy. The Framework rejects invalid or foreign resource URLs before invoking the

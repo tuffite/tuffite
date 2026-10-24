@@ -15,13 +15,18 @@ namespace tuffite {
 namespace window {
 class WindowService;
 }
+class ManifestService;
 class DevToolsServiceImpl final : public DevToolsService {
  public:
   DevToolsServiceImpl(content::BrowserContext& context,
-                      window::WindowService& windows);
+                      window::WindowService& windows,
+                      const ManifestService& manifest);
   ~DevToolsServiceImpl() override;
   base::WeakPtr<DevToolsService> GetWeakPtr() override;
   void StartIfRequested(content::BrowserContext* context) override;
+  bool IsInspectionAllowed(
+      content::WebContents* contents,
+      content::RenderFrameHost* frame = nullptr) const override;
   void InspectElement(content::WebContents* contents,
                       content::RenderFrameHost* frame,
                       int x,
@@ -39,6 +44,7 @@ class DevToolsServiceImpl final : public DevToolsService {
   raw_ptr<content::BrowserContext> browser_context_ = nullptr;
   bool stopped_ = false;
   const raw_ref<window::WindowService> windows_;
+  const raw_ref<const ManifestService> manifest_;
   base::WeakPtrFactory<DevToolsServiceImpl> weak_factory_{this};
 };
 }  // namespace tuffite

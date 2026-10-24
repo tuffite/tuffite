@@ -2,6 +2,98 @@
 
 use std::borrow::Cow;
 
+/// Owned V8 startup options, configured before Browser-side provider construction.
+/// Framework supplies `entry.mjs` and the named service's manifest configuration.
+#[derive(Debug)]
+pub struct Builder {
+    configuration: super::Builder,
+    entry: String,
+}
+
+impl Default for Builder {
+    fn default() -> Self {
+        Self {
+            configuration: super::Builder::default(),
+            entry: "entry.mjs".to_owned(),
+        }
+    }
+}
+
+impl Builder {
+    /// Selects a relative module path or an absolute HTTPS/file URL.
+    #[must_use]
+    pub fn entry(mut self, entry: impl Into<String>) -> Self {
+        self.entry = entry.into();
+        self
+    }
+
+    /// Replaces service-local startup data without granting native capabilities.
+    #[must_use]
+    pub fn configuration(mut self, configuration: impl Into<Vec<u8>>) -> Self {
+        self.configuration = self.configuration.configuration(configuration);
+        self
+    }
+
+    /// Reads the current service startup data.
+    #[must_use]
+    pub fn configuration_bytes(&self) -> &[u8] {
+        self.configuration.configuration_bytes()
+    }
+
+    pub(super) fn finish(
+        self,
+        scheme: &str,
+        name: &str,
+    ) -> crate::ApplicationResult<(Vec<u8>, String)> {
+        let entry = entry_url(scheme, name, &self.entry)
+            .map_err(|error| crate::ApplicationError::new(error.to_string()))?;
+        Ok((self.configuration.finish()?, entry))
+    }
+}
+
+#[cfg(test)]
+mod builder_tests {
+    use super::Builder;
+
+    #[test]
+    fn default_and_overridden_entry_are_canonicalized_at_freeze() {
+        let (configuration, entry) = Builder::default().finish("myapp", "parser").unwrap();
+        assert!(configuration.is_empty());
+        assert_eq!(entry, "myapp://parser.utility/entry.mjs");
+        let (configuration, entry) = Builder::default()
+            .configuration(b"manifest".to_vec())
+            .entry("extension/main.mjs")
+            .finish("myapp", "parser")
+            .unwrap();
+        assert_eq!(configuration, b"manifest");
+        assert_eq!(entry, "myapp://parser.utility/extension/main.mjs");
+    }
+
+    #[test]
+    fn invalid_entry_or_oversized_configuration_cannot_be_frozen() {
+        for entry in [
+            "",
+            "../escape.mjs",
+            "http://example.com/main.mjs",
+            "myapp://other.utility/main.mjs",
+        ] {
+            assert!(
+                Builder::default()
+                    .entry(entry)
+                    .finish("myapp", "parser")
+                    .is_err(),
+                "{entry}"
+            );
+        }
+        assert!(
+            Builder::default()
+                .configuration(vec![0; 64 * 1024 + 1])
+                .finish("myapp", "parser")
+                .is_err()
+        );
+    }
+}
+
 /// Failure while obtaining resources or validating a module graph.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -9,6 +101,42 @@ pub enum Error {
     Module(#[from] crate::JavaScriptExtensionError),
     #[error(transparent)]
     Resource(#[from] std::io::Error),
+}
+
+/// Owned module request, scoped to one native isolate session.
+#[derive(Clone, Debug)]
+pub struct ModuleRequest {
+    url: String,
+    session_id: u64,
+    deadline: std::time::Instant,
+    stop: crate::StopSignal,
+}
+impl ModuleRequest {
+    pub(crate) fn new(url: String, session_id: u64, stop: crate::StopSignal) -> Self {
+        Self {
+            url,
+            session_id,
+            deadline: std::time::Instant::now() + crate::lifecycle::LIFECYCLE_TIMEOUT,
+            stop,
+        }
+    }
+    #[must_use]
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+    /// Correlation identity only; never an authorization credential.
+    #[must_use]
+    pub fn session_id(&self) -> u64 {
+        self.session_id
+    }
+    #[must_use]
+    pub fn deadline(&self) -> std::time::Instant {
+        self.deadline
+    }
+    #[must_use]
+    pub fn stop_signal(&self) -> crate::StopSignal {
+        self.stop.clone()
+    }
 }
 
 /// One logical module path and its UTF-8 ECMAScript source.

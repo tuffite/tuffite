@@ -187,9 +187,19 @@ export interface HTMLExplorerElement extends HTMLElement {
     listener: (this: HTMLExplorerElement, event: ExplorerEventMap[K]) => void,
     options?: boolean | AddEventListenerOptions,
   ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
   removeEventListener<K extends keyof ExplorerEventMap>(
     type: K,
     listener: (this: HTMLExplorerElement, event: ExplorerEventMap[K]) => void,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
     options?: boolean | EventListenerOptions,
   ): void;
 }

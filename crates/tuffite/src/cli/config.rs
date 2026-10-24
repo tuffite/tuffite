@@ -423,6 +423,7 @@ fn check_origin_capabilities(value: &Value) -> Result<(), String> {
                 "origins",
                 "shellApi",
                 "explorer",
+                "devtools",
             ],
         )?;
         let identifier = nonempty_string(rule.get("identifier"), &format!("{path}.identifier"))?;
@@ -432,6 +433,9 @@ fn check_origin_capabilities(value: &Value) -> Result<(), String> {
             || !identifiers.insert(identifier)
         {
             return Err(format!("{path}.identifier: expected unique identifier"));
+        }
+        if let Some(value) = rule.get("devtools") {
+            boolean(Some(value), &format!("{path}.devtools"))?;
         }
         if let Some(description) = rule.get("description") {
             nonempty_string(Some(description), &format!("{path}.description"))?;
@@ -794,6 +798,25 @@ mod tests {
         object.insert("devPackge".to_owned(), Value::String("dist".to_owned()));
         let error = check_build(&Value::Object(object)).unwrap_err();
         assert!(error.contains("did you mean \"devPackage\""), "{error}");
+    }
+
+    #[test]
+    fn devtools_policy_accepts_booleans_and_rejects_strings() {
+        for value in [serde_json::json!(false), serde_json::json!(true)] {
+            assert!(
+                check_origin_capabilities(&serde_json::json!([{
+                    "identifier": "inspection", "origins": ["https://example.com"],
+                    "devtools": value
+                }]))
+                .is_ok()
+            );
+        }
+        let error = check_origin_capabilities(&serde_json::json!([{
+            "identifier": "inspection", "origins": ["https://example.com"],
+            "devtools": "false"
+        }]))
+        .unwrap_err();
+        assert!(error.contains("devtools: expected boolean"), "{error}");
     }
 
     #[test]

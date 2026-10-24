@@ -56,6 +56,8 @@ class AbiHostBridge : public HostDispatch {
 
   bool Start(std::string_view configuration);
   void BindBrowserTaskRunner();
+  // Asynchronous services-ready barrier before startup windows and dispatch.
+  void InitializeBrowser(base::OnceCallback<void(bool)> callback);
   void BindApplicationContext(ApplicationContext* context) {
     application_context_ = context;
   }
@@ -75,6 +77,7 @@ class AbiHostBridge : public HostDispatch {
 
   void Stop();
 
+  bool initialization_failed() const { return initialization_failed_; }
   bool is_running() const { return runtime_.load() != 0; }
   tuffite_handle_t runtime_handle() const { return runtime_.load(); }
 
@@ -179,6 +182,9 @@ class AbiHostBridge : public HostDispatch {
   tuffite_application_start_fn runtime_start_ = nullptr;
   tuffite_application_dispatch_fn runtime_dispatch_ = nullptr;
   tuffite_application_stop_fn runtime_stop_ = nullptr;
+  bool browser_initialized_ = false;
+  bool initialization_failed_ = false;
+  std::atomic<bool> accepting_tasks_{true};
   std::atomic<tuffite_handle_t> runtime_{0};
   const tuffite_application application_;
   scoped_refptr<base::SequencedTaskRunner> browser_task_runner_;

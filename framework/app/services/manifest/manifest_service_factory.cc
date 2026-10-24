@@ -7,20 +7,9 @@
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/services/manifest/manifest_service_impl.h"
 namespace tuffite {
-std::unique_ptr<ManifestService> ManifestServiceFactory::Load(
-    const base::FilePath& package_root,
-    std::string* error,
-    const std::optional<GURL>& development_url) {
-  return ManifestServiceImpl::Load(package_root, error, development_url);
-}
-std::optional<std::string> ManifestServiceFactory::ReadApplicationScheme(
-    const base::FilePath& package_root,
-    std::string* error) {
-  return ManifestServiceImpl::ReadApplicationScheme(package_root, error);
-}
-bool ManifestServiceFactory::ReadNetworkDisableHttp2(
-    const base::FilePath& package_root) {
-  return ManifestServiceImpl::ReadNetworkDisableHttp2(package_root);
+std::unique_ptr<ManifestService> ManifestServiceFactory::Create(
+    app::EffectiveConfiguration configuration) {
+  return std::make_unique<ManifestServiceImpl>(std::move(configuration));
 }
 ManifestServiceFactory* ManifestServiceFactory::Get() {
   static base::NoDestructor<ManifestServiceFactory> instance;

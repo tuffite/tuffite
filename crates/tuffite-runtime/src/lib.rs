@@ -10,6 +10,8 @@ mod dispatch;
 mod executor;
 mod handle;
 mod javascript_extension;
+mod lifecycle;
+pub use lifecycle::{ShutdownContext, ShutdownReason, StopSignal};
 pub mod mojom;
 pub mod protocol;
 mod runtime;
@@ -44,9 +46,7 @@ pub use runtime::{Runtime, RuntimeError, RuntimeState, TaskContext, TaskHandle};
 #[doc(hidden)]
 pub use serde;
 pub use shell_api::{ShellApiError, ShellApiHost, ShellApiRequest};
-pub use utility::{
-    Utility, UtilityContext, UtilityFuture, UtilityRequest, UtilityServiceRegistration, V8Context,
-};
+pub use utility::{Utility, UtilityContext, UtilityRequest, UtilityServiceRegistration, V8Context};
 pub use utility_host::{
     UtilitySessionClosed, UtilitySessionHandle, UtilitySessionHost, UtilitySessionHostError,
     UtilitySessionOptions,

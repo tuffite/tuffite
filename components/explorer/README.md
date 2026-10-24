@@ -686,3 +686,55 @@ window's initial document. `<explorer src="explorer:name" defer>` waits empty
 for that resource and adopts it once. Names are document-local, not bearer
 credentials. See [the ownership contract](../../docs/explorer.md) for
 replacement rollback, policy compatibility and lifetime rules.
+
+### Host-controlled DevTools policy
+
+The package can disable inspection by document origin, including top-level
+application windows. Add a rule to `app.security.capabilities` in `tuffite.json`:
+
+```json
+{
+  "identifier": "no-inspection",
+  "origins": ["ovule://-", "https://private.example.com"],
+  "devtools": false
+}
+```
+
+An origin without a matching denial retains the default inspection behavior.
+If multiple capabilities match, any `devtools: false` takes precedence over
+`true` or an omitted field. The policy gates both Inspect element and new CDP attachments;
+existing inspectors detach when the inspected top-level document navigates to
+a denied origin. Development-server aliases inherit the entry origin's policy.
+This setting does not disable the debugging server itself, so allowed origins
+can still be inspected through an explicitly enabled server.
+
+
+Rust hosts can add the same denials before any native services or windows exist:
+
+```rust
+#[tuffite::browser]
+impl tuffite::Browser for App {
+    fn setup(builder: tuffite::browser::Builder) -> tuffite::ApplicationResult<tuffite::browser::Builder> {
+        Ok(builder
+            .disable_devtools_for_origin("ovule://-")
+            .disable_devtools_for_origin("https://*.private.example.com"))
+    }
+
+    fn new(_: tuffite::BrowserContext) -> tuffite::ApplicationResult<Self> {
+        Ok(Self)
+    }
+}
+```
+
+`Browser::setup` runs once in the browser process before `Browser::new`.
+Its origin patterns are validated by the native manifest loader; invalid rules
+or setup errors abort startup. Rust and manifest denials are combined, and
+renderer scripts cannot override either. There is no Explorer `devtools`
+attribute or property.
+
+Import native element and event types from the npm SDK instead of copying them:
+
+```ts
+import type { HTMLExplorerElement, ExplorerEventMap } from "tuffite/explorer";
+const explorer: HTMLExplorerElement = document.createElement("explorer");
+```

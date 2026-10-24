@@ -70,7 +70,7 @@ raw invoke/cancel bypasses, forged IDs and mismatched schemas.
 - [`src/echo_utility.rs`](src/echo_utility.rs) declares the Rust service with
   `#[tuffite::utility(name = "echo")]`; the main attribute lists its type explicitly.
 - [`src/v8_utility.rs`](src/v8_utility.rs) declares `#[tuffite::utility(name = "parser")]` on an impl of
-  `tuffite::utility::V8`; `entry(&self)` selects the entry and `resolve(&self, url)`
+  `tuffite::utility::V8`; `setup(builder)` selects the entry through `builder.entry(...)` and `resolve(&self, request)`
   supplies `sdk/generated.mjs`, an HTTPS module URL and a file module URL
   with generated text (without ambient network or file reads) and returns None for the
   entry/runtime sources, which load through an explicit `app.assets` route.

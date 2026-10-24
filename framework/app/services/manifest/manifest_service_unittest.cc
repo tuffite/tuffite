@@ -10,6 +10,22 @@
 
 namespace tuffite {
 namespace {
+std::unique_ptr<ManifestService> LoadManifest(
+    const base::FilePath& root,
+    std::string* error,
+    const app::StartupEnvironment& environment = {},
+    const app::BrowserOptions& options = {}) {
+  auto definition = app::ManifestLoader::Load(root, error);
+  if (!definition) {
+    return nullptr;
+  }
+  auto configuration = app::ConfigurationAssembler::Build(
+      std::move(*definition), environment, options, error);
+  return configuration
+             ? ManifestServiceFactory::Create(std::move(*configuration))
+             : nullptr;
+}
+
 constexpr char kManifest[] = R"({
   "app": {
     "identifier": "com.example.originlab",
@@ -221,7 +237,7 @@ class OriginCapabilityTest : public testing::Test {
     ASSERT_TRUE(root_.CreateUniqueTempDir());
     ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
                                 kManifest));
-    manifest_ = ManifestServiceFactory::Load(root_.GetPath(), &error_);
+    manifest_ = LoadManifest(root_.GetPath(), &error_);
     ASSERT_TRUE(manifest_) << error_;
   }
   url::Origin Origin(const char* value) {
@@ -249,7 +265,7 @@ TEST_F(OriginCapabilityTest, MojomModulesDoNotDependOnTheAssetScheme) {
   text.insert(at, "\"other.files.Fs.Read\": \"0000000000000011\",\n");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), text));
-  auto manifest = ManifestServiceFactory::Load(root_.GetPath(), &error_);
+  auto manifest = LoadManifest(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
   EXPECT_EQ(manifest->app_info().scheme, "originlab");
   EXPECT_EQ(manifest->ApplicationInterface("other.files.Fs.Read"),
@@ -268,7 +284,7 @@ TEST_F(OriginCapabilityTest, ProductNameIsIndependentFromIdentity) {
   text.insert(1, "\"productName\":\"Origin Lab\",");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), text));
-  auto manifest = ManifestServiceFactory::Load(root_.GetPath(), &error_);
+  auto manifest = LoadManifest(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
   EXPECT_EQ(manifest->app_info().product_name, "Origin Lab");
   EXPECT_EQ(manifest->app_info().identifier, "com.example.originlab");
@@ -280,8 +296,7 @@ TEST_F(OriginCapabilityTest, InvalidProductNamesAreRejected) {
     text.insert(1, std::string("\"productName\":") + value + ",");
     ASSERT_TRUE(
         base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), text));
-    EXPECT_FALSE(ManifestServiceFactory::Load(root_.GetPath(), &error_))
-        << value;
+    EXPECT_FALSE(LoadManifest(root_.GetPath(), &error_)) << value;
   }
 }
 
@@ -293,7 +308,7 @@ TEST_F(OriginCapabilityTest,
                      "{\"mode\": 7}}, \"parser\": {}},");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), configured));
-  auto manifest = ManifestServiceFactory::Load(root_.GetPath(), &error_);
+  auto manifest = LoadManifest(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
   auto configurations = manifest->UtilityConfigurations();
   ASSERT_EQ(configurations.size(), 1u);
@@ -304,7 +319,7 @@ TEST_F(OriginCapabilityTest,
                      "\"" + std::string(64 * 1024, 'x') + "\"");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), configured));
-  EXPECT_FALSE(ManifestServiceFactory::Load(root_.GetPath(), &error_));
+  EXPECT_FALSE(LoadManifest(root_.GetPath(), &error_));
 }
 TEST_F(OriginCapabilityTest, UnionGrantsRemainOriginScoped) {
   auto artifact = Origin("originlab://demo.artifact/page");
@@ -436,7 +451,7 @@ TEST_F(OriginCapabilityTest,
   contents.replace(pos, std::string("originlab.*").size(), "*");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), contents));
-  auto manifest = ManifestServiceFactory::Load(root_.GetPath(), &error_);
+  auto manifest = LoadManifest(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
   const auto owner = Origin("originlab://main/");
   EXPECT_TRUE(
@@ -465,7 +480,7 @@ TEST_F(OriginCapabilityTest, NamespaceGroupScopesAreValidatedByTheApi) {
   contents.insert(pos, R"("tuffite.Window.Current":"0000000000000000",)");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), contents));
-  auto manifest = ManifestServiceFactory::Load(root_.GetPath(), &error_);
+  auto manifest = LoadManifest(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
   const auto owner = Origin("originlab://main/");
   EXPECT_TRUE(
@@ -483,7 +498,7 @@ TEST_F(OriginCapabilityTest, NamespaceGroupScopesAreValidatedByTheApi) {
                    R"({"path":"data/*"})");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), contents));
-  manifest = ManifestServiceFactory::Load(root_.GetPath(), &error_);
+  manifest = LoadManifest(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
   EXPECT_FALSE(manifest->IsShellApiScopeAllowed(owner, "tuffite.Window.Focus",
                                                 "others", "window"));
@@ -499,7 +514,7 @@ TEST_F(OriginCapabilityTest, InvalidScopesAndPatternsFailAtStartup) {
                   "tuffite.Path.Read*");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), invalid));
-  EXPECT_FALSE(ManifestServiceFactory::Load(root_.GetPath(), &error_));
+  EXPECT_FALSE(LoadManifest(root_.GetPath(), &error_));
 }
 
 TEST_F(OriginCapabilityTest, InterfaceIdentityAndMethodPermissions) {
@@ -525,7 +540,7 @@ TEST_F(OriginCapabilityTest, RejectsLegacyRouteAndServiceGrants) {
     EXPECT_TRUE(json);
     EXPECT_TRUE(
         base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), *json));
-    return ManifestServiceFactory::Load(root_.GetPath(), &error_);
+    return LoadManifest(root_.GetPath(), &error_);
   };
   config->SetByDottedPath("app.shellApi.utilityRoutes", base::DictValue());
   EXPECT_FALSE(load());
@@ -550,8 +565,9 @@ TEST_F(OriginCapabilityTest, WireCommandCannotBeDisguisedAsAllowedChannel) {
       manifest_->IsApplicationCommandRequest("originlab.commands.unknown", 1));
 }
 TEST_F(OriginCapabilityTest, DevelopmentAliasesOnlyPackagedEntryGrants) {
-  manifest_ = ManifestServiceFactory::Load(
-      root_.GetPath(), &error_, GURL("http://127.0.0.1:5183/index.html"));
+  manifest_ = LoadManifest(
+      root_.GetPath(), &error_,
+      {.development_url = GURL("http://127.0.0.1:5183/index.html")});
   ASSERT_TRUE(manifest_) << error_;
   auto dev = Origin("http://127.0.0.1:5183/");
   EXPECT_TRUE(manifest_->IsExplorerOriginAllowed(dev));
@@ -563,8 +579,9 @@ TEST_F(OriginCapabilityTest, DevelopmentAliasesOnlyPackagedEntryGrants) {
             std::vector<std::string>({"*"}));
 }
 TEST_F(OriginCapabilityTest, RejectsInvalidDevelopmentUrlBeforePublication) {
-  EXPECT_FALSE(ManifestServiceFactory::Load(
-      root_.GetPath(), &error_, GURL("https://untrusted.example/")));
+  EXPECT_FALSE(
+      LoadManifest(root_.GetPath(), &error_,
+                   {.development_url = GURL("https://untrusted.example/")}));
   EXPECT_FALSE(error_.empty());
 }
 TEST(ManifestBootstrapTest, ReadsBeforeApplicationSchemeRegistration) {
@@ -574,16 +591,117 @@ TEST(ManifestBootstrapTest, ReadsBeforeApplicationSchemeRegistration) {
       root.GetPath().AppendASCII("tuffite.json"),
       R"({"app":{"windows":[{"url":"bootstraponly://main/index.html"}],"network":{"disableHttp2":true}}})"));
   std::string error;
-  EXPECT_EQ(
-      ManifestServiceFactory::ReadApplicationScheme(root.GetPath(), &error),
-      std::make_optional(std::string("bootstraponly")));
-  EXPECT_TRUE(ManifestServiceFactory::ReadNetworkDisableHttp2(root.GetPath()));
+  EXPECT_EQ(app::ManifestLoader::ReadApplicationScheme(root.GetPath(), &error),
+            std::make_optional(std::string("bootstraponly")));
+  EXPECT_TRUE(app::ManifestLoader::ReadNetworkDisableHttp2(root.GetPath()));
   ASSERT_TRUE(base::WriteFile(
       root.GetPath().AppendASCII("tuffite.json"),
       R"({"app":{"windows":[{"url":"https://example.com/"}]}})"));
   EXPECT_FALSE(
-      ManifestServiceFactory::ReadApplicationScheme(root.GetPath(), &error));
-  EXPECT_FALSE(ManifestServiceFactory::ReadNetworkDisableHttp2(root.GetPath()));
+      app::ManifestLoader::ReadApplicationScheme(root.GetPath(), &error));
+  EXPECT_FALSE(app::ManifestLoader::ReadNetworkDisableHttp2(root.GetPath()));
 }
+TEST_F(OriginCapabilityTest, DevToolsDenialsAreOriginScopedAndOverrideAllows) {
+  auto text = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+  ASSERT_TRUE(text);
+  auto* capabilities =
+      text->FindDict("app")->FindDict("security")->FindList("capabilities");
+  capabilities->Append(
+      base::DictValue()
+          .Set("identifier", "deny-inspection")
+          .Set("origins", base::ListValue().Append("originlab://main"))
+          .Set("devtools", false));
+  capabilities->Append(
+      base::DictValue()
+          .Set("identifier", "allow-inspection")
+          .Set("origins", base::ListValue().Append("originlab://main"))
+          .Set("devtools", true));
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(*text)));
+  auto manifest = LoadManifest(root_.GetPath(), &error_);
+  ASSERT_TRUE(manifest) << error_;
+  EXPECT_FALSE(manifest->IsDevToolsAllowed(Origin("originlab://main/main")));
+  EXPECT_TRUE(manifest->IsDevToolsAllowed(Origin("https://example.com/")));
+  auto development =
+      LoadManifest(root_.GetPath(), &error_,
+                   {.development_url = GURL("http://127.0.0.1:5173/main")});
+  ASSERT_TRUE(development) << error_;
+  EXPECT_FALSE(
+      development->IsDevToolsAllowed(Origin("http://127.0.0.1:5173/")));
+}
+
+TEST_F(OriginCapabilityTest, BrowserSetupAddsDenialsAndRejectsInvalidPatterns) {
+  std::string error;
+  app::BrowserOptions options;
+  options.security.devtools.denied_origins = {"originlab://main"};
+  auto manifest = LoadManifest(root_.GetPath(), &error, {}, options);
+  ASSERT_TRUE(manifest) << error;
+  EXPECT_FALSE(manifest->IsDevToolsAllowed(Origin("originlab://main/main")));
+  EXPECT_TRUE(manifest->IsDevToolsAllowed(Origin("https://example.com/")));
+  auto development = LoadManifest(
+      root_.GetPath(), &error,
+      {.development_url = GURL("http://127.0.0.1:5173/")}, options);
+  ASSERT_TRUE(development) << error;
+  EXPECT_FALSE(
+      development->IsDevToolsAllowed(Origin("http://127.0.0.1:5173/")));
+  options.security.devtools.denied_origins = {"not an origin"};
+  EXPECT_FALSE(LoadManifest(root_.GetPath(), &error, {}, options));
+}
+
+TEST_F(OriginCapabilityTest,
+       EffectiveConfigurationOwnsInputsBeforeServiceCreation) {
+  auto document = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+  ASSERT_TRUE(document);
+  document->SetByDottedPath("app.utilities.echo.configuration.mode", "local");
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(*document)));
+  auto definition = app::ManifestLoader::Load(root_.GetPath(), &error_);
+  ASSERT_TRUE(definition) << error_;
+  app::StartupEnvironment environment{.development_url =
+                                          GURL("http://127.0.0.1:5173/main")};
+  app::BrowserOptions options;
+  options.security.devtools.denied_origins = {"originlab://main"};
+  auto configuration = app::ConfigurationAssembler::Build(
+      std::move(*definition), environment, options, &error_);
+  ASSERT_TRUE(configuration) << error_;
+
+  // Creating/querying the service uses only the frozen snapshot, not caller
+  // options or the package file. Runtime bytes retain the package declaration.
+  environment.development_url = GURL("http://127.0.0.1:6000/");
+  options.security.devtools.denied_origins.clear();
+  ASSERT_TRUE(base::DeleteFile(root_.GetPath().AppendASCII("tuffite.json")));
+  auto service = ManifestServiceFactory::Create(std::move(*configuration));
+  EXPECT_EQ(service->startup_windows().front().url,
+            GURL("http://127.0.0.1:5173/main"));
+  EXPECT_FALSE(service->IsDevToolsAllowed(Origin("originlab://main")));
+  EXPECT_FALSE(service->IsDevToolsAllowed(Origin("http://127.0.0.1:5173")));
+  EXPECT_TRUE(service->IsDevToolsAllowed(Origin("http://127.0.0.1:6000")));
+  auto serialized = base::JSONReader::ReadDict(
+      service->SerializeRuntimeConfiguration(), base::JSON_PARSE_RFC);
+  ASSERT_TRUE(serialized);
+  EXPECT_EQ(*serialized->FindDict("app")
+                 ->FindList("windows")
+                 ->front()
+                 .GetDict()
+                 .FindString("url"),
+            "originlab://main/index.html");
+  const auto utilities = service->UtilityConfigurations();
+  ASSERT_TRUE(utilities.contains("echo"));
+  const auto& bytes = utilities.at("echo");
+  EXPECT_EQ(std::string(bytes.begin(), bytes.end()), R"({"mode":"local"})");
+}
+
+TEST_F(OriginCapabilityTest, HostRestrictionsDoNotIntroduceCapabilityGrants) {
+  app::BrowserOptions options;
+  options.security.devtools.denied_origins = {"https://*.example.com"};
+  auto service = LoadManifest(root_.GetPath(), &error_, {}, options);
+  ASSERT_TRUE(service) << error_;
+  const auto remote = Origin("https://private.example.com");
+  EXPECT_FALSE(service->IsDevToolsAllowed(remote));
+  EXPECT_FALSE(service->IsExplorerOriginAllowed(remote));
+  EXPECT_FALSE(service->IsShellApiOriginAllowed(remote));
+  EXPECT_TRUE(service->IsShellApiOriginAllowed(Origin("originlab://main")));
+}
+
 }  // namespace
 }  // namespace tuffite

@@ -22,6 +22,9 @@ class DevToolsService : public KeyedService {
  public:
   virtual base::WeakPtr<DevToolsService> GetWeakPtr() = 0;
   virtual void StartIfRequested(content::BrowserContext* context) = 0;
+  virtual bool IsInspectionAllowed(
+      content::WebContents* contents,
+      content::RenderFrameHost* frame = nullptr) const = 0;
   virtual void InspectElement(content::WebContents* contents,
                               content::RenderFrameHost* frame,
                               int x,

@@ -10,6 +10,9 @@
 //! struct MyBrowser;
 //! #[tuffite::browser]
 //! impl Browser for MyBrowser {
+//!     fn setup(builder: tuffite::browser::Builder) -> ApplicationResult<tuffite::browser::Builder> {
+//!         Ok(builder.disable_devtools_for_origin("https://private.example.com"))
+//!     }
 //!     fn new(_: BrowserContext) -> ApplicationResult<Self> { Ok(Self) }
 //! }
 //! #[tuffite::main(browser = MyBrowser)]
@@ -56,12 +59,12 @@ pub use tuffite_runtime::{
     ExecutorError, HandleKind, JavaScriptExtensionError, JavaScriptExtensionHost,
     JavaScriptExtensionPackage, JavaScriptExtensionSessionHandle, MAX_UTILITY_SESSION_CREDITS,
     MAX_UTILITY_SESSION_EVENT_BYTES, RawHandle, Runtime, RuntimeError, RuntimeState, ShellApiError,
-    ShellApiHost, ShellApiRequest, TaskContext, TaskHandle, TaskPriority, Timestamp, Utility,
-    UtilityContext, UtilityFuture, UtilityRequest, UtilityServiceRegistration, UtilitySession,
-    UtilitySessionClosed, UtilitySessionCommand, UtilitySessionEmitter, UtilitySessionEvent,
-    UtilitySessionFlowControl, UtilitySessionFlowError, UtilitySessionFuture, UtilitySessionHandle,
-    UtilitySessionHost, UtilitySessionHostError, UtilitySessionOptions, UtilitySessionRequest,
-    V8Context,
+    ShellApiHost, ShellApiRequest, ShutdownContext, ShutdownReason, StopSignal, TaskContext,
+    TaskHandle, TaskPriority, Timestamp, Utility, UtilityContext, UtilityRequest,
+    UtilityServiceRegistration, UtilitySession, UtilitySessionClosed, UtilitySessionCommand,
+    UtilitySessionEmitter, UtilitySessionEvent, UtilitySessionFlowControl, UtilitySessionFlowError,
+    UtilitySessionFuture, UtilitySessionHandle, UtilitySessionHost, UtilitySessionHostError,
+    UtilitySessionOptions, UtilitySessionRequest, V8Context,
 };
 #[cfg(feature = "async")]
 pub use tuffite_runtime::{ChromiumTask, ChromiumTaskError};

@@ -8,6 +8,7 @@
 
 #include "base/functional/callback.h"
 #include "base/memory/raw_ref.h"
+#include "base/memory/weak_ptr.h"
 #include "build/build_config.h"
 #include "content/public/browser/browser_main_parts.h"
 
@@ -51,6 +52,7 @@ class BrowserMainParts final : public content::BrowserMainParts {
       std::unique_ptr<base::RunLoop>& run_loop) override;
   void PostMainMessageLoopRun() override;
   void InitializeMessageLoopContext();
+  void OnBrowserInitialized(bool ok);
 
   const raw_ref<AbiHostBridge> bridge_;
   const raw_ref<ApplicationContext> application_;
@@ -65,6 +67,8 @@ class BrowserMainParts final : public content::BrowserMainParts {
 #endif
   std::unique_ptr<BrowserTestObserver> smoke_test_observer_;
   std::unique_ptr<BrowserTestObserver> window_surface_test_observer_;
+  base::RepeatingClosure quit_;
+  base::WeakPtrFactory<BrowserMainParts> weak_factory_{this};
 };
 
 }  // namespace tuffite
