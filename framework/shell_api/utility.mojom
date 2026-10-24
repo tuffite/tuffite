@@ -1,0 +1,9 @@
+// Shell API contract. JS/TS, Rust and C++ adapters are generated.
+module tuffite;
+
+import "tuffite/framework/shell_api/common.mojom";
+
+interface Utility {
+  Invoke@0(string name, int64 requestId, array<uint8>? payload) => (array<uint8> result);
+  Cancel@1(string name, int64 requestId) => ();
+};

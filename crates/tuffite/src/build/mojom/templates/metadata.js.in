@@ -1,0 +1,2 @@
+export const mojomTypes = $Types;
+export const mojomMethods = $Methods;

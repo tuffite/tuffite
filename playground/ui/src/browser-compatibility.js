@@ -1,4 +1,4 @@
-import '/shell_api.js';
+import '/tuffite.js';
 import { runBrowserCompatibilityProbe, readTurnstileResult } from './browser-compatibility-probe.js';
 const status = document.querySelector('#compatibility-status');
 const output = document.querySelector('#compatibility-report');

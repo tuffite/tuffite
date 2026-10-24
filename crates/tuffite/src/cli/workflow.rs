@@ -23,7 +23,8 @@ pub fn init(directory: &Path, name: Option<&str>) -> Result<(), String> {
     if package.is_empty() {
         return Err("project name must contain an ASCII letter or digit".into());
     }
-    // The namespace is both a TypeScript identifier and the application URL scheme.
+    // The starter uses the same convenient name for its Mojom module and URL scheme.
+    // They are independent after initialization.
     let mut namespace = package.replace('-', "");
     if namespace.starts_with(|character: char| character.is_ascii_digit()) || namespace == "tuffite"
     {
@@ -85,7 +86,7 @@ struct AppBrowser {
     _services: tuffite::ioc::Registry<BrowserContext>,
 }
 
-#[tuffite::browser]
+#[tuffite::browser(interfaces(shell_api::Commands))]
 impl tuffite::Browser for AppBrowser {
     fn new(context: BrowserContext) -> ApplicationResult<Self> {
         let mut registry = tuffite::ioc::browser_registry(context)
@@ -98,17 +99,18 @@ impl tuffite::Browser for AppBrowser {
 
 #[tuffite::main(browser = AppBrowser)]
 fn main() -> tuffite::app::Builder<AppBrowser> {
-    tuffite::app::Builder::new().commands(tuffite::generate_handler![ping])
+    tuffite::app::Builder::new()
 }
 
-#[tuffite::command(shell_api::commands::Ping)]
-fn ping(_app: &mut AppBrowser, message: String) -> Result<String, CommandError> { Ok(message) }
+impl shell_api::Commands for AppBrowser {
+    fn ping(&self, message: String) -> Result<String, CommandError> { Ok(message) }
+}
 "#,
     )?;
     write(
-        &directory.join("shell_api.d.ts"),
+        &directory.join("shell_api.mojom"),
         &format!(
-            "export namespace {namespace} {{ export namespace commands {{ export function ping(message: string): Promise<string>; }} }}\n"
+            "module {namespace}; interface Commands {{ Ping@0(string message) => (string result); }};\n"
         ),
     )?;
     let manifest = serde_json::json!({
@@ -126,7 +128,7 @@ fn ping(_app: &mut AppBrowser, message: String) -> Result<String, CommandError> 
             }],
             "assets": [{"origins": [format!("{namespace}://main")], "paths": ["/index.html"], "file": "ui/index.html"}],
         },
-        "build": {"shellApi": {"namespace": namespace, "definitions": ["shell_api.d.ts"]}},
+        "build": {"mojomSources": ["shell_api.mojom"]},
         "bundle": {"resources": ["ui"]}
     });
     write(
@@ -247,7 +249,16 @@ mod tests {
             super::super::config::check(&manifest).unwrap();
             let value: serde_json::Value =
                 serde_json::from_str(&fs::read_to_string(manifest).unwrap()).unwrap();
-            assert_eq!(value["build"]["shellApi"]["namespace"], namespace);
+            assert!(value["build"].get("shellApi").is_none());
+            assert_eq!(
+                value["build"]["mojomSources"],
+                serde_json::json!(["shell_api.mojom"])
+            );
+            assert!(
+                fs::read_to_string(directory.join("shell_api.mojom"))
+                    .unwrap()
+                    .starts_with(&format!("module {namespace};"))
+            );
         }
         let invalid = root.join("invalid");
         assert!(init(&invalid, Some("---")).is_err());

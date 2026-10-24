@@ -18,7 +18,6 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "net/base/url_util.h"
-#include "tuffite/framework/app/services/manifest/scope_registry.inc"
 #include "tuffite/framework/common/access.h"
 
 namespace tuffite {
@@ -61,6 +60,29 @@ bool IsCapabilityName(std::string_view value) {
            return base::IsAsciiAlphaNumeric(character) || character == '-' ||
                   character == '_';
          });
+}
+
+bool IsUtilityName(std::string_view value) {
+  if (value.size() > 128) {
+    return false;
+  }
+  while (true) {
+    const size_t separator = value.find_first_of(".:");
+    if (!IsIdentifier(value.substr(0, separator))) {
+      return false;
+    }
+    if (separator == std::string_view::npos) {
+      return true;
+    }
+    if (value[separator] == ':') {
+      if (value.substr(separator, 2) != "::") {
+        return false;
+      }
+      value.remove_prefix(separator + 2);
+    } else {
+      value.remove_prefix(separator + 1);
+    }
+  }
 }
 
 bool IsWindowLabel(std::string_view value) {
@@ -290,12 +312,9 @@ std::unique_ptr<ManifestServiceImpl> ManifestServiceImpl::Load(
   const std::string* application_id =
       app ? app->FindString("identifier") : nullptr;
   const base::DictValue* shell_api = app ? app->FindDict("shellApi") : nullptr;
-  const std::string* shell_api_namespace =
-      shell_api ? shell_api->FindString("namespace") : nullptr;
   const base::ListValue* windows = app ? app->FindList("windows") : nullptr;
-  if (!application_id || !IsValidApplicationId(*application_id) ||
-      !shell_api_namespace || !IsIdentifier(*shell_api_namespace) ||
-      *shell_api_namespace == "tuffite" || !windows || windows->empty() ||
+  if (!application_id || !IsValidApplicationId(*application_id) || !shell_api ||
+      !windows || windows->empty() ||
       windows->size() > kMaxApplicationWindows) {
     return fail("manifest contains a missing or invalid required field");
   }
@@ -337,14 +356,13 @@ std::unique_ptr<ManifestServiceImpl> ManifestServiceImpl::Load(
       manifest->product_name_.find('\0') != std::string::npos) {
     return fail("productName is invalid");
   }
-  manifest->shell_api_namespace_ = *shell_api_namespace;
   if (const auto* utilities_value = app->Find("utilities")) {
     const auto* utilities = utilities_value->GetIfDict();
     if (!utilities) {
       return fail("app.utilities must be an object");
     }
     for (const auto [name, definition] : *utilities) {
-      if (!IsIdentifier(name) || !definition.is_dict()) {
+      if (!IsUtilityName(name) || !definition.is_dict()) {
         return fail(
             "app.utilities requires valid names and object definitions");
       }
@@ -416,9 +434,6 @@ std::unique_ptr<ManifestServiceImpl> ManifestServiceImpl::Load(
   }
   manifest->entry_url_ = manifest->windows_.front().url;
   manifest->assets_.scheme = manifest->entry_url_.scheme();
-  if (manifest->assets_.scheme != manifest->shell_api_namespace_) {
-    return fail("application URL scheme must match shellApi.namespace");
-  }
   manifest->app_host_ = manifest->entry_url_.host();
   if (!std::ranges::all_of(
           manifest->windows_, [&](const app::AppWindow& window) {
@@ -540,6 +555,11 @@ std::unique_ptr<ManifestServiceImpl> ManifestServiceImpl::Load(
       manifest->shell_api_command_ids_.emplace_back(name, id);
     }
   }
+  if (shell_api->contains("utilityRoutes")) {
+    return fail(
+        "utilityRoutes is no longer supported; register Mojom interfaces in "
+        "code");
+  }
   const auto* rules = security->FindList("capabilities");
   if (!rules) {
     return fail("app.security.capabilities must be an array");
@@ -547,9 +567,6 @@ std::unique_ptr<ManifestServiceImpl> ManifestServiceImpl::Load(
   // The new policy is default-deny, including the entry document.
   manifest->shell_api_origin_patterns_.clear();
   manifest->explorer_origin_patterns_.clear();
-  const auto scope_registry =
-      base::JSONReader::Read(kShellApiScopeRegistry, base::JSON_PARSE_RFC);
-  CHECK(scope_registry && scope_registry->is_dict());
   for (const auto& rule_value : *rules) {
     const auto* rule = rule_value.GetIfDict();
     const auto* identifier = rule ? rule->FindString("identifier") : nullptr;
@@ -614,7 +631,6 @@ std::unique_ptr<ManifestServiceImpl> ManifestServiceImpl::Load(
           return fail("only * and trailing .* method patterns are supported");
         }
         bool matched = false;
-        bool matched_scope = false;
         for (const auto& [method, id] : manifest->shell_api_command_ids_) {
           if (wildcard ? !method.starts_with(prefix) : method != *pattern) {
             continue;
@@ -622,40 +638,34 @@ std::unique_ptr<ManifestServiceImpl> ManifestServiceImpl::Load(
           matched = true;
           ShellApiGrant grant;
           grant.method = method;
-          const auto* descriptor = scope_registry->GetDict().FindDict(method);
-          if (descriptor) {
-            matched_scope = true;
-            grant.scope_kind = *descriptor->FindString("kind");
-          }
+
           for (const auto* key : {"allow", "deny"}) {
             const auto* scopes = object ? object->Find(key) : nullptr;
             if (!scopes) {
               continue;
             }
-            // Namespace groups apply resource scopes only to methods that
-            // consume resources; unscoped methods retain a plain method grant.
-            if (!descriptor && wildcard && !all_methods) {
-              continue;
-            }
-            if (!descriptor || !scopes->is_list()) {
-              return fail(method + " does not support this scope");
+            if (!scopes->is_list()) {
+              return fail(method + ": scope must be an array");
             }
             grant.has_allow |= std::string_view(key) == "allow";
             for (const auto& scope : scopes->GetList()) {
               const auto* fields = scope.GetIfDict();
-              const auto* text =
-                  fields ? fields->FindString(grant.scope_kind == "window"
-                                                  ? "window"
-                                                  : grant.scope_kind)
-                         : nullptr;
-              std::string normalized;
-              if (!text || fields->size() != 1) {
+              if (!fields || fields->size() != 1) {
                 return fail(method + ": invalid scope object");
               }
+              const auto scope_kind = fields->begin()->first;
+              const auto* text = fields->begin()->second.GetIfString();
+              if (!text ||
+                  (scope_kind != "path" && scope_kind != "url" &&
+                   scope_kind != "window") ||
+                  (!grant.scope_kind.empty() &&
+                   grant.scope_kind != scope_kind)) {
+                return fail(method + ": invalid or mixed scope kind");
+              }
+              grant.scope_kind = scope_kind;
+              std::string normalized;
               if (grant.scope_kind == "path") {
-                if (!access::NormalizePath(
-                        *text, descriptor->FindBool("write").value_or(false),
-                        &normalized)) {
+                if (!access::NormalizePath(*text, false, &normalized)) {
                   return fail(method + ": invalid path scope");
                 }
               } else if (grant.scope_kind == "url") {
@@ -677,10 +687,6 @@ std::unique_ptr<ManifestServiceImpl> ManifestServiceImpl::Load(
             }
           }
           capability.shell_api.push_back(std::move(grant));
-        }
-        if (object && (object->Find("allow") || object->Find("deny")) &&
-            !matched_scope) {
-          return fail(*pattern + " does not support scopes");
         }
         if (!matched) {
           return fail("method pattern matches no registered method: " +
@@ -762,7 +768,7 @@ bool ManifestServiceImpl::IsAllShellApiAllowed(
   // command before exposing that stream.
   bool found = false;
   for (const auto& [method, id] : shell_api_command_ids_) {
-    if (method.starts_with(shell_api_namespace_ + ".")) {
+    if (!method.starts_with("tuffite.")) {
       found = true;
       if (!IsShellApiCommandAllowed(origin, method)) {
         return false;
@@ -786,10 +792,11 @@ bool ManifestServiceImpl::IsShellApiCommandAllowed(
   });
 }
 
-bool ManifestServiceImpl::IsShellApiScopeAllowed(
-    const url::Origin& origin,
-    std::string_view method,
-    std::string_view resource) const {
+bool ManifestServiceImpl::IsShellApiScopeAllowed(const url::Origin& origin,
+                                                 std::string_view method,
+                                                 std::string_view resource,
+                                                 std::string_view kind,
+                                                 bool write) const {
   bool allowed = false;
   for (const auto& capability : origin_capabilities_) {
     if (!std::ranges::any_of(capability.origins, [&](const auto& pattern) {
@@ -801,17 +808,18 @@ bool ManifestServiceImpl::IsShellApiScopeAllowed(
       if (grant.method != method) {
         continue;
       }
+      if (!grant.scope_kind.empty() && grant.scope_kind != kind) {
+        return false;
+      }
       auto matches = [&](const std::string& pattern, bool deny) {
-        if (grant.scope_kind == "path") {
+        if (kind == "path") {
           const auto slash = resource.find('/');
           return slash != std::string_view::npos &&
                  access::MatchesPath(resource.substr(0, slash),
                                      resource.substr(slash + 1), pattern,
-                                     method != "tuffite.fs.readFile" &&
-                                         method != "tuffite.fs.exists" &&
-                                         method != "tuffite.path.resolve");
+                                     write);
         }
-        if (grant.scope_kind == "url") {
+        if (kind == "url") {
           const GURL url(resource);
           if (!deny &&
               IsLiteralPrivateOrLoopbackHost(base::ToLowerASCII(url.host()))) {
@@ -832,12 +840,28 @@ bool ManifestServiceImpl::IsShellApiScopeAllowed(
         return matches(pattern, false);
       });
       if (!grant.has_allow) {
-        allowed |= grant.scope_kind.empty() ||
-                   (grant.scope_kind == "window" && resource == "current");
+        allowed |= kind.empty() || (kind == "window" && resource == "current");
       }
     }
   }
   return allowed;
+}
+
+std::string ManifestServiceImpl::ApplicationInterface(
+    std::string_view channel) const {
+  if (channel.starts_with("tuffite.") ||
+      !std::ranges::any_of(shell_api_command_ids_, [&](const auto& item) {
+        return item.first == channel;
+      })) {
+    return {};
+  }
+  return std::string(channel.substr(0, channel.rfind('.')));
+}
+
+bool ManifestServiceImpl::IsApplicationInterface(std::string_view name) const {
+  return std::ranges::any_of(shell_api_command_ids_, [&](const auto& item) {
+    return ApplicationInterface(item.first) == name;
+  });
 }
 
 bool ManifestServiceImpl::IsApplicationCommandRequest(
@@ -856,7 +880,7 @@ std::vector<std::string> ManifestServiceImpl::ExecuteJavaScriptOrigins(
 
 bool ManifestServiceImpl::IsWindowUrlAllowed(const url::Origin& caller,
                                              const GURL& url) const {
-  return IsShellApiCommandAllowed(caller, "tuffite.window.create") &&
+  return IsShellApiCommandAllowed(caller, "tuffite.Window.Create") &&
          url.is_valid() && !url.has_username() && !url.has_password() &&
          (url.IsAboutBlank() || url.SchemeIsHTTPOrHTTPS() ||
           url.scheme() == assets_.scheme);
@@ -933,8 +957,9 @@ bool ManifestServiceImpl::IsFileSystemPathAllowed(
     bool write,
     std::string_view method) const {
   return (!write || base != "resource") &&
-         IsShellApiScopeAllowed(
-             caller, method, std::string(base) + "/" + std::string(relative));
+         IsShellApiScopeAllowed(caller, method,
+                                std::string(base) + "/" + std::string(relative),
+                                "path", write);
 }
 
 namespace {
@@ -1021,12 +1046,12 @@ bool ManifestServiceImpl::IsNetworkUrlAllowed(const url::Origin& caller,
                                               const GURL& url) const {
   return url.is_valid() && url.SchemeIsHTTPOrHTTPS() && !url.has_username() &&
          !url.has_password() &&
-         IsShellApiScopeAllowed(caller, "tuffite.net.request", url.spec());
+         IsShellApiScopeAllowed(caller, "tuffite.Net.Request", url.spec(),
+                                "url");
 }
 
 app::AppInfo ManifestServiceImpl::app_info() const {
-  return {application_id_, product_name_, entry_url_, assets_.scheme,
-          shell_api_namespace_};
+  return {application_id_, product_name_, entry_url_, assets_.scheme};
 }
 const std::vector<app::AppWindow>& ManifestServiceImpl::startup_windows()
     const {

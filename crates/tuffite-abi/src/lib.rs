@@ -422,6 +422,8 @@ pub enum Capability {
     Utility = 1,
     /// Browser-process host capabilities, introduced in ABI 0.1.0.
     Browser = 2,
+    /// Framework supports interface-to-utility routing and blocks raw access to typed owners.
+    UtilityInterfaces = 3,
 }
 
 /// Returns an immutable capability table's header, or null when unsupported.
@@ -593,7 +595,14 @@ pub struct Application {
     pub resolve_v8: Option<ResolveV8Fn>,
     /// ABI 0.1.0 service startup configuration; absent means legacy empty context.
     pub utility_start_with_context: Option<UtilityStartWithContextFn>,
+    /// Optional pure lookup. Returns a borrowed static owner for an interface or typed owner.
+    pub resolve_utility_route: Option<ResolveUtilityRouteFn>,
 }
+
+/// Resolves typed interface ownership without launching a process. The output
+/// borrows application-lifetime storage and must be copied by the caller.
+pub type ResolveUtilityRouteFn =
+    unsafe extern "C" fn(name: ByteSlice, owner_out: *mut ByteSlice) -> Status;
 
 /// Entrypoint exported by the prebuilt native Chromium Framework library.
 pub type RunFn = unsafe extern "C" fn(
@@ -798,7 +807,11 @@ mod header_parity {
             offset_of!(Application, utility_start_with_context),
             header + 13 * pointer
         );
-        assert_eq!(size_of::<Application>(), header + 14 * pointer);
+        assert_eq!(
+            offset_of!(Application, resolve_utility_route),
+            header + 14 * pointer
+        );
+        assert_eq!(size_of::<Application>(), header + 15 * pointer);
         assert_eq!(offset_of!(UtilitySessionService, header), 0);
         assert_eq!(offset_of!(UtilitySessionService, create), header);
         assert_eq!(
@@ -814,6 +827,7 @@ mod header_parity {
             ("UTILITY", super::Capability::Utility),
             ("SHELL_API", super::Capability::ShellApi),
             ("BROWSER", super::Capability::Browser),
+            ("UTILITY_INTERFACES", super::Capability::UtilityInterfaces),
         ] {
             assert_eq!(
                 expect_number(HEADER, "canonical", &format!("TUFFITE_CAPABILITY_{name}")),

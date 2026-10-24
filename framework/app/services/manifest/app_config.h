@@ -33,7 +33,6 @@ struct AppInfo {
   std::string product_name;
   GURL entry_url;
   std::string scheme;
-  std::string shell_api_namespace;
 };
 
 struct NetworkLimits {

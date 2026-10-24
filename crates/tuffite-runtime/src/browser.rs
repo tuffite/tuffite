@@ -259,4 +259,12 @@ pub trait Browser: Send + 'static {
 #[doc(hidden)]
 pub trait BrowserDefinition: Browser {
     const TYPE_NAME: &'static str;
+
+    #[must_use]
+    fn interfaces() -> Vec<crate::CommandRegistry<Self>>
+    where
+        Self: Sized,
+    {
+        Vec::new()
+    }
 }

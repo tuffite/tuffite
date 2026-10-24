@@ -19,6 +19,8 @@ using UtilityModuleResolver = base::RepeatingCallback<
     void(std::string, std::string, UtilityResponseCallback)>;
 using UtilityRegistrationChecker =
     base::RepeatingCallback<bool(std::string_view)>;
+using UtilityInterfaceResolver =
+    base::RepeatingCallback<std::string(std::string_view)>;
 
 }  // namespace tuffite
 #endif  // TUFFITE_FRAMEWORK_APP_SERVICES_UTILITY_UTILITY_TYPES_H_

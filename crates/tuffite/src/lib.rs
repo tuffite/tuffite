@@ -77,7 +77,7 @@ pub mod __private {
     pub use tuffite_runtime::browser::BrowserDefinition;
     pub use tuffite_runtime::utility::{UtilityDefinition, validate_utility_names};
     pub use tuffite_runtime::{CommandHandler, CommandRegistry};
-    pub use tuffite_runtime::{codec, serde};
+    pub use tuffite_runtime::{codec, mojom, serde};
 }
 
 /// Builds a statically checked command registry from explicitly annotated

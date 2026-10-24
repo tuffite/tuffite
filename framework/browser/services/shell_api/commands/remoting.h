@@ -4,38 +4,43 @@
 #ifndef TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_REMOTING_H_
 #define TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_REMOTING_H_
 
-#include "tuffite/framework/shell_api/remoting.h"
+#include "tuffite/framework/shell_api/remoting.mojom.h"
 
 namespace tuffite::shell_api::remoting {
 
-void Capabilities(const ::tuffite::dispatch::Context& context,
-                  generated::remoting::CapabilitiesRequest&& request,
-                  generated::remoting::CapabilitiesCallback&& callback);
-void Start(const ::tuffite::dispatch::Context& context,
-           generated::remoting::StartRequest&& request,
-           generated::remoting::StartCallback&& callback);
-void ProcessSignal(const ::tuffite::dispatch::Context& context,
-                   generated::remoting::ProcessSignalRequest&& request,
-                   generated::remoting::ProcessSignalCallback&& callback);
-void TakeSignals(const ::tuffite::dispatch::Context& context,
-                 generated::remoting::TakeSignalsRequest&& request,
-                 generated::remoting::TakeSignalsCallback&& callback);
-void SendInput(const ::tuffite::dispatch::Context& context,
-               generated::remoting::SendInputRequest&& request,
-               generated::remoting::SendInputCallback&& callback);
-void InjectInput(const ::tuffite::dispatch::Context& context,
-                 generated::remoting::InjectInputRequest&& request,
-                 generated::remoting::InjectInputCallback&& callback);
+class RemotingImpl final : public generated::Remoting {
+ public:
+  void Capabilities(
+      const dispatch::Context& context,
+      generated::Remoting::CapabilitiesRequestPtr request,
+      generated::Remoting::CapabilitiesCallback callback) override;
+  void Start(const dispatch::Context& context,
+             generated::Remoting::StartRequestPtr request,
+             generated::Remoting::StartCallback callback) override;
+  void ProcessSignal(
+      const dispatch::Context& context,
+      generated::Remoting::ProcessSignalRequestPtr request,
+      generated::Remoting::ProcessSignalCallback callback) override;
+  void TakeSignals(const dispatch::Context& context,
+                   generated::Remoting::TakeSignalsRequestPtr request,
+                   generated::Remoting::TakeSignalsCallback callback) override;
+  void SendInput(const dispatch::Context& context,
+                 generated::Remoting::SendInputRequestPtr request,
+                 generated::Remoting::SendInputCallback callback) override;
+  void InjectInput(const dispatch::Context& context,
+                   generated::Remoting::InjectInputRequestPtr request,
+                   generated::Remoting::InjectInputCallback callback) override;
 
-void Stop(const ::tuffite::dispatch::Context& context,
-          generated::remoting::StopRequest&& request,
-          generated::remoting::StopCallback&& callback);
-void Stats(const ::tuffite::dispatch::Context& context,
-           generated::remoting::StatsRequest&& request,
-           generated::remoting::StatsCallback&& callback);
-void Capture(const ::tuffite::dispatch::Context& context,
-             generated::remoting::CaptureRequest&& request,
-             generated::remoting::CaptureCallback&& callback);
+  void Stop(const dispatch::Context& context,
+            generated::Remoting::StopRequestPtr request,
+            generated::Remoting::StopCallback callback) override;
+  void Stats(const dispatch::Context& context,
+             generated::Remoting::StatsRequestPtr request,
+             generated::Remoting::StatsCallback callback) override;
+  void Capture(const dispatch::Context& context,
+               generated::Remoting::CaptureRequestPtr request,
+               generated::Remoting::CaptureCallback callback) override;
+};
 
 }  // namespace tuffite::shell_api::remoting
 

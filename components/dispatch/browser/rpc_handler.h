@@ -8,10 +8,13 @@
 
 #include "base/functional/callback.h"
 #include "base/unguessable_token.h"
+
 namespace content {
 class RenderFrameHost;
 }
+
 namespace tuffite {
+
 class RpcHandler {
  public:
   using Reply = base::OnceCallback<void(int32_t, const std::vector<uint8_t>&)>;
@@ -35,6 +38,7 @@ class RpcHandler {
   virtual void CancelDocument(const base::UnguessableToken&) = 0;
   virtual void Subscribe(const base::UnguessableToken&, Event) = 0;
 };
+
 }  // namespace tuffite
 
 #endif  // TUFFITE_COMPONENTS_DISPATCH_BROWSER_RPC_HANDLER_H_

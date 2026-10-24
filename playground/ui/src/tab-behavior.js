@@ -1,4 +1,4 @@
-import '/shell_api.js';
+import '/tuffite.js';
 const hosts = document.querySelector('#tab-hosts');
 const status = document.querySelector('#tab-status');
 const output = document.querySelector('#tab-output');

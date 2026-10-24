@@ -18,6 +18,10 @@ class UtilityService : public KeyedService {
   virtual void SetUtilityModuleResolver(UtilityModuleResolver resolver) {}
   virtual void SetUtilityRegistrationChecker(
       UtilityRegistrationChecker checker) = 0;
+  virtual bool IsRegisteredUtility(std::string_view name) const = 0;
+  virtual void SetUtilityInterfaceResolver(
+      UtilityInterfaceResolver resolver) = 0;
+  virtual std::string ResolveUtilityInterface(std::string_view name) const = 0;
   virtual void InvokeUtilityService(const base::UnguessableToken& owner,
                                     uint64_t request_id,
                                     std::string name,

@@ -1,0 +1,3 @@
+import type { MojomStructSchema, MojomCommandEntry } from 'tuffite';
+export declare const mojomTypes: Readonly<Record<string, MojomStructSchema>>;
+export declare const mojomMethods: readonly MojomCommandEntry[];

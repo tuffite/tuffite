@@ -199,6 +199,7 @@ typedef struct tuffite_utility_session_client {
 #define TUFFITE_CAPABILITY_SHELL_API ((uint32_t)0)
 #define TUFFITE_CAPABILITY_UTILITY ((uint32_t)1)
 #define TUFFITE_CAPABILITY_BROWSER ((uint32_t)2)
+#define TUFFITE_CAPABILITY_UTILITY_INTERFACES ((uint32_t)3)
 typedef const tuffite_abi_header* (
     *tuffite_query_extension_fn)(void* user_data, uint32_t capability);
 typedef struct tuffite_utility {
@@ -358,6 +359,13 @@ typedef tuffite_status_t (*tuffite_utility_start_with_context_fn)(
     tuffite_byte_slice_t configuration,
     tuffite_handle_t* service_out);
 
+// Pure lookup for an interface or typed owner. The returned owner borrows
+// application-lifetime storage. The caller copies it without transferring
+// ownership.
+typedef tuffite_status_t (*tuffite_resolve_utility_route_fn)(
+    tuffite_byte_slice_t name,
+    tuffite_byte_slice_t* owner_out);
+
 typedef struct tuffite_application {
   tuffite_abi_header header;
   tuffite_application_start_fn start;
@@ -369,6 +377,7 @@ typedef struct tuffite_application {
   tuffite_utility_runtime_fn utility_runtime;
   tuffite_resolve_v8_fn resolve_v8;
   tuffite_utility_start_with_context_fn utility_start_with_context;
+  tuffite_resolve_utility_route_fn resolve_utility_route;
 } tuffite_application;
 
 #if defined(_WIN32)

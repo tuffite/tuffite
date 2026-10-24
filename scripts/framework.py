@@ -619,12 +619,7 @@ def package(args: argparse.Namespace) -> None:
         if not copied:
             raise RuntimeError("GN returned no packageable runtime dependencies")
         web_runtime_sources = {
-            "tuffite-runtime.js": ROOT / "packages" / "tuffite" / "runtime.js",
-            "tuffite-shell-api.js": ROOT
-            / "packages"
-            / "tuffite"
-            / "generated"
-            / "index.js",
+            "tuffite.js": ROOT / "packages" / "tuffite" / "generated" / "index.js",
         }
         for name, source in web_runtime_sources.items():
             copy_file(source, runtime_root / name)

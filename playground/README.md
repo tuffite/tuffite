@@ -22,24 +22,48 @@ cancels an intentionally infinite extension call across Mojo.
 Business handlers bind their generated endpoint with
 `#[tuffite::command(shell_api::...::Endpoint)]`, and a shared `main()`
 explicitly lists the handlers in `tuffite::generate_handler![...]`.
-`lib.rs` marks that builder with `#[tuffite::main(browser = PlaygroundBrowser, utilities(echo_utility::EchoUtility, v8_utility::Parser))]`; packaging installs
+`lib.rs` marks that builder with `#[tuffite::main(browser = PlaygroundBrowser, utilities(echo_utility::EchoUtility, v8_utility::Parser, typed_utility::Worker))]`; packaging installs
 the native `tuffite_launcher` under the business executable name. The endpoint attribute keeps
 the full channel, stable ID, parameter, and return type checks close to the
 function while Builder registration stays concise and contains no strings.
 
 `tuffite.json` declares explicit `app.assets[]` routes, startup `app.windows[]`,
-codegen in `build.shellApi`, runtime settings in `app.network`, and
+codegen in `build.mojomSources`, runtime settings in `app.network`, and
 origin-scoped operation grants in `app.security.capabilities[]`. Artifact and
 preview documents share read-only framework grants while keeping independent
 origins. The permissions lab also checks business grant union and navigation
 revocation. Explorer navigation and network URL scopes support host/path
 patterns; filesystem scopes use logical paths such as `data/*`.
-`shell_api.d.ts` is the business API contract; generated Rust and JavaScript
+`shell_api.mojom` is the business API contract; generated Rust and JavaScript
 bindings live in `OUT_DIR` and `generated/`. Hand-written Web sources live in
 `ui/`; Vite emits production assets to `ui/dist/`. The reusable framework facade is
 in `packages/tuffite`. Utility service availability is registered explicitly by
-`#[tuffite::main(..., utilities(echo_utility::EchoUtility, v8_utility::Parser))]` in `src/lib.rs`; it is not duplicated in the
+`#[tuffite::main(..., utilities(echo_utility::EchoUtility, v8_utility::Parser, typed_utility::Worker))]` in `src/lib.rs`; it is not duplicated in the
 manifest.
+
+Application calls import `commands` from `/shell_api.js`; generated bindings no
+longer install `window.playground`. `createPlaygroundApi(transport)` creates an
+independent client for a custom transport. Framework methods are imported from `/tuffite.js` as an ES module;
+no business methods are installed on the native global bridge. `BaseDirectory`
+is a numeric enum exported by that module. The native Rust compiler
+frontend is the standalone `tuffite-mojom` crate; SDK binding generators live in
+`tuffite::build` and are shared by the CLI and Cargo build helper.
+
+The contract imports `mojom_data.mojom` to exercise Mojom v0 field packing,
+64-bit integers, nested structs, UTF-8 strings and byte arrays. Startup checks
+typed JavaScript calls into Browser Rust and reuses the same generated data
+codec in Utility Rust. `python3 playground/scripts/smoke.py --package
+dist/playground --mojom` verifies those calls and numeric boundaries through
+CDP on an isolated `mojom-smoke.html` page; the Framework smoke suite includes
+this check. `echo.roundTrip` is routed by the native broker to the independent
+Rust Worker via generated `Echo` and `Aux` traits. Browser registration uses
+`#[tuffite::browser(interfaces(shell_api::Commands, shell_api::Diagnostics))]`;
+Utility registration uses `#[tuffite::utility(interfaces(shell_api::Echo, shell_api::Aux))]`
+on the Worker struct. Both Utility interfaces share one instance; the codec smoke
+checks cross-interface state and a process ID distinct from the Browser. Permissions use the original
+`playground.Echo.RoundTrip` spelling. The capability smoke allows that endpoint
+while denying `Echo.Restricted` and `Aux.RoundTrip`, and the codec fixture rejects
+raw invoke/cancel bypasses, forged IDs and mismatched schemas.
 
 ## Rust and V8 utility examples
 

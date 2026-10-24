@@ -1,0 +1,46 @@
+// Shell API contract. JS/TS, Rust and C++ adapters are generated.
+module tuffite;
+
+import "tuffite/framework/shell_api/common.mojom";
+
+struct WindowBounds {
+  double x;
+  double y;
+  double width;
+  double height;
+};
+
+struct WindowInfo {
+  int64 id;
+  string label;
+  string title;
+  string url;
+  WindowBounds bounds;
+  bool focused;
+  bool minimized;
+  bool maximized;
+  bool fullscreen;
+};
+
+struct WindowOptions {
+  string? label;
+  string? url;
+  string? title;
+  WindowBounds? bounds;
+  bool? focused;
+};
+
+interface Window {
+  Current@0() => (WindowInfo result);
+  List@1() => (array<WindowInfo> result);
+  Create@2(WindowOptions? options) => (WindowInfo result);
+  Focus@3(int64? id) => (WindowInfo result);
+  Minimize@4(int64? id) => (WindowInfo result);
+  Maximize@5(int64? id) => (WindowInfo result);
+  Restore@6(int64? id) => (WindowInfo result);
+  SetFullscreen@7(bool fullscreen, int64? id) => (WindowInfo result);
+  Close@8(int64? id) => ();
+  SetTitle@9(string title, int64? id) => (WindowInfo result);
+  GetBounds@10(int64? id) => (WindowBounds result);
+  SetBounds@11(WindowBounds bounds, int64? id) => (WindowInfo result);
+};

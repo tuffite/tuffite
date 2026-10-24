@@ -1,108 +1,144 @@
-# Copyright 2026 The Tuffite Authors
-# SPDX-License-Identifier: MIT OR Apache-2.0
-
+# Native bindings use Chromium's parser, resolved IR and C++ template engine.
+import("//mojo/public/tools/bindings/mojom.gni")
 import("//tuffite/tuffite_in_chromium.gni")
 
-# Emits the C++ ShellAPI protocol from a Tuffite manifest and packages the
-# generated sources as a `source_set` target so consumers can list it in
-# `deps` and immediately `#include` the generated header.
-#
-# Parameters:
-#   manifest (required): source-absolute path to the tuffite.json driving codegen
-#   definitions (required): source-absolute `.d.ts` inputs, in manifest order
-#   visibility, testonly: forwarded to the emitted source_set
 template("shell_api_protocol") {
   assert(tuffite_in_chromium)
-  assert(defined(invoker.manifest),
-         "shell_api_protocol($target_name) requires `manifest`")
-  assert(defined(invoker.definitions) && invoker.definitions != [],
-         "shell_api_protocol($target_name) requires `definitions`")
-
-  _manifest = invoker.manifest
+  _consumer = target_name
   _definitions = invoker.definitions
-  _deps = []
-  if (defined(invoker.deps)) {
-    _deps = invoker.deps
-  }
-  _public_deps = []
-  if (defined(invoker.public_deps)) {
-    _public_deps = invoker.public_deps
-  }
-  _consumer_target = target_name
-  _generated_action = "${target_name}__action"
-  _generated_config = "${target_name}__config"
-
-  # Mirror the schema directory below root_gen_dir, so `fs.d.ts` produces
-  # `fs.{h,cc}` beside its generated peers without embedding a consumer path in
-  # this reusable template.
-  _definition_dir = get_path_info(_definitions[0], "dir")
-  _relative_definition_dir = string_replace(_definition_dir, "//", "")
-  _output_dir = "$root_gen_dir/$_relative_definition_dir"
-  _generated_plan = "$_output_dir/.tuffite-cpp-outputs.json"
-  _depfile = "$target_gen_dir/${target_name}.d"
-  _generated_sources = []
-  foreach(_definition, _definitions) {
-    assert(get_path_info(_definition, "dir") == _definition_dir,
-           "ShellAPI definitions must share one source directory")
-    _name = get_path_info(_definition, "file")
-    _stem = string_replace(_name, ".d.ts", "")
-    assert("${_stem}.d.ts" == _name,
-           "ShellAPI definition must end in .d.ts: $_definition")
-    _generated_sources += [
-      "$_output_dir/${_stem}.cc",
-      "$_output_dir/${_stem}.h",
+  _contract_dir = get_path_info(_definitions[0], "dir")
+  _output_dir = "$root_gen_dir/" + string_replace(_contract_dir, "//", "")
+  _parser = "${target_name}_parser"
+  _generator = "${target_name}_generator"
+  _modules = []
+  _headers = []
+  _sources = []
+  _wire_templates = []
+  _wire_sources = []
+  _bindings = []
+  _generated = []
+  foreach(_source, _definitions) {
+    assert(get_path_info(_source, "dir") == _contract_dir)
+    _path = "$root_gen_dir/" + string_replace(_source, "//", "")
+    _modules += [ "${_path}-module" ]
+    _headers += [ "${_path}-h" ]
+    _sources += [ "${_path}-cc" ]
+    _wire_templates += [ "${_path}-wire.mojom.inc" ]
+    _wire_sources += [ "${_path}-wire.mojom" ]
+    _bindings += [
+      "${_path}.h",
+      "${_path}.cc",
+    ]
+    _generated += [
+      "${_path}-h",
+      "${_path}-cc",
+      "${_path}-wire.mojom.inc",
+      "${_path}-macros.inc",
     ]
   }
-
-  action(_generated_action) {
-    visibility = [ ":${_consumer_target}" ]
-    script = "//tuffite/build/shell_api_protocol.py"
-    inputs = [
-               _manifest,
-               "//tuffite/build/shell_api_protocol.py",
-             ] + _definitions
-    outputs = _generated_sources + [ _generated_plan ]
-    depfile = _depfile
+  _filelist = "$target_gen_dir/${_consumer}.inputs"
+  _metadata = "$target_gen_dir/${_consumer}.imports.json"
+  write_file(_filelist, rebase_path(_definitions, root_build_dir))
+  _import_metadata = {
+    sources = rebase_path(_definitions, get_path_info(_metadata, "dir"))
+    deps = []
+  }
+  write_file(_metadata, _import_metadata, "json")
+  action(_parser) {
+    script = mojom_parser_script
+    sources = _definitions
+    inputs = mojom_parser_sources + ply_sources + [
+               _filelist,
+               _metadata,
+             ]
+    outputs = _modules
     args = [
-      "--framework-root",
-      rebase_path("//tuffite", root_build_dir),
-      "--target-dir",
-      rebase_path("$root_out_dir/tuffite_host_tools", root_build_dir),
-      "--manifest",
-      rebase_path(_manifest, root_build_dir),
-      "--output",
-      rebase_path(_output_dir, root_build_dir),
-      "--depfile",
-      rebase_path(_depfile, root_build_dir),
-      "--depfile-target",
-
-      # Ninja validates the depfile against the action's first output.
-      rebase_path(_generated_sources[0], root_build_dir),
+      "--input-root",
+      rebase_path("//", root_build_dir),
+      "--input-root",
+      rebase_path(root_gen_dir, root_build_dir),
+      "--output-root",
+      rebase_path(root_gen_dir, root_build_dir),
+      "--mojom-file-list=" + rebase_path(_filelist, root_build_dir),
+      "--check-imports",
+      rebase_path(_metadata, root_build_dir),
     ]
-    foreach(_definition, _definitions) {
+  }
+  action(_generator) {
+    script = mojom_generator_script
+    sources = _definitions
+    _templates = [
+      "//tuffite/build/mojom_templates/macros.inc.tmpl",
+      "//tuffite/build/mojom_templates/wire.mojom.inc.tmpl",
+      "//tuffite/build/mojom_templates/h.tmpl",
+      "//tuffite/build/mojom_templates/cc.tmpl",
+    ]
+    inputs = mojom_generator_sources + jinja2_sources + _modules + _templates +
+             [ _filelist ]
+    outputs = _generated
+    deps = [ ":$_parser" ]
+
+    # Extra-only generation avoids producing unused Mojo endpoint bindings at
+    # the same .mojom.{h,cc} paths owned by the Dispatch interface projection.
+    args = [
+      "--use_bundled_pylibs",
+      "-o",
+      rebase_path(root_gen_dir, root_build_dir),
+      "generate",
+      "-d",
+      rebase_path("//", root_build_dir),
+      "-g",
+      "c++",
+      "--bytecode_path",
+      rebase_path(root_gen_dir, root_build_dir),
+      "--generate_extra_cpp_only",
+      "--filelist=" + rebase_path(_filelist, root_build_dir),
+    ]
+    foreach(_template, _templates) {
       args += [
-        "--definition",
-        rebase_path(_definition, root_build_dir),
+        "--extra_cpp_template_paths",
+        rebase_path(_template, root_build_dir),
       ]
     }
   }
-
-  config(_generated_config) {
-    include_dirs = [ root_gen_dir ]
+  copy("${_consumer}_headers") {
+    sources = _headers
+    outputs = [ "$_output_dir/{{source_name_part}}.mojom.h" ]
+    deps = [ ":$_generator" ]
+  }
+  copy("${_consumer}_sources") {
+    sources = _sources
+    outputs = [ "$_output_dir/{{source_name_part}}.mojom.cc" ]
+    deps = [ ":$_generator" ]
   }
 
-  _deps += [ ":${_generated_action}" ]
-  _public_deps += [ "//base" ]
-
-  source_set(target_name) {
+  # A final .inc also avoids Chromium's rstrip(".tmpl") truncating '.mojom'.
+  copy("${_consumer}_wire_sources") {
+    sources = _wire_templates
+    outputs = [ "$_output_dir/{{source_name_part}}" ]
+    deps = [ ":$_generator" ]
+  }
+  mojom("${_consumer}_wire") {
+    sources = _wire_sources
+    parser_deps = [ ":${_consumer}_wire_sources" ]
+    cpp_only = true
+    disable_variants = true
+  }
+  source_set(_consumer) {
     forward_variables_from(invoker,
                            [
                              "testonly",
                              "visibility",
                            ])
-    sources = _generated_sources
-    deps = _deps
-    public_configs = [ ":${_generated_config}" ]
-    public_deps = _public_deps
+    sources = _bindings
+    public_deps = [
+      ":${_consumer}_wire",
+      "//tuffite/components/dispatch/browser",
+      "//tuffite/components/dispatch/common:implementation",
+    ]
+    deps = [
+      ":${_consumer}_headers",
+      ":${_consumer}_sources",
+    ]
   }
 }

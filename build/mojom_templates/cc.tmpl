@@ -1,0 +1,16 @@
+#include "{{module.path}}.h"
+
+namespace tuffite::shell_api::generated {
+{% for interface in interfaces %}
+rpc::Service {{interface.name}}::Bind(std::shared_ptr<{{interface.name}}> implementation) {
+  return rpc::BindService(kName, std::move(implementation),
+      [](std::shared_ptr<{{interface.name}}> service, const dispatch::Context& context,
+         std::string_view method, base::span<const uint8_t> input, rpc::Reply* reply) {
+{% for method in interface.methods %}        if (method == "{{method.name}}") {
+          return {{method.name}}Method::Dispatch(std::move(service), context, input, reply, &{{interface.name}}::{{method.name}});
+        }
+{% endfor %}        return false;
+      });
+}
+{% endfor %}
+}  // namespace tuffite::shell_api::generated

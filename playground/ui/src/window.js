@@ -1,4 +1,5 @@
-import '/tuffite-shell-api.js';
+import * as frameworkApi from "/tuffite.js";
+
 
 const output = document.querySelector('#window-info');
 let current;
@@ -10,21 +11,21 @@ function show(info) {
 }
 
 try {
-  current = await window.tuffite.window.current();
+  current = await frameworkApi.window.current();
   show(current);
 } catch (error) {
   output.textContent = `Window error: ${error.message}`;
 }
 
 document.querySelector('#child-title').addEventListener('click', async () => {
-  current = await window.tuffite.window.setTitle(
+  current = await frameworkApi.window.setTitle(
       `Managed child · ${new Date().toLocaleTimeString()}`, current.id);
   show(current);
 });
 
 document.querySelector('#child-resize').addEventListener('click', async () => {
-  const bounds = await window.tuffite.window.getBounds(current.id);
-  current = await window.tuffite.window.setBounds({
+  const bounds = await frameworkApi.window.getBounds(current.id);
+  current = await frameworkApi.window.setBounds({
     x: bounds.x + 12,
     y: bounds.y + 12,
     width: bounds.width === 640 ? 560 : 640,
@@ -34,4 +35,4 @@ document.querySelector('#child-resize').addEventListener('click', async () => {
 });
 
 document.querySelector('#child-close').addEventListener('click', () =>
-  window.tuffite.window.close(current.id));
+  frameworkApi.window.close(current.id));

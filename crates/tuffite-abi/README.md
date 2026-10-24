@@ -860,3 +860,12 @@ root for generation checks, browser tests, Python tests, Rust tests, formatting
 and Clippy. ABI changes also require native consumer compilation and C layout
 checks. Cross-process behavior requires the native/packaged smoke suites;
 compilation alone does not prove those runtime flows.
+
+Grouped typed Utility implementations append an optional `resolve_utility_route`
+callback to `Application`. It maps an IDL interface (or typed owner) to a borrowed
+application-lifetime owner name, without IPC or process launch. Framework copies
+the returned bytes immediately. The `UtilityInterfaces = 3` / `TUFFITE_CAPABILITY_UTILITY_INTERFACES`
+header-only capability confirms routing and raw-owner bypass protection. Apps
+with grouped typed utilities require it before creating Browser state; existing
+raw apps do not require this capability. Older application table prefixes remain
+supported through `struct_size` checks.

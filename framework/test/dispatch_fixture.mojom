@@ -1,0 +1,13 @@
+// Test the native adapter with move-only nested values and multiple results.
+module tuffite;
+
+struct DispatchValue {
+  string label;
+  array<uint8> bytes;
+};
+
+interface DispatchFixture {
+  RoundTrip@0(DispatchValue? value, array<DispatchValue> values)
+      => (uint32 count, DispatchValue? value, array<DispatchValue> values);
+  Empty@1() => ();
+};

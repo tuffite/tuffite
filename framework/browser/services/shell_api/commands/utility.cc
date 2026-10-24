@@ -8,17 +8,18 @@
 #include "base/functional/bind.h"
 #include "content/public/browser/render_frame_host.h"
 #include "tuffite/framework/app/application_context.h"
+#include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/browser/browser_context.h"
-#include "tuffite/framework/browser/services/shell_api/commands/registry.h"
+#include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
 #include "tuffite/framework/public/abi.h"
 
 namespace tuffite::shell_api::utility {
 
-using generated::utility::CancelCallback;
-using generated::utility::CancelRequest;
-using generated::utility::InvokeCallback;
-using generated::utility::InvokeRequest;
+using CancelCallback = generated::Utility::CancelCallback;
+using CancelRequestPtr = generated::Utility::CancelRequestPtr;
+using InvokeCallback = generated::Utility::InvokeCallback;
+using InvokeRequestPtr = generated::Utility::InvokeRequestPtr;
 
 namespace {
 
@@ -48,20 +49,34 @@ rpc::Status ToRpcStatus(tuffite_status_t status) {
 
 }  // namespace
 
-void Invoke(const ::tuffite::dispatch::Context& context,
-            InvokeRequest&& request,
-            InvokeCallback&& callback) {
-  if (!IsValidRequest(request.name, request.request_id)) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void UtilityImpl::Invoke(const dispatch::Context& context,
+                         InvokeRequestPtr request,
+                         InvokeCallback callback) {
+  if (!IsUnscopedAllowed(context, generated::Utility::kInvoke)) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
+    return;
+  }
+  if (!IsValidRequest(request->name, request->request_id)) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
   auto& application =
       (context.is_application()
            ? *context.native_application
            : BrowserContext::GetFrom(context.frame()).application_context());
+  if (!context.is_application() &&
+      (application.GetService<ManifestService>()->IsApplicationInterface(
+           request->name) ||
+       !application.GetService<UtilityService>()
+            ->ResolveUtilityInterface(request->name)
+            .empty())) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
+    return;
+  }
   application.GetService<UtilityService>()->InvokeUtilityService(
-      context.document, static_cast<uint64_t>(request.request_id), request.name,
-      std::move(request.payload).value_or(std::vector<uint8_t>()),
+      context.document, static_cast<uint64_t>(request->request_id),
+      request->name,
+      std::move(request->payload).value_or(std::vector<uint8_t>()),
       base::BindOnce(
           [](InvokeCallback callback, int32_t status,
              std::vector<uint8_t> response) {
@@ -70,21 +85,34 @@ void Invoke(const ::tuffite::dispatch::Context& context,
           std::move(callback)));
 }
 
-void Cancel(const ::tuffite::dispatch::Context& context,
-            CancelRequest&& request,
-            CancelCallback&& callback) {
-  if (!IsValidRequest(request.name, request.request_id)) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void UtilityImpl::Cancel(const dispatch::Context& context,
+                         CancelRequestPtr request,
+                         CancelCallback callback) {
+  if (!IsUnscopedAllowed(context, generated::Utility::kCancel)) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
+    return;
+  }
+  if (!IsValidRequest(request->name, request->request_id)) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
   auto& application =
       (context.is_application()
            ? *context.native_application
            : BrowserContext::GetFrom(context.frame()).application_context());
+  if (!context.is_application() &&
+      (application.GetService<ManifestService>()->IsApplicationInterface(
+           request->name) ||
+       !application.GetService<UtilityService>()
+            ->ResolveUtilityInterface(request->name)
+            .empty())) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
+    return;
+  }
   application.GetService<UtilityService>()->CancelUtilityService(
-      context.document, request.name,
-      static_cast<uint64_t>(request.request_id));
-  std::move(callback).Run(kStatusOk, {});
+      context.document, request->name,
+      static_cast<uint64_t>(request->request_id));
+  std::move(callback).Run(rpc::Status::kOk);
 }
 
 }  // namespace tuffite::shell_api::utility

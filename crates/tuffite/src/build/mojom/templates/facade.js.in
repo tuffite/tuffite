@@ -1,0 +1,5 @@
+import { createMojomCommandApi, invokeBinary } from '/tuffite.js';
+export function $Factory(transport = $Transport) {
+  return createMojomCommandApi(mojomMethods, $Namespace, transport);
+}
+export const $Exports = $Factory();

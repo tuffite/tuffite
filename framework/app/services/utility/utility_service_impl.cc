@@ -742,6 +742,23 @@ class UtilityServiceImpl final : public UtilityService {
       UtilityRegistrationChecker checker) override {
     SetRegistrationChecker(std::move(checker));
   }
+  bool IsRegisteredUtility(std::string_view name) const override {
+    return !stopped_ && checker_ && checker_.Run(name);
+  }
+  void SetUtilityInterfaceResolver(UtilityInterfaceResolver resolver) override {
+    if (!stopped_) {
+      interface_resolver_ = std::move(resolver);
+    }
+  }
+  std::string ResolveUtilityInterface(std::string_view name) const override {
+    if (stopped_ || name.empty()) {
+      return {};
+    }
+    if (interface_resolver_) {
+      return interface_resolver_.Run(name);
+    }
+    return {};
+  }
   void InvokeUtilityService(const base::UnguessableToken& owner,
                             uint64_t request_id,
                             std::string name,
@@ -937,6 +954,7 @@ class UtilityServiceImpl final : public UtilityService {
   std::map<RequestKey, uint64_t> request_ids_;
   std::map<std::string, std::unique_ptr<UtilityServiceHost>> hosts_;
   UtilityRegistrationChecker checker_;
+  UtilityInterfaceResolver interface_resolver_;
   UtilityModuleResolver resolver_;
   SEQUENCE_CHECKER(sequence_checker_);
   base::WeakPtrFactory<UtilityServiceImpl> weak_factory_{this};

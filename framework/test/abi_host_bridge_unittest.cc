@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "tuffite/framework/app/abi_host_bridge.h"
 
+#include <array>
+#include <optional>
 #include <thread>
 #include <utility>
 
@@ -13,6 +15,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "tuffite/components/dispatch/browser/rpc.h"
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/main_delegate.h"
 #include "tuffite/framework/app/process_launch.h"
@@ -22,10 +25,12 @@
 #include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/browser/services/context_menu/context_menu_service.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service.h"
-#include "tuffite/framework/browser/services/shell_api/commands/registry.h"
+#include "tuffite/framework/browser/services/shell_api/commands/builtin.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service_factory.h"
 #include "tuffite/framework/browser/services/webauthn/web_authentication_service.h"
+#include "tuffite/framework/shell_api/path.mojom.h"
+#include "tuffite/framework/test/dispatch_fixture.mojom.h"
 #include "url/url_util.h"
 
 namespace tuffite {
@@ -42,6 +47,54 @@ class ShellApiServiceFactoryTestPeer {
 };
 
 namespace {
+
+class DeferredPath final : public shell_api::generated::Path {
+ public:
+  DeferredPath(DirectoriesCallback& reply,
+               std::optional<dispatch::Context>& caller)
+      : reply_(reply), caller_(caller) {}
+  void Directories(const dispatch::Context& context,
+                   DirectoriesRequestPtr,
+                   DirectoriesCallback reply) override {
+    *caller_ = context;
+    *reply_ = std::move(reply);
+  }
+  void Resolve(const dispatch::Context&,
+               ResolveRequestPtr,
+               ResolveCallback reply) override {
+    rpc::Reject(reply, rpc::Status::kInvalidArgument);
+  }
+
+ private:
+  raw_ref<DirectoriesCallback> reply_;
+  raw_ref<std::optional<dispatch::Context>> caller_;
+};
+
+class DispatchFixtureImpl final : public shell_api::generated::DispatchFixture {
+ public:
+  void RoundTrip(const dispatch::Context& context,
+                 RoundTripRequestPtr request,
+                 RoundTripCallback reply) override {
+    EXPECT_TRUE(context.is_application());
+    if (!request->value) {
+      rpc::Reject(reply, rpc::Status::kAccessDenied);
+      return;
+    }
+    // Directly transfer official StructPtrs and arrays into the reply.
+    const auto count = static_cast<uint32_t>(request->values.size());
+    std::move(reply).Run(rpc::Status::kOk, count, std::move(request->value),
+                         std::move(request->values));
+  }
+  void Empty(const dispatch::Context& context,
+             EmptyRequestPtr,
+             EmptyCallback reply) override {
+    EXPECT_TRUE(context.is_valid());
+    std::move(reply).Run(rpc::Status::kOk);
+  }
+};
+
+// Version-zero empty Mojom request struct: num_bytes=8, version=0.
+constexpr std::array<uint8_t, 8> kEmptyMojomRequest = {8, 0, 0, 0, 0, 0, 0, 0};
 
 void RunPendingBrowserTasks() {
   // Observe a barrier after previously posted browser tasks. Negative
@@ -260,6 +313,25 @@ TEST(AbiHostBridgeTest, PreservesResolverWithoutReadingStartupContextTail) {
   EXPECT_EQ(bridge->application().utility_start_with_context, nullptr);
 }
 
+TEST(AbiHostBridgeTest, OptionalUtilityRouteTailPreservesStartupContext) {
+  auto application = FakeApplication();
+  application.utility_start_with_context = [](auto...) {
+    return TUFFITE_STATUS_OK;
+  };
+  application.resolve_utility_route = [](auto...) {
+    return TUFFITE_STATUS_NOT_FOUND;
+  };
+  auto bridge = AbiHostBridge::Create(&application);
+  ASSERT_TRUE(bridge);
+  EXPECT_NE(bridge->application().resolve_utility_route, nullptr);
+  application.header.struct_size =
+      offsetof(tuffite_application, resolve_utility_route);
+  bridge = AbiHostBridge::Create(&application);
+  ASSERT_TRUE(bridge);
+  EXPECT_NE(bridge->application().utility_start_with_context, nullptr);
+  EXPECT_EQ(bridge->application().resolve_utility_route, nullptr);
+}
+
 TEST(AbiHostBridgeTest, RejectsIncompatibleAbiMajor) {
   auto application = FakeApplication();
   application.header.version.major ^= 1;
@@ -345,6 +417,10 @@ TEST(AbiHostBridgeTest, CapabilityTablesAreStableAndUnknownIdsAreUnsupported) {
                                                  TUFFITE_CAPABILITY_BROWSER);
   ASSERT_NE(header, nullptr);
   EXPECT_EQ(header->struct_size, sizeof(tuffite_browser_host));
+  const auto* interfaces = callbacks.query_extension(
+      callbacks.user_data, TUFFITE_CAPABILITY_UTILITY_INTERFACES);
+  ASSERT_NE(interfaces, nullptr);
+  EXPECT_EQ(interfaces->struct_size, sizeof(tuffite_abi_header));
   const auto* browser = reinterpret_cast<const tuffite_browser_host*>(header);
   ASSERT_NE(browser->utility, nullptr);
   ASSERT_NE(browser->shell_api, nullptr);
@@ -401,10 +477,11 @@ TEST(AbiHostBridgeTest, QueuedShellApiRepliesOnceWhenStartupFails) {
     const auto* browser = reinterpret_cast<const tuffite_browser_host*>(
         host->query_extension(host->user_data, TUFFITE_CAPABILITY_BROWSER));
     const auto* api = browser->shell_api;
-    constexpr std::string_view path = "tuffite.remoting.capabilities";
+    constexpr std::string_view path = "tuffite.Remoting.Capabilities";
     EXPECT_EQ(api->invoke(api->user_data,
                           reinterpret_cast<const uint8_t*>(path.data()),
-                          path.size(), nullptr, 0, pending,
+                          path.size(), kEmptyMojomRequest.data(),
+                          kEmptyMojomRequest.size(), pending,
                           [](void* data, int32_t status, tuffite_byte_slice_t) {
                             auto* result = static_cast<ShellReply*>(data);
                             ++result->calls;
@@ -437,7 +514,7 @@ TEST(ApplicationServiceTest, IsolatesServicesAcrossApplications) {
       "capabilities": [{
         "identifier": "main",
         "origins": ["servicetest://main"],
-        "shellApi": ["tuffite.path.directories"]
+        "shellApi": ["tuffite.Path.Directories"]
       }]
     },
     "windows": [
@@ -449,9 +526,9 @@ TEST(ApplicationServiceTest, IsolatesServicesAcrossApplications) {
       }
     ],
     "shellApi": {
-      "namespace": "servicetest",
+
       "commandIds": {
-        "tuffite.path.directories": "0000000000000000"
+        "tuffite.Path.Directories": "0000000000000000"
       }
     },
     "network": {},
@@ -516,21 +593,132 @@ TEST(ApplicationServiceTest, IsolatesServicesAcrossApplications) {
   auto* utility_b = application_b.context()->GetService<UtilityService>();
   EXPECT_NE(utility_a, utility_b);
 
-  rpc::Router router(shell_api::BuiltinRoutes());
+  rpc::Router router(shell_api::BuiltinServices());
   dispatch::Context native(*application_a.context(),
                            base::UnguessableToken::Create());
+  auto fixture = shell_api::generated::DispatchFixture::Bind(
+      std::make_shared<DispatchFixtureImpl>());
+  auto input = wire::DispatchFixtureRoundTripRequest::New();
+  input->value =
+      wire::DispatchValue::New("nullable", std::vector<uint8_t>{1, 2, 3});
+  input->values.push_back(
+      wire::DispatchValue::New("array", std::vector<uint8_t>{4, 5}));
+  auto input_bytes = wire::DispatchFixtureRoundTripRequest::Serialize(&input);
+  bool fixture_completed = false;
+  rpc::Reply fixture_reply = base::BindOnce(
+      [](bool* done, int32_t status, const std::vector<uint8_t>& bytes) {
+        EXPECT_EQ(status, static_cast<int32_t>(rpc::Status::kOk));
+        wire::DispatchFixtureRoundTripResponsePtr response;
+        ASSERT_TRUE(wire::DispatchFixtureRoundTripResponse::Deserialize(
+            bytes, &response));
+        EXPECT_EQ(response->count, 1u);
+        ASSERT_TRUE(response->value);
+        EXPECT_EQ(response->value->label, "nullable");
+        EXPECT_EQ(response->value->bytes, (std::vector<uint8_t>{1, 2, 3}));
+        ASSERT_EQ(response->values.size(), 1u);
+        EXPECT_EQ(response->values[0]->label, "array");
+        EXPECT_EQ(response->values[0]->bytes, (std::vector<uint8_t>{4, 5}));
+        *done = true;
+      },
+      &fixture_completed);
+  EXPECT_TRUE(
+      fixture.dispatch.Run(native, "RoundTrip", input_bytes, &fixture_reply));
+  EXPECT_TRUE(fixture_completed);
+  input->value.reset();
+  input_bytes = wire::DispatchFixtureRoundTripRequest::Serialize(&input);
+  fixture_reply =
+      base::BindOnce([](int32_t status, const std::vector<uint8_t>& bytes) {
+        EXPECT_EQ(status, static_cast<int32_t>(rpc::Status::kAccessDenied));
+        EXPECT_TRUE(bytes.empty());
+      });
+  EXPECT_TRUE(
+      fixture.dispatch.Run(native, "RoundTrip", input_bytes, &fixture_reply));
+  fixture_reply =
+      base::BindOnce([](int32_t status, const std::vector<uint8_t>& bytes) {
+        EXPECT_EQ(status, static_cast<int32_t>(rpc::Status::kOk));
+        wire::DispatchFixtureEmptyResponsePtr response;
+        EXPECT_TRUE(
+            wire::DispatchFixtureEmptyResponse::Deserialize(bytes, &response));
+      });
+  EXPECT_TRUE(fixture.dispatch.Run(native, "Empty", kEmptyMojomRequest,
+                                   &fixture_reply));
+  fixture_reply =
+      base::BindOnce([](int32_t status, const std::vector<uint8_t>& bytes) {
+        EXPECT_EQ(status, static_cast<int32_t>(rpc::Status::kInvalidArgument));
+        EXPECT_TRUE(bytes.empty());
+      });
+  EXPECT_TRUE(fixture.dispatch.Run(native, "RoundTrip", kEmptyMojomRequest,
+                                   &fixture_reply));
+
+  // Both route ownership and pending reply ownership must keep the service
+  // alive, including after a router is torn down during an asynchronous call.
+  shell_api::generated::Path::DirectoriesCallback pending;
+  std::optional<dispatch::Context> pending_context;
+  auto service = std::make_shared<DeferredPath>(pending, pending_context);
+  std::weak_ptr<DeferredPath> weak_service = service;
+  auto binding = shell_api::generated::Path::Bind(service);
+  service.reset();
+  EXPECT_FALSE(weak_service.expired());
+  bool completed = false;
+  rpc::Reply completion = base::BindOnce(
+      [](bool* done, int32_t status, const std::vector<uint8_t>& bytes) {
+        EXPECT_EQ(status, static_cast<int32_t>(rpc::Status::kOk));
+        EXPECT_FALSE(bytes.empty());
+        *done = true;
+      },
+      &completed);
+  EXPECT_TRUE(binding.dispatch.Run(native, "Directories", kEmptyMojomRequest,
+                                   &completion));
+  ASSERT_TRUE(pending);
+  EXPECT_EQ((*pending_context).document, native.document);
+  EXPECT_EQ((*pending_context).native_application.get(),
+            application_a.context());
+  auto first_response = std::move(pending);
+  const auto first_context = *pending_context;
+  EXPECT_EQ((*pending_context).document, native.document);
+  dispatch::Context second_owner(*application_b.context(),
+                                 base::UnguessableToken::Create());
+  bool second_completed = false;
+  rpc::Reply second_reply = base::BindOnce(
+      [](bool* done, int32_t status, const std::vector<uint8_t>&) {
+        EXPECT_EQ(status, static_cast<int32_t>(rpc::Status::kOk));
+        *done = true;
+      },
+      &second_completed);
+  EXPECT_TRUE(binding.dispatch.Run(second_owner, "Directories",
+                                   kEmptyMojomRequest, &second_reply));
+  EXPECT_EQ(first_context.document, native.document);
+  EXPECT_EQ((*pending_context).document, second_owner.document);
+  EXPECT_EQ((*pending_context).native_application.get(),
+            application_b.context());
+  rpc::Reply unknown_reply = base::BindOnce(
+      [](int32_t, const std::vector<uint8_t>&) { ADD_FAILURE(); });
+  EXPECT_FALSE(binding.dispatch.Run(native, "Unknown", kEmptyMojomRequest,
+                                    &unknown_reply));
+  EXPECT_TRUE(unknown_reply);
+  binding.dispatch.Reset();
+  EXPECT_FALSE(weak_service.expired());
+  std::move(first_response)
+      .Run(rpc::Status::kOk, shell_api::generated::PathDirectories::New());
+  EXPECT_TRUE(completed);
+  EXPECT_FALSE(weak_service.expired());
+  std::move(pending).Run(rpc::Status::kOk,
+                         shell_api::generated::PathDirectories::New());
+  EXPECT_TRUE(second_completed);
+  EXPECT_TRUE(weak_service.expired());
   int32_t reply_status = -1;
   rpc::Reply reply =
       base::BindOnce([](int32_t* output, int32_t status,
                         const std::vector<uint8_t>&) { *output = status; },
                      &reply_status);
-  EXPECT_TRUE(
-      router.Dispatch(native, "tuffite.remoting.capabilities", {}, &reply));
+  EXPECT_TRUE(router.Dispatch(native, "tuffite.Remoting.Capabilities",
+                              kEmptyMojomRequest, &reply));
   EXPECT_EQ(reply_status, static_cast<int32_t>(rpc::Status::kOk));
   reply = base::BindOnce([](int32_t* output, int32_t status,
                             const std::vector<uint8_t>&) { *output = status; },
                          &reply_status);
-  EXPECT_TRUE(router.Dispatch(native, "tuffite.window.current", {}, &reply));
+  EXPECT_TRUE(router.Dispatch(native, "tuffite.Window.Current",
+                              kEmptyMojomRequest, &reply));
   EXPECT_EQ(reply_status, static_cast<int32_t>(rpc::Status::kInvalidArgument));
 
   RecordingShellApiService shell_a;
@@ -552,15 +740,28 @@ TEST(ApplicationServiceTest, IsolatesServicesAcrossApplications) {
 
   application_b.Shutdown();
   EXPECT_EQ(application_b.context(), nullptr);
+  EXPECT_FALSE(second_owner.native_application);
   EXPECT_EQ(application_a.context()->GetService<UtilityService>(), utility_a);
   EXPECT_EQ(application_a.context()->GetService<AssetService>(), assets_a);
   application_a.Shutdown();
   EXPECT_EQ(application_a.context(), nullptr);
+  EXPECT_FALSE(native.native_application);
+  EXPECT_FALSE(native.is_valid());
+  reply = base::BindOnce([](int32_t* output, int32_t status,
+                            const std::vector<uint8_t>&) { *output = status; },
+                         &reply_status);
+  EXPECT_TRUE(router.Dispatch(native, "tuffite.Remoting.Capabilities",
+                              kEmptyMojomRequest, &reply));
+  EXPECT_EQ(reply_status, static_cast<int32_t>(rpc::Status::kCancelled));
   EXPECT_FALSE(manifest_weak);
-  EXPECT_EQ(
-      resource_snapshot.ResolveAssetFile(GURL("servicetest://main/index.html")),
-      package.GetPath().AppendASCII("assets").AppendASCII("ui").AppendASCII(
-          "index.html"));
+  const auto asset =
+      resource_snapshot.ResolveAssetFile(GURL("servicetest://main/index.html"));
+  ASSERT_TRUE(asset);
+  EXPECT_EQ(asset->NormalizePathSeparators(), package.GetPath()
+                                                  .AppendASCII("assets")
+                                                  .AppendASCII("ui")
+                                                  .AppendASCII("index.html")
+                                                  .NormalizePathSeparators());
   EXPECT_FALSE(resource_snapshot.ResolveAssetFile(
       GURL("https://untrusted.example/index.html")));
   RunPendingBrowserTasks();

@@ -1,0 +1,18 @@
+module playground;
+
+struct MojomNested {
+  string label@0;
+  array<uint8> bytes@1;
+};
+
+// Exercises hole filling, bit packing, unsigned 64-bit values and UTF-8.
+struct MojomSample {
+  uint8 small@0;
+  uint64 large@1;
+  bool enabled@2;
+  bool visible@3;
+  uint16 medium@4;
+  int32 signedValue@5;
+  double fraction@6;
+  MojomNested nested@7;
+};

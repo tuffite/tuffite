@@ -102,6 +102,22 @@ unsafe fn read_capability<T: Copy>(table: *const tuffite_abi::Header) -> Result<
     Ok(unsafe { ptr::read(table.cast::<T>()) })
 }
 
+unsafe fn require_utility_interfaces(host: &Host) -> Result<(), Status> {
+    let query = host.query_extension.ok_or(Status::IncompatibleAbi)?;
+    // SAFETY: Host supplies a valid immutable capability header when supported.
+    let table = unsafe {
+        query(
+            host.user_data,
+            tuffite_abi::Capability::UtilityInterfaces as u32,
+        )
+    };
+    if table.is_null() {
+        return Err(Status::IncompatibleAbi);
+    }
+    // SAFETY: The capability query follows the host's startup pointer contract.
+    unsafe { read_capability::<tuffite_abi::Header>(table) }.map(|_| ())
+}
+
 unsafe fn discover_capabilities(
     host: &Host,
 ) -> Result<
@@ -111,6 +127,10 @@ unsafe fn discover_capabilities(
     ),
     Status,
 > {
+    if crate::builder::requires_utility_interfaces() {
+        // SAFETY: Host capability tables obey the startup lifetime contract.
+        unsafe { require_utility_interfaces(host) }?;
+    }
     let mut session = tuffite_abi::UtilitySessionClient::default();
     let mut shell_api = None;
     if let Some(query) = host.query_extension {
@@ -678,6 +698,48 @@ mod tests {
             unsafe { read_capability::<tuffite_abi::ShellApi>(ptr::from_ref(&size_prefix).cast()) }
                 .unwrap_err(),
             Status::IncompatibleAbi
+        );
+    }
+
+    #[test]
+    fn grouped_utilities_require_host_routing_support() {
+        unsafe extern "C" fn unsupported(_: *mut c_void, _: u32) -> *const tuffite_abi::Header {
+            ptr::null()
+        }
+        unsafe extern "C" fn supported(
+            context: *mut c_void,
+            id: u32,
+        ) -> *const tuffite_abi::Header {
+            if id == tuffite_abi::Capability::UtilityInterfaces as u32 {
+                context.cast()
+            } else {
+                ptr::null()
+            }
+        }
+        let mut host = host();
+        // SAFETY: No query callback, so provider storage is not accessed.
+        assert_eq!(
+            unsafe { require_utility_interfaces(&host) },
+            Err(Status::IncompatibleAbi)
+        );
+
+        host.query_extension = Some(unsupported);
+        // SAFETY: Query returns null without accessing provider storage.
+        assert_eq!(
+            unsafe { require_utility_interfaces(&host) },
+            Err(Status::IncompatibleAbi)
+        );
+
+        let mut header = tuffite_abi::Header::for_type::<tuffite_abi::Header>();
+        host.user_data = ptr::from_mut(&mut header).cast();
+        host.query_extension = Some(supported);
+        // SAFETY: Header lives throughout the query and validation.
+        assert_eq!(unsafe { require_utility_interfaces(&host) }, Ok(()));
+        header.struct_size = 0;
+        // SAFETY: Header storage remains readable but declares an invalid size.
+        assert_eq!(
+            unsafe { require_utility_interfaces(&host) },
+            Err(Status::IncompatibleAbi)
         );
     }
 

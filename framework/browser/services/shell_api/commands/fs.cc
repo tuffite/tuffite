@@ -14,22 +14,20 @@
 #include "content/public/browser/render_frame_host.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
-#include "tuffite/framework/browser/services/shell_api/commands/registry.h"
 #include "tuffite/framework/common/access.h"
 
 namespace tuffite::shell_api::fs {
 
-using generated::ToString;
-using generated::fs::CreateDirCallback;
-using generated::fs::CreateDirRequest;
-using generated::fs::ExistsCallback;
-using generated::fs::ExistsRequest;
-using generated::fs::ReadFileCallback;
-using generated::fs::ReadFileRequest;
-using generated::fs::RemoveFileCallback;
-using generated::fs::RemoveFileRequest;
-using generated::fs::WriteFileCallback;
-using generated::fs::WriteFileRequest;
+using CreateDirCallback = generated::Fs::CreateDirCallback;
+using CreateDirRequestPtr = generated::Fs::CreateDirRequestPtr;
+using ExistsCallback = generated::Fs::ExistsCallback;
+using ExistsRequestPtr = generated::Fs::ExistsRequestPtr;
+using ReadFileCallback = generated::Fs::ReadFileCallback;
+using ReadFileRequestPtr = generated::Fs::ReadFileRequestPtr;
+using RemoveFileCallback = generated::Fs::RemoveFileCallback;
+using RemoveFileRequestPtr = generated::Fs::RemoveFileRequestPtr;
+using WriteFileCallback = generated::Fs::WriteFileCallback;
+using WriteFileRequestPtr = generated::Fs::WriteFileRequestPtr;
 
 namespace {
 
@@ -70,24 +68,25 @@ void RunBoolean(ResolvedPath path, Work work, Callback callback) {
           std::move(path), std::move(work)),
       base::BindOnce(
           [](Callback callback, bool ok) {
-            std::move(callback).Run(ok ? kStatusOk : kStatusUnavailable, {});
+            std::move(callback).Run(ok ? rpc::Status::kOk
+                                       : rpc::Status::kUnavailable);
           },
           std::move(callback)));
 }
 
 }  // namespace
 
-void ReadFile(const ::tuffite::dispatch::Context& context,
-              ReadFileRequest&& request,
-              ReadFileCallback&& callback) {
-  if (!context.sender) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void FsImpl::ReadFile(const dispatch::Context& context,
+                      ReadFileRequestPtr request,
+                      ReadFileCallback callback) {
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  auto path = Resolve(context.frame(), ToString(request.base), request.path,
-                      false, "tuffite.fs.readFile");
+  auto path = Resolve(context.frame(), BaseDirectoryName(request->base),
+                      request->path, false, "tuffite.Fs.ReadFile");
   if (!path) {
-    std::move(callback).Run(kStatusAccessDenied, {});
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
   base::ThreadPool::PostTaskAndReplyWithResult(
@@ -110,32 +109,32 @@ void ReadFile(const ::tuffite::dispatch::Context& context,
           [](ReadFileCallback callback,
              std::optional<std::vector<uint8_t>> contents) {
             if (!contents) {
-              std::move(callback).Run(kStatusUnavailable, {});
+              rpc::Reject(callback, rpc::Status::kUnavailable);
               return;
             }
-            std::move(callback).Run(kStatusOk, std::move(*contents));
+            std::move(callback).Run(rpc::Status::kOk, std::move(*contents));
           },
           std::move(callback)));
 }
 
-void WriteFile(const ::tuffite::dispatch::Context& context,
-               WriteFileRequest&& request,
-               WriteFileCallback&& callback) {
-  if (!context.sender) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void FsImpl::WriteFile(const dispatch::Context& context,
+                       WriteFileRequestPtr request,
+                       WriteFileCallback callback) {
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  if (request.contents.size() > kMaxFileBytes) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+  if (request->contents.size() > kMaxFileBytes) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  auto path = Resolve(context.frame(), ToString(request.base), request.path,
-                      true, "tuffite.fs.writeFile");
+  auto path = Resolve(context.frame(), BaseDirectoryName(request->base),
+                      request->path, true, "tuffite.Fs.WriteFile");
   if (!path) {
-    std::move(callback).Run(kStatusAccessDenied, {});
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
-  auto contents = std::move(request.contents);
+  auto contents = std::move(request->contents);
   RunBoolean(std::move(*path),
              base::BindOnce(
                  [](std::vector<uint8_t> contents, const base::FilePath& path) {
@@ -148,17 +147,17 @@ void WriteFile(const ::tuffite::dispatch::Context& context,
              std::move(callback));
 }
 
-void Exists(const ::tuffite::dispatch::Context& context,
-            ExistsRequest&& request,
-            ExistsCallback&& callback) {
-  if (!context.sender) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void FsImpl::Exists(const dispatch::Context& context,
+                    ExistsRequestPtr request,
+                    ExistsCallback callback) {
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  auto path = Resolve(context.frame(), ToString(request.base), request.path,
-                      false, "tuffite.fs.exists");
+  auto path = Resolve(context.frame(), BaseDirectoryName(request->base),
+                      request->path, false, "tuffite.Fs.Exists");
   if (!path) {
-    std::move(callback).Run(kStatusAccessDenied, {});
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
   base::ThreadPool::PostTaskAndReplyWithResult(
@@ -175,25 +174,25 @@ void Exists(const ::tuffite::dispatch::Context& context,
       base::BindOnce(
           [](ExistsCallback callback, std::optional<bool> exists) {
             if (!exists) {
-              std::move(callback).Run(kStatusUnavailable, false);
+              std::move(callback).Run(rpc::Status::kUnavailable, false);
               return;
             }
-            std::move(callback).Run(kStatusOk, *exists);
+            std::move(callback).Run(rpc::Status::kOk, *exists);
           },
           std::move(callback)));
 }
 
-void CreateDir(const ::tuffite::dispatch::Context& context,
-               CreateDirRequest&& request,
-               CreateDirCallback&& callback) {
-  if (!context.sender) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void FsImpl::CreateDir(const dispatch::Context& context,
+                       CreateDirRequestPtr request,
+                       CreateDirCallback callback) {
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  auto path = Resolve(context.frame(), ToString(request.base), request.path,
-                      true, "tuffite.fs.createDir");
+  auto path = Resolve(context.frame(), BaseDirectoryName(request->base),
+                      request->path, true, "tuffite.Fs.CreateDir");
   if (!path) {
-    std::move(callback).Run(kStatusAccessDenied, {});
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
   RunBoolean(std::move(*path), base::BindOnce([](const base::FilePath& path) {
@@ -202,17 +201,17 @@ void CreateDir(const ::tuffite::dispatch::Context& context,
              std::move(callback));
 }
 
-void RemoveFile(const ::tuffite::dispatch::Context& context,
-                RemoveFileRequest&& request,
-                RemoveFileCallback&& callback) {
-  if (!context.sender) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void FsImpl::RemoveFile(const dispatch::Context& context,
+                        RemoveFileRequestPtr request,
+                        RemoveFileCallback callback) {
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  auto path = Resolve(context.frame(), ToString(request.base), request.path,
-                      true, "tuffite.fs.removeFile");
+  auto path = Resolve(context.frame(), BaseDirectoryName(request->base),
+                      request->path, true, "tuffite.Fs.RemoveFile");
   if (!path) {
-    std::move(callback).Run(kStatusAccessDenied, {});
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
   RunBoolean(std::move(*path), base::BindOnce([](const base::FilePath& path) {

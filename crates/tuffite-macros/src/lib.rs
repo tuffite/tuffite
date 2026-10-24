@@ -100,6 +100,8 @@ fn expand_main(args: &MainArgs, function: &ItemFn) -> syn::Result<TokenStream2> 
             APPLICATION.get_or_init(|| {
                 match ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
                     let builder: ::tuffite::app::Builder<#browser> = #name();
+                    let builder = <#browser as ::tuffite::__private::BrowserDefinition>::interfaces()
+                        .into_iter().fold(builder, |builder, interface| builder.service(interface));
                     builder.into_application(UTILITIES)
                 })) {
                     Ok(Ok(table)) => Some(table),
@@ -121,18 +123,63 @@ fn expand_main(args: &MainArgs, function: &ItemFn) -> syn::Result<TokenStream2> 
 #[proc_macro_attribute]
 pub fn browser(arguments: TokenStream, item: TokenStream) -> TokenStream {
     let implementation = parse_macro_input!(item as syn::ItemImpl);
-    if !arguments.is_empty() {
-        return syn::Error::new_spanned(&implementation, "tuffite::browser takes no arguments")
-            .into_compile_error()
-            .into();
-    }
-    match expand_browser(&implementation) {
+    let args = parse_macro_input!(arguments as InterfaceArgs);
+    match expand_browser(&implementation, &args) {
         Ok(output) => output.into(),
         Err(error) => error.into_compile_error().into(),
     }
 }
 
-fn expand_browser(implementation: &syn::ItemImpl) -> syn::Result<proc_macro2::TokenStream> {
+#[derive(Default)]
+struct InterfaceArgs {
+    interfaces: Vec<syn::TypePath>,
+    factory: Option<syn::Expr>,
+}
+
+impl syn::parse::Parse for InterfaceArgs {
+    fn parse(input: syn::parse::ParseStream<'_>) -> syn::Result<Self> {
+        let mut result = Self::default();
+        let mut seen_interfaces = false;
+        while !input.is_empty() {
+            let key: syn::Ident = input.parse()?;
+            if key == "interfaces" && !seen_interfaces {
+                seen_interfaces = true;
+                let content;
+                syn::parenthesized!(content in input);
+                result.interfaces = content
+                    .parse_terminated(syn::TypePath::parse, syn::Token![,])?
+                    .into_iter()
+                    .collect();
+                if result.interfaces.is_empty() {
+                    return Err(syn::Error::new_spanned(key, "interfaces must not be empty"));
+                }
+            } else if key == "factory" && result.factory.is_none() {
+                input.parse::<syn::Token![=]>()?;
+                result.factory = Some(input.parse()?);
+            } else {
+                return Err(syn::Error::new_spanned(
+                    key,
+                    "expected interfaces(Trait, ...) and optional factory = create",
+                ));
+            }
+            if !input.is_empty() {
+                input.parse::<syn::Token![,]>()?;
+            }
+        }
+        Ok(result)
+    }
+}
+
+fn expand_browser(
+    implementation: &syn::ItemImpl,
+    args: &InterfaceArgs,
+) -> syn::Result<proc_macro2::TokenStream> {
+    if let Some(factory) = &args.factory {
+        return Err(syn::Error::new_spanned(
+            factory,
+            "Browser uses Browser::new, not factory",
+        ));
+    }
     if !implementation.generics.params.is_empty()
         || implementation.generics.where_clause.is_some()
         || !implementation.trait_.as_ref().is_some_and(|(path, _)| {
@@ -147,23 +194,92 @@ fn expand_browser(implementation: &syn::ItemImpl) -> syn::Result<proc_macro2::To
         ));
     }
     let ty = &implementation.self_ty;
+    let interfaces = &args.interfaces;
     Ok(quote! {
         #implementation
         impl ::tuffite::__private::BrowserDefinition for #ty {
             const TYPE_NAME: &'static str = stringify!(#ty);
+            fn interfaces() -> ::std::vec::Vec<::tuffite::__private::CommandRegistry<Self>> {
+                ::std::vec![#(
+                    ::tuffite::__private::CommandRegistry::new(
+                        |browser, command| <Self as #interfaces>::__tuffite_dispatch(browser, command),
+                        <Self as #interfaces>::__TUFFITE_COMMANDS,
+                    ),
+                )*]
+            }
         }
     })
 }
 
-/// Declares a named Rust or V8 utility by its implementation trait.
+/// Declares the generated Mojom interfaces owned by a Utility implementation.
+/// Apply to its struct: `#[tuffite::utility(interfaces(api::Echo, api::Aux))]`.
+/// Uses `Default` unless `factory = create_service` supplies a context-aware factory.
+/// Raw Rust/V8 utilities retain the explicit `name = "..."` form.
 #[proc_macro_attribute]
 pub fn utility(arguments: TokenStream, item: TokenStream) -> TokenStream {
-    let name = parse_macro_input!(arguments as syn::MetaNameValue);
-    let implementation = parse_macro_input!(item as syn::ItemImpl);
-    match expand_utility(&name, &implementation) {
+    let tokens: TokenStream2 = arguments.into();
+    let result = if let Ok(name) = syn::parse2::<syn::MetaNameValue>(tokens.clone())
+        && name.path.is_ident("name")
+    {
+        let implementation = parse_macro_input!(item as syn::ItemImpl);
+        expand_utility(&name, &implementation)
+    } else {
+        let definition = parse_macro_input!(item as syn::ItemStruct);
+        match syn::parse2::<InterfaceArgs>(tokens) {
+            Ok(args) => expand_typed_utility(&definition, &args),
+            Err(error) => Err(error),
+        }
+    };
+    match result {
         Ok(output) => output.into(),
         Err(error) => error.into_compile_error().into(),
     }
+}
+
+fn expand_typed_utility(
+    definition: &syn::ItemStruct,
+    args: &InterfaceArgs,
+) -> syn::Result<TokenStream2> {
+    if !definition.generics.params.is_empty()
+        || definition.generics.where_clause.is_some()
+        || args.interfaces.is_empty()
+    {
+        return Err(syn::Error::new_spanned(
+            definition,
+            "expected a concrete struct with interfaces(module::Trait, ...)",
+        ));
+    }
+    let ty = &definition.ident;
+    let interfaces = &args.interfaces;
+    let initialize = args.factory.as_ref().map_or_else(
+        || quote! { let _ = context; Ok(<Self as ::std::default::Default>::default()) },
+        |factory| quote! { (#factory)(context) },
+    );
+    Ok(quote! {
+        #definition
+        impl ::tuffite::Utility for #ty {
+            fn new(context: ::tuffite::UtilityContext) -> ::tuffite::ApplicationResult<Self> {
+                #initialize
+            }
+            fn invoke(&self, request: ::tuffite::UtilityRequest) -> ::tuffite::UtilityFuture<'_> {
+                Box::pin(async move { Ok(::tuffite::utility::dispatch_typed(&request, |command| {
+                    #(
+                        if <Self as #interfaces>::__TUFFITE_COMMANDS.iter().any(|entry| entry.id() == command.id()) {
+                            return <Self as #interfaces>::__tuffite_dispatch(self, command);
+                        }
+                    )*
+                    Err(::tuffite::CommandError::UnknownCommand)
+                })) })
+            }
+        }
+        impl ::tuffite::__private::UtilityDefinition for #ty {
+            const REGISTRATION: ::tuffite::UtilityServiceRegistration =
+                ::tuffite::UtilityServiceRegistration::typed::<Self>(
+                    concat!(module_path!(), "::", stringify!(#ty)),
+                    &[#(<Self as #interfaces>::__TUFFITE_INTERFACE,)*],
+                );
+        }
+    })
 }
 
 fn expand_utility(
@@ -324,6 +440,46 @@ mod tests {
     use super::{MainArgs, expand_command, expand_main, expand_utility};
 
     #[test]
+    fn typed_utility_groups_interfaces_on_one_implementation() {
+        let definition = parse_quote!(
+            struct Worker;
+        );
+        let args =
+            syn::parse_str::<super::InterfaceArgs>("interfaces(shell_api::Echo, shell_api::Aux)")
+                .unwrap();
+        let tokens = super::expand_typed_utility(&definition, &args).unwrap();
+        syn::parse2::<syn::File>(tokens.clone()).unwrap();
+        let output = tokens.to_string();
+        assert!(output.contains("__TUFFITE_INTERFACE"));
+        assert!(output.contains("__tuffite_dispatch"));
+        assert!(output.contains("default"));
+        assert!(output.contains("shell_api :: Aux"));
+        let args = syn::parse_str::<super::InterfaceArgs>(
+            "interfaces(shell_api::Echo), factory = create_worker",
+        )
+        .unwrap();
+        let output = super::expand_typed_utility(&definition, &args)
+            .unwrap()
+            .to_string();
+        assert!(output.contains("create_worker"));
+        assert!(!output.contains("Default"));
+        assert!(
+            super::expand_typed_utility(&definition, &super::InterfaceArgs::default()).is_err()
+        );
+        let generic = parse_quote!(
+            struct Generic<T>(T);
+        );
+        assert!(super::expand_typed_utility(&generic, &args).is_err());
+        for source in [
+            "interfaces()",
+            "interfaces(A), interfaces(B)",
+            "interfaces(A), factory = f, factory = g",
+        ] {
+            assert!(syn::parse_str::<super::InterfaceArgs>(source).is_err());
+        }
+    }
+
+    #[test]
     fn main_exports_explicit_browser_and_utility_definitions() {
         let application: ItemFn = parse_quote!(
             fn builder() -> tuffite::app::Builder<Demo> {
@@ -359,7 +515,7 @@ mod tests {
     fn browser_requires_a_concrete_browser_implementation() {
         let implementation = syn::parse_quote!(impl tuffite::Browser for Backend {});
         assert!(
-            super::expand_browser(&implementation)
+            super::expand_browser(&implementation, &super::InterfaceArgs::default())
                 .unwrap()
                 .to_string()
                 .contains("BrowserDefinition")
@@ -371,8 +527,24 @@ mod tests {
             "impl Browser for Backend where Backend: Send {}",
         ] {
             let implementation = syn::parse_str(source).unwrap();
-            assert!(super::expand_browser(&implementation).is_err(), "{source}");
+            assert!(
+                super::expand_browser(&implementation, &super::InterfaceArgs::default()).is_err(),
+                "{source}"
+            );
         }
+    }
+
+    #[test]
+    fn browser_registers_interfaces_and_keeps_its_lifecycle_constructor() {
+        let implementation = parse_quote!(impl tuffite::Browser for App {});
+        let args =
+            syn::parse_str::<super::InterfaceArgs>("interfaces(api::Commands, api::Diagnostics)")
+                .unwrap();
+        let tokens = super::expand_browser(&implementation, &args).unwrap();
+        syn::parse2::<syn::File>(tokens.clone()).unwrap();
+        assert!(tokens.to_string().contains("api :: Diagnostics"));
+        let args = syn::parse_str::<super::InterfaceArgs>("factory = f").unwrap();
+        assert!(super::expand_browser(&implementation, &args).is_err());
     }
 
     #[test]

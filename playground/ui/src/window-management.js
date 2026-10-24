@@ -1,3 +1,4 @@
+import * as frameworkApi from "/tuffite.js";
 function describe(info) {
   const state = [
     info.focused && 'focused',
@@ -16,7 +17,7 @@ export function setupWindowManagement({onReady}) {
 
   async function currentManaged() {
     if (managedId === undefined) {
-      const created = await window.tuffite.window.create({
+      const created = await frameworkApi.window.create({
         label: 'managed',
         url: childUrl,
         title: 'Playground managed child',
@@ -24,7 +25,7 @@ export function setupWindowManagement({onReady}) {
       });
       managedId = created.id;
     }
-    const info = (await window.tuffite.window.list()).find(({id}) => id === managedId);
+    const info = (await frameworkApi.window.list()).find(({id}) => id === managedId);
     if (!info) {
       managedId = undefined;
       return currentManaged();
@@ -43,21 +44,21 @@ export function setupWindowManagement({onReady}) {
   document.querySelector('#window-create').addEventListener('click', () =>
     run(currentManaged));
   document.querySelector('#window-focus').addEventListener('click', () =>
-    run(async () => window.tuffite.window.focus((await currentManaged()).id)));
+    run(async () => frameworkApi.window.focus((await currentManaged()).id)));
   document.querySelector('#window-minimize').addEventListener('click', () =>
-    run(async () => window.tuffite.window.minimize((await currentManaged()).id)));
+    run(async () => frameworkApi.window.minimize((await currentManaged()).id)));
   document.querySelector('#window-maximize').addEventListener('click', () =>
-    run(async () => window.tuffite.window.maximize((await currentManaged()).id)));
+    run(async () => frameworkApi.window.maximize((await currentManaged()).id)));
   document.querySelector('#window-restore').addEventListener('click', () =>
-    run(async () => window.tuffite.window.restore((await currentManaged()).id)));
+    run(async () => frameworkApi.window.restore((await currentManaged()).id)));
   document.querySelector('#window-fullscreen').addEventListener('click', () =>
     run(async () => {
       const info = await currentManaged();
-      return window.tuffite.window.setFullscreen(!info.fullscreen, info.id);
+      return frameworkApi.window.setFullscreen(!info.fullscreen, info.id);
     }));
   document.querySelector('#window-list').addEventListener('click', async () => {
     try {
-      const windows = await window.tuffite.window.list();
+      const windows = await frameworkApi.window.list();
       output.textContent = windows.map(describe).join('\n\n');
     } catch (error) {
       output.textContent = `Window error: ${error.message}`;
@@ -65,7 +66,7 @@ export function setupWindowManagement({onReady}) {
   });
   document.querySelector('#window-close').addEventListener('click', async () => {
     try {
-      if (managedId !== undefined) await window.tuffite.window.close(managedId);
+      if (managedId !== undefined) await frameworkApi.window.close(managedId);
       managedId = undefined;
       output.textContent = 'Managed child closed.';
     } catch (error) {
@@ -75,34 +76,34 @@ export function setupWindowManagement({onReady}) {
 
   return async function checkWindowManagement() {
     try {
-      const current = await window.tuffite.window.current();
+      const current = await frameworkApi.window.current();
       if (current.label !== 'main') {
         throw new Error(`unexpected primary window label: ${current.label}`);
       }
-      await window.tuffite.window.setTitle('Playground · Tuffite', current.id);
-      const initialBounds = await window.tuffite.window.getBounds(current.id);
-      const child = await window.tuffite.window.create({
+      await frameworkApi.window.setTitle('Playground · Tuffite', current.id);
+      const initialBounds = await frameworkApi.window.getBounds(current.id);
+      const child = await frameworkApi.window.create({
         label: 'smoke-child',
         url: childUrl,
         title: 'Playground window smoke',
         bounds: {x: 120, y: 120, width: 520, height: 360},
         focused: false,
       });
-      await window.tuffite.window.setBounds(
+      await frameworkApi.window.setBounds(
           {x: 140, y: 140, width: 540, height: 380}, child.id);
-      await window.tuffite.window.focus(child.id);
-      await window.tuffite.window.minimize(child.id);
-      await window.tuffite.window.restore(child.id);
-      await window.tuffite.window.maximize(child.id);
-      await window.tuffite.window.restore(child.id);
-      await window.tuffite.window.setFullscreen(true, child.id);
-      await window.tuffite.window.setFullscreen(false, child.id);
-      const windows = await window.tuffite.window.list();
+      await frameworkApi.window.focus(child.id);
+      await frameworkApi.window.minimize(child.id);
+      await frameworkApi.window.restore(child.id);
+      await frameworkApi.window.maximize(child.id);
+      await frameworkApi.window.restore(child.id);
+      await frameworkApi.window.setFullscreen(true, child.id);
+      await frameworkApi.window.setFullscreen(false, child.id);
+      const windows = await frameworkApi.window.list();
       if (!windows.some(({id}) => id === current.id) ||
           !windows.some(({id}) => id === child.id)) {
         throw new Error('created windows were not registered');
       }
-      await window.tuffite.window.close(child.id);
+      await frameworkApi.window.close(child.id);
       output.textContent =
           `Current window ${current.id} (${initialBounds.width} × ${initialBounds.height})\n` +
           'All 12 window operations passed. Use the controls to manage a child.';

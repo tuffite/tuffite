@@ -1,0 +1,12 @@
+// Shell API contract. JS/TS, Rust and C++ adapters are generated.
+module tuffite;
+
+import "tuffite/framework/shell_api/common.mojom";
+
+interface Log {
+  Trace@0(string message) => ();
+  Debug@1(string message) => ();
+  Info@2(string message) => ();
+  Warn@3(string message) => ();
+  Error@4(string message) => ();
+};

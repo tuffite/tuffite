@@ -3,6 +3,7 @@
 
 #include "tuffite/framework/app/application_context.h"
 
+#include "tuffite/components/dispatch/browser/context.h"
 #include "tuffite/framework/app/services/application_dependency_manager.h"
 #include "tuffite/framework/app/services/asset/asset_service_factory.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
@@ -31,3 +32,11 @@ KeyedService* ApplicationContext::GetServiceByType(const void* service_type,
       this, service_type, create);
 }
 }  // namespace tuffite
+
+namespace tuffite::dispatch {
+Context::Context(::tuffite::ApplicationContext& application,
+                 base::UnguessableToken owner)
+    : caller(Caller::kApplication),
+      native_application(application.GetWeakPtr()),
+      document(owner) {}
+}  // namespace tuffite::dispatch

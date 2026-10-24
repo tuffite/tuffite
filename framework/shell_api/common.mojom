@@ -1,0 +1,4 @@
+// Shell API contract. JS/TS, Rust and C++ adapters are generated.
+module tuffite;
+
+enum BaseDirectory { Resource = 0, Data = 1, Cache = 2, Temp = 3 };

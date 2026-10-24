@@ -1,445 +1,201 @@
-# Tuffite ShellAPI
+# Typed Mojom Shell API
 
-## 1. Position in the architecture
+All Framework and application Shell API contracts are `.mojom` sources.
+JavaScript clients, TypeScript declarations, Rust bindings and native adapters
+are generated from those contracts. `.d.ts` is an output format only.
 
-ShellAPI is the capability API that Tuffite Runtime provides to trusted
-renderer documents. It belongs to Runtime, alongside the command router and
-capability manager. It is not part of Tuffite FFI and it is not a peer runtime.
+## Contract and clients
 
-The independently packaged Shell Protocol contains only wire definitions,
-stable identifiers, codecs, compatibility tests, and code-generation support.
-This separation prevents the Chromium binding and developer tooling from
-depending on the whole Runtime.
-
-```text
-JavaScript / TypeScript
-        │ generated Proxy facade and Uint8Array codec
-        ▼
-Shell Binding in the renderer
-        │ window.tuffite.invoke(route, payload) over Mojo
-        ▼
-Shell broker in Tuffite Framework
-        │ command route uses Tuffite FFI; built-ins remain in browser
-        ▼
-ShellAPI Host in Tuffite Runtime
-        ├── primary-document and origin validation
-        ├── capability authorization
-        ├── command router
-        └── application command
+```mojom
+module example;
+struct Message { string text; array<uint8> bytes; };
+interface Commands {
+  Echo@0(Message value) => (Message result);
+};
 ```
 
-No JSON is required on this path. JSON may still be an application payload if
-an application explicitly chooses it.
+Configure the Mojom inputs in `tuffite.json`; the module is declared only in Mojom:
 
-## 2. Public JavaScript shape
-
-The renderer receives a narrow, generated API instead of a universal native
-object. A conceptual low-level API is:
-
-```ts
-interface TuffiteShell extends EventTarget {
-  invoke(route: string, payload: Uint8Array): Promise<Uint8Array>;
-  on(
-    name: string,
-    listener: EventListener,
-    options?: AddEventListenerOptions,
-  ): () => void;
-}
+```json
+{"build":{"mojomSources": ["shell_api.mojom"]}}
 ```
 
-Generated command wrappers hide numeric IDs and binary codec details:
-
-```ts
-const project = await window.demo.project.open(path);
-```
-
-Built-in facades are generated from `src/tuffite/framework/api/*.d.ts` with the same
-`tuffite::build::shell_api::Generator` pipeline and exposed under the immutable
-`window.tuffite` object. An
-application can declare a separate generated global facade, for example:
-
-```ts
-const response = await window.tuffite.net.request({
-  url: "https://api.example.com/projects",
-  method: "GET",
-});
-
-const message = await window.demo.commands.doSomething("hello");
-```
-
-Both facades are manifest-backed, read-only Proxy trees. A Proxy path resolves
-only to a generated command entry containing internal wire metadata and codecs; an
-unknown property chain never becomes a string RPC. `then`, `constructor`,
-`prototype`, `__proto__`, symbols, conflicting leaf/namespace paths, and unsafe
-global names are rejected. Proxy objects and method functions are identity-
-stable and cannot be overwritten.
-
-`build.shellApi.definitions` is a non-empty array of `.d.ts`
-declaration files. `namespace` is both the application JavaScript global and
-the route prefix; the application URL scheme uses the same name.
-Multiple files may contribute to the configured root namespace; the generator
-merges them, rejects duplicate paths and declarations, and emits one Rust
-dispatcher plus one JavaScript Proxy facade. Declaration files keep this input
-surface type-only and avoid implying that executable TypeScript is bundled.
-
-The single public npm package is `tuffite`. It contains the low-level renderer
-runtime as the `tuffite/runtime` export, the built-in TypeScript contract, and
-the generated built-in facade. The Rust packager embeds and injects the exact
-matching runtime and facade, so applications do not copy either file or list
-them in `bundle.resources`.
-
-Application commands use their fully qualified API path, such as
-`demo.commands.doSomething`, and carry the generated BRQ1 envelope. Built-ins
-use paths such as `tuffite.net.request`, `tuffite.utility.invoke`, and
-`tuffite.window.create`; the low-level runtime contains no
-API-specific dispatch. The
-JavaScript path is presentation, not wire identity. Renaming an application
-global from `window.demo` to another valid name does not change canonical
-command names or wire IDs. Framework commands occupy `window.tuffite`; an
-application cannot register or replace paths in that namespace.
-
-Rust handlers use generated, statically checked dispatch. The `.d.ts` contract
-remains authoritative; no runtime string registry or inventory is involved:
-
-```rust
-#[tuffite::command(shell_api::commands::DoSomething)]
-fn do_something(
-    app: &mut Playground,
-    message: String,
-) -> Result<String, tuffite::CommandError> {
-    app.record(&message);
-    Ok(format!("Rust received: {message}"))
-}
-
-#[tuffite::main(browser = PlaygroundBrowser)]
-fn main() -> tuffite::app::Builder<PlaygroundBrowser> {
-    tuffite::app::Builder::<PlaygroundBrowser>::new()
-        .commands(tuffite::generate_handler![do_something])
-}
-```
-
-The generated `COMMAND` descriptor exposes the complete channel and stable ID.
-The `command` attribute binds it to the Rust function, while
-`generate_handler!`
-only lists the handlers registered with the application. Registration remains
-explicit: changing a Rust function name never silently changes its endpoint.
-Missing attributes and wrong browser/parameter/result types fail at compile
-time; duplicate channels or IDs fail during generation or Builder validation.
-Endpoints omitted from `generate_handler!` remain unregistered and return the
-protocol's unknown-command error. Handlers are synchronous because
-application dispatch already runs on a Rust worker rather than Chromium's UI
-sequence; finite Chromium-scheduled work can use `BrowserContext::executor()`.
-
-The immutable low-level binding is installed only in a primary main document
-whose committed origin is authorized. No entry-origin grant is implicit. `app.security.capabilities` authorizes
-both business and framework methods through each capability’s `shellApi` entries. This policy applies equally to outer windows and the ordinary inner
-`WebContents` used by `<explorer>`, so an Explorer receives the bridge only when
-its own committed origin is listed. Iframes, DevTools, opaque origins, and
-provisional documents are denied. Renderer allowlisting controls exposure, and
-the browser repeats the authorization on every invocation.
-
-Manifest origin lists accept exact canonical origins, `*`, and a leading-host
-wildcard such as `https://*.example.com/`. Tuffite normalizes and validates each
-pattern at startup, then uses Chromium's `base::MatchPattern` in both renderer
-exposure and browser-side authorization. `*` never makes opaque origins,
-subframes, or non-App roles eligible.
-
-Rust can broadcast a named binary application event. The bridge dispatches a
-`CustomEvent` named `channel` through the shared `window.tuffite` EventTarget.
-Its detail is `{channel, data}`, where `data` is a `Uint8Array`. Standard
-`addEventListener/removeEventListener` semantics allow multiple listeners:
+Build scripts compose `tuffite::build::framework::Resolver` and
+`tuffite::build::shell_api::Generator`. Rust output includes `bindings.rs`;
+JavaScript output is the fixed pair `index.js` and `index.d.ts`, with layouts
+and clients in the same module. No JS/TS output inventory is generated. Imports
+participate in rebuild/watch checks, and Verify mode detects generated drift.
+The Framework SDK also includes its internal runtime in this same pair through
+OXC AST composition; there is no separately published runtime module.
 
 ```js
-const listener = ({detail}) => {
-  if (detail.channel === 'app:workspace-changed') {
-    refreshFromRevision(detail.data);
-  }
-};
-window.tuffite.addEventListener('channel', listener);
-// Later: window.tuffite.removeEventListener('channel', listener);
+import { commands } from './generated/index.js';
+const result = await commands.echo({text:'hello',bytes:new Uint8Array([1,2])});
+
+import { fs, BaseDirectory } from 'tuffite';
+const file = await fs.readFile(BaseDirectory.Data,'settings.json');
 ```
 
-There is no `window.tuffite.channel` namespace. An application facade may use a
-business namespace named `channel`; only native bridge members such as
-`invoke`, `postMessage`, `addEventListener`, and `removeEventListener` are
-reserved on the framework facade.
-During an explicit `tuff dev` launch, the browser grants the exact loopback
-origin from `--tuffite-dev-url` access to the same generated ShellAPI. This
-runtime-only exception rejects HTTPS, credentials, and non-loopback hosts and
-requires the CLI-issued nonce/digest handshake with the direct parent process; passing
-the switch directly to a production executable fails closed. It is never
-serialized into `tuffite.json` or a package. The `tuffite/vite` plugin serves
-the framework modules from that development origin; normal remote HTTP origins
-remain unprivileged.
-The override code is available in the default release build for local HMR but
-requires the direct Tuffite CLI parent and its one-time nonce. CI builds compile
-it out; ordinary release launches never receive the token and reject the switch.
-Application events are deliberately ephemeral notifications for live,
-authorized documents. They have no acknowledgement, replay, durable ordering,
-or backpressure contract. An event should normally carry a revision/cursor and
-an invalidation or compact progress summary; the renderer then reads the
-authoritative snapshot or delta through a generated command. Navigation,
-renderer restart, or a slow consumer may miss an event, so correctness must
-never depend on receiving every event.
+Application and Framework clients are ES modules. There is no application global
+or installation of Framework business methods on `globalThis.tuffite`. The
+native global remains the transport and native DOM integration surface.
+Framework clients export numeric enums directly. Nullable fields/results use
+`null`; nullable arguments may be omitted when trailing, and nullable object
+fields may be omitted. A present `false`, zero or empty string remains present.
 
-Ordered events produced inside a long-lived Utility session use the separate
-credit-controlled Utility session protocol. Rust validates and persists those
-events before optionally projecting a revision/delta here. Application events
-must not be used as the Utility-to-host transport.
+The `createExampleApi(transport)` factory accepts an explicit `MojomTransport`.
+A transport receives canonical channel, command ID, schema fingerprint and
+encoded request bytes, and returns response bytes. Importing a client or
+injecting a transport grants no native authority.
 
-ShellAPI commands are unary: the declaration generator accepts `Promise<T>`
-and does not turn `AsyncIterable<T>` into a generic stream registry. This keeps
-document ownership, cancellation, buffering, and backpressure out of the
-control plane. A capability that owns continuous bytes exposes its own typed
-API backed by a Mojo data pipe or another purpose-built transport.
+## Supported data profile
 
-Window management follows this same path. Calls are generated from the
-framework TypeScript contract and dispatched as ordinary `window.*` builtins;
-the browser derives the current window from the calling document and exposes
-only opaque `WindowId` values. See [Window management](window-management.md).
+The source-distributed `tuffite-mojom` crate owns loading, lexer/parser, type
+resolution and wire layouts. It has no Chromium or SDK dependencies. SDK-specific
+Rust/JS/TS generation lives in `tuffite::build::mojom`.
 
-## 3. Transport classes
+Supported: version-zero structs, all integer widths, float/double, packed bools,
+strings, byte arrays, arrays of values/structs/arrays, integer enums, nullable
+references and nullable scalar fields, and unary methods with zero or one result.
+Nullable scalar fields follow Chromium's presence-bit plus value packing.
+Arrays of nullable scalars, defaults, attributes, unions, maps, recursive types,
+handles, endpoints and schema versions are rejected. Enum values currently use
+non-negative i32 literals. Modules in one compilation must match; imports are
+root-confined, cycle checked, source limited and tracked for rebuilds.
 
-Different payload sizes use different Chromium IPC primitives:
+The codec limits payloads to 16 MiB, validates UTF-8, scalar ranges, enums, headers,
+array lengths, pointer bounds and forward non-overlapping allocations. Rust/JS
+accept the generated version-zero layout and reject truncation and trailing data.
+Schema fingerprints require matching schemas; mixed-version evolution is not
+implemented. None of these codecs is a standalone Mojo message-pipe runtime.
 
-| Class                     | Recommended transport                          | Purpose                                            |
-| ------------------------- | ---------------------------------------------- | -------------------------------------------------- |
-| Control and small payload | Generated binary codec in Mojo `BigBuffer`     | Unary commands, results, errors, metadata          |
-| Low-rate notification     | Application event containing a revision/cursor | Invalidation, lifecycle, compact progress          |
-| Medium binary attachment  | Mojo shared buffer                             | Images, compiled data, file chunks with known size |
-| Large or unbounded data   | Capability-specific Mojo data pipe or PTY      | Files, media, terminal output, generated output    |
+## Process implementations and interfaces
 
-Thresholds are implementation tuning parameters, not protocol semantics. The
-sender may select a shared buffer below the nominal threshold when zero-copy
-behavior is more important, but both ends must enforce configured size limits.
+Each interface generates a Rust trait and typed dispatcher. Process ownership is
+separate from interface identity:
 
-Data pipes provide byte-level backpressure. Runtime must not read an unbounded
-source into memory to turn it into one control response, and application events
-must not be used as a chunk transport. Cancellation closes the owning
-capability's pipe and propagates to its producer. The current
-`window.tuffite.net.request()` remains a bounded unary response; a future
-streaming body API belongs to the Network capability and will expose a
-`ReadableStream<Uint8Array>` backed directly by its data pipe, not a generic
-ShellAPI stream handle. See [Networking](networking.md).
+```rust
+#[tuffite::browser(interfaces(shell_api::Commands, shell_api::Diagnostics))]
+impl tuffite::Browser for App { /* new(context), optional shutdown() */ }
+impl shell_api::Commands for App { /* business methods */ }
+impl shell_api::Diagnostics for App { /* business methods */ }
 
-## 4. Message envelope
+#[tuffite::utility(interfaces(shell_api::Echo, shell_api::Aux))]
+#[derive(Default)]
+struct Worker { /* state shared by both interfaces */ }
+impl shell_api::Echo for Worker { /* business methods */ }
+impl shell_api::Aux for Worker { /* business methods */ }
 
-Every control message carries a typed envelope with at least:
-
-```text
-magic
-frame_kind
-flags
-request_id
-command_id
-schema_fingerprint
-payload_length
+#[tuffite::main(browser = App, utilities(Worker))]
+fn main() -> tuffite::app::Builder<App> { tuffite::app::Builder::new() }
 ```
 
-Requirements:
+`main` selects process implementation types. Browser installs interface registries
+from its attribute. All interfaces on a Worker share one supervised process and
+instance. Registration rejects duplicate ownership and Browser/Utility conflicts.
+Utility initialization uses `Default` or `factory = create_worker` beside
+`interfaces(...)`; the factory accepts `UtilityContext` and returns
+`ApplicationResult<Worker>`. Its internal owner name is `module_path!()` + `::` +
+the struct name, also exposed by `UtilityContext::name()`. Optional startup JSON
+in `app.utilities` uses that name; empty entries are unnecessary. Raw Rust/V8
+utilities retain their explicit `name = "..."` declaration and session lifecycle.
 
-- fixed byte order and field widths are part of the protocol;
-- unknown flags and message kinds are rejected unless explicitly extensible;
-- lengths are validated before allocation or typed payload decoding;
-- request IDs are scoped to one authorized document connection;
-- document identity comes from the browser, never from renderer-supplied data;
-- no message is dispatched before frame, schema, and capability checks succeed.
+## Permissions and routing
 
-The current control path has request, response, and framework-controlled
-application-event envelopes. Unknown request flags are rejected. Cancellation
-for a long-lived capability is part of that capability's typed API (for
-example, `tuffite.utility.cancel`) rather than a universal stream message kind.
+Permissions use exact, case-sensitive `module.Interface.Method` names:
 
-## 5. Command declaration and IDs
-
-Application authors declare the public contract in TypeScript:
-
-```ts
-export interface Project {
-  id: bigint;
-  name: string;
-}
-
-export type ProjectId = string;
-
-export enum OpenMode {
-  Read = "read",
-  Write = "write",
-}
-
-export namespace demo {
-  export namespace project {
-    export function open(id: ProjectId, mode: OpenMode): Promise<Project>;
-  }
-}
+```json
+{"identifier":"business","origins":["example://business"],
+ "shellApi":["example.Commands.Echo","tuffite.Fs.ReadFile"]}
 ```
 
-Commands are declared only as functions inside namespaces. Interfaces are data
-records, not command containers. The code-generation phase integrated into
-`tuff build` uses Oxc's Rust TypeScript
-parser and derives Rust data types, namespace modules, typed request structs and
-the decoder, the immutable JavaScript Proxy, global `.d.ts`, codec descriptors,
-and global declarations. Business code matches the generated `Request` enum and
-returns through each request type's `respond` helper; no generated handler trait
-is required. Numeric IDs are never maintained manually. The canonical name is:
+Place grants in `app.security.capabilities`. Prefer exact methods; wildcards
+expand against the generated endpoint catalogue at packaging. Unknown endpoints
+and patterns fail validation. There is no per-method permission metadata or
+scope registry. The loader validates scope syntax; each concrete API validates
+its resource with the common helper, passing kind and read/write behavior.
+APIs without resource scopes reject scoped grants. Browser/Utility business
+services currently expose method authorization and reject scoped grants too.
+A field named `path` does not automatically confer filesystem authority. Scope root labels, such as `data/**`,
+are independent of numeric enum wire values.
 
-Application `build.rs` files configure paths with a bindgen-style
-`tuffite::build::shell_api::Generator`. Each output independently selects `Write` or
-`Verify`: generated Rust normally goes to Cargo's `OUT_DIR`, while checked-in
-JavaScript and declarations are verified during builds. When assembled through
-`tuffite::build::Builder`, these inputs and verified outputs are registered with
-Cargo automatically for build-script reruns. Numeric command IDs are
-generated into the Rust decoder and JavaScript transport table; they are not a
-public API and application code never declares or references them.
-The Rust emitter constructs `proc_macro2::TokenStream` values with `quote`,
-parses the complete result as a `syn::File`, and formats it with `prettyplease`.
-It does not interpolate Rust source strings, so identifiers, literals, nested
-types, and raw-keyword names are validated as Rust syntax during generation.
-The framework invokes the same Generator with `Facade::Framework` (or the
-equivalent manifest setting), so built-in and application Proxy trees share the
-same parser, descriptors, runtime validation, constants, and naming rules.
+After origin, channel and command-ID checks, native application routing resolves
+an interface to its Utility owner in-process; otherwise it dispatches to Browser.
+Lookup sends no IPC and launches no process. Generic renderer Utility invoke and
+cancel cannot target typed interfaces or their internal owners, even with a raw
+Utility grant. Fingerprints, payload validation, response identity, cancellation,
+document teardown and native-only restrictions remain enforced at their owners.
+No `utilityRoutes`, typed service aliases or per-grant `service` field is used.
 
-```text
-<stable application namespace>:<stable command name>
+Grouped typed Utility apps require the `UtilityInterfaces` host capability before
+Browser construction. The route resolver is an optional, size-checked C ABI tail
+callback. The independent Cargo SDK and native C ABI remain separate from Mojo.
 
-com.example.demo:project.open
-```
+## Native Framework implementation
 
-The recommended ID is:
+`framework/shell_api/*.mojom` is authoritative. Chromium's parser/IR drives
+thin native interface and dispatcher templates under `build/mojom_templates`.
+Per-source `*-wire.mojom` projections expose method request/response structs to
+the official C++ generator. Implementations directly use its structs, enums,
+`StructPtr`s and arrays; there is no duplicate DTO representation or generated
+`ToWire`/`FromWire` conversion. Application SDK generation emits Rust/JS/TS;
+the SDK exposes no C++ output API or `tuff framework generate-cpp` command.
 
-```text
-first_u64_le(
-  BLAKE3("tuffite.command.v1\0" + canonical_name)
-)
-```
+Native handlers inherit generated abstract interfaces such as `generated::Fs`.
+`generated::Fs::Bind(std::make_shared<fs::FsImpl>())` produces one interface
+service. The router selects the interface, then its generated dispatcher selects
+a method. `BuiltinServices()` is only the composition list of implementations;
+there is no reflection or per-method route registry.
 
-Normative rules:
+Methods take `(const dispatch::Context&, RequestPtr, Callback)`. Context is an
+explicit, borrowed invocation identity; the callback is an ordinary
+`base::OnceCallback<void(rpc::Status, Results...)>` that only replies. The public
+signature preserves all response parameters. Empty responses take only Status.
+`rpc::Method` centralizes official-codec validation, response serialization and
+pending implementation ownership. `rpc::Reject(callback, status)` sends an error
+without a wire payload, regardless of the response parameter count.
 
-- UTF-8 normalization and allowed characters are specified by the generator.
-- Rust module paths, crate names, `DefaultHasher`, and build-local ordering are
-  not inputs.
-- the wire sends the `u64` ID and generated request/result schema fingerprint;
-- the build checks all commands for ID and canonical-name collisions;
-- generated JavaScript records the path, wire ID, and complete request/result
-  codec descriptors, so a separate command lock file is unnecessary;
-- the TypeScript API path is the stable command name and changing it is a wire
-  compatibility change;
-- compatible migrations may declare stable aliases;
-- published canonical names and the `tuffite.command.v1` domain never change
-  solely because of a future marketing rename.
+Context uses weak document/application references. The dispatcher rejects an
+expired caller with `kCancelled`. Async implementations must explicitly copy
+needed identity/snapshots before returning, never retain the borrowed Context
+reference, and recheck validity before later accessing the caller. Invocation
+identity is never stored as mutable current-caller state on shared services.
+Service bindings and pending completions retain the implementation object.
 
-The protocol domain should be finalized before the first stable release. If
-brand independence is desired, replace it now with a permanent organization-
-owned protocol domain and document that choice.
+Native bindings have standard `.mojom.h` / `.mojom.cc` paths. GN invokes the
+official parser and `--generate_extra_cpp_only` template projection without
+emitting unused Mojo endpoint bindings at those same paths.
+Application URL schemes come from the entry window and are independent of
+Mojom modules; native routing uses the generated method table, never a module
+prefix configured by hand. The source frontend currently compiles one module
+per SDK generation, with dotted module names supported.
 
-## 6. Serialization model
+Framework dispatch already carries RPC identity/status and transports raw typed
+struct bodies. Application dispatch retains the CERM request/response/cancel
+envelope around Mojom structs to preserve the standalone C ABI. Framework native
+Rust calls use generated `ShellApiRequest` encode/decode adapters. Window snapshots
+retain their captured messaging identity independently of the data codec.
 
-The TypeScript contract is the single source of truth. The static generator
-accepts a deliberately bounded subset and does not execute TypeScript: nested
-API namespaces, exported functions returning `Promise<T>`, named data
-interfaces, non-generic `type` aliases, explicit homogeneous string or integer
-`enum`s, primitive namespace `const`s, `boolean`, `number`, `bigint`, `string`,
-`Uint8Array`, `Date`, arrays, and optional/nullable values. Constants are exposed
-as immutable Proxy leaves and never receive command IDs or IPC calls. `any`,
-computed or implicit enum values, unknown types, inline data objects, executable
-statements, and recursive data graphs are rejected at generation time.
+JS/TS source templates are parsed and filled using typed OXC AST holes, including
+interface members, parameters and enum members. Generated identifiers and literal
+metadata become AST nodes. OXC codegen emits and reparses outputs. Rust generation
+uses quote tokens, syn validation and prettyplease formatting.
 
-The default deterministic codec uses little-endian fields: boolean is one byte,
-`number` is IEEE-754 `f64`, `bigint` is signed `i64`, `Date` is signed epoch
-milliseconds, strings and `Uint8Array` have a `u32` byte length, arrays have a
-`u32` element count, optional values use a strict 0/1 tag, and object fields are
-encoded in declaration order. Both sides reject invalid UTF-8, tags, trailing
-bytes, oversized collections, and JavaScript values that do not match the
-declared type. `Uint8Array` remains the raw binary escape hatch.
+## Verification
 
-The schema tool emits:
+Run `scripts/test-browser-runtime.mjs`, `scripts/test-mojom-codec.mjs` and
+`scripts/test-framework-mojom-codec.mjs` with Node. Cargo tests cover the frontend,
+source generation, codecs and independent generated SDK fixtures. Native
+`dispatch_unittests` compares the official C++ codec against the same Rust/JS
+fixtures for enums, nullable scalars/references and nested arrays.
 
-- Rust namespace modules, request/result types, codecs, and request decoder;
-- JavaScript command Proxy and codec descriptors;
-- TypeScript global declarations;
-- internal command transport metadata embedded in the generated bindings;
-- compatibility and golden-vector tests.
+Use `python3 x.py build` / `package` for Framework, then package Playground with
+the `tuff` CLI. Packaged smoke checks cover normal startup, Framework methods,
+Browser and Utility typed calls, shared Worker state, process separation, origin
+and endpoint permissions, raw bypass attempts, forged IDs and schema mismatch.
 
-The generated decoder validates the complete payload before calling business
-code. Large attachments should not be represented as a giant control-message
-`Uint8Array`; they use shared buffers or data pipes so payload bytes do not need
-to be copied through each layer.
-
-## 7. Authorization
-
-Authorization is evaluated for every invocation using browser-authenticated
-context:
-
-```text
-live document-scoped Mojo connection
-AND primary main frame
-AND committed non-opaque origin is in the manifest policy
-AND command capability granted
-AND request constraints satisfied
-```
-
-Capabilities are deny-by-default and declared in application configuration. A
-command can add constraints such as allowed path roots, dialog-only user
-activation, maximum byte count, or allowed window IDs.
-
-Example: `{ "identifier": "ui", "origins": ["myapp://main"],
-"shellApi": ["myapp.commands.save", "tuffite.storage.get"] }`
-is a rule inside `app.security.capabilities`. Generator settings live separately
-in `build.shellApi`; business grants never imply framework grants.
-
-Renderer-controlled origin strings, frame names, DOM attributes, or command IDs
-cannot grant a capability.
-
-## 8. Document lifecycle
-
-ShellAPI authorization is document-scoped, not renderer-process-scoped. On
-navigation, document replacement, frame detachment, role change, renderer crash,
-or window destruction, Runtime must:
-
-1. revoke the connection;
-2. reject new messages;
-3. cancel or detach in-flight work according to command policy;
-4. close data pipes and shared-buffer leases;
-5. discard late results using the document generation.
-
-Commands default to cancellation when their initiating document disappears. A
-command may explicitly become application-scoped when continued background work
-is part of its contract.
-
-## 9. Errors and observability
-
-The stable protocol error categories include malformed message, incompatible
-version, unauthorized, unknown command, invalid argument, cancelled, deadline
-exceeded, resource exhausted, unavailable, and internal failure. Application
-error details are typed payloads and must not expose arbitrary Rust debug text
-or sensitive local paths by default.
-
-Tracing records request ID, command ID, role, outcome, byte counts, queue time,
-execution time, and cancellation reason. Payload contents are excluded unless a
-command explicitly defines safe diagnostic fields.
-
-## 10. Versioning before the stable release
-
-Neither the author manifest nor the packaged application manifest uses
-`schemaVersion`. FFI compatibility remains internal to
-the Framework Distribution, and the wire codec owns its frame format; applications
-do not repeat either value. Each request carries the generated
-command schema fingerprint and is rejected before payload decoding when it
-differs from the application handler's fingerprint. Any wire or schema change
-is therefore a coordinated MVP change: regenerate bindings and rebuild all
-layers together. Cross-version negotiation can be designed when the public API
-approaches stability.
-
-Application binding outputs are configured only in `build.rs` with
-`Generator::rust` and `Generator::javascript`, both using `OutputMode::Write`.
-Cargo owns generation and tracks the declarations, manifest and generated files;
-missing or modified outputs rerun the build script. Build the Rust application
-before building the frontend, then assemble or launch the package. The application
-CLI performs its normal Cargo build without a separate generation pass or a
-feature override. The Vite integration reports missing application bindings and
-asks the developer to build the application first.
-
-In CI, build the application and check `git diff --exit-code` afterwards to catch
-uncommitted generated output changes. SDK maintenance can still use
-`tuff framework generate-js <manifest> --output <directory> --check` with an
-explicit destination; this command never executes an application's build script.
+Performance checks: `node scripts/bench-mojom-codec.mjs` measures local codec
+round trips. Set `TUFFITE_MOJOM_BENCHMARK=1` when running the packaged `--mojom`
+smoke check for C++/Rust Browser, Rust Utility, large payload and concurrent-call
+latencies. Results are diagnostic, not timing assertions. Utility unary replies
+currently have a 1 MiB total-frame budget (including the envelope).

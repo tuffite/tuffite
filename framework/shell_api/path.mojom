@@ -1,0 +1,16 @@
+// Shell API contract. JS/TS, Rust and C++ adapters are generated.
+module tuffite;
+
+import "tuffite/framework/shell_api/common.mojom";
+
+struct PathDirectories {
+  string resource;
+  string data;
+  string cache;
+  string temp;
+};
+
+interface Path {
+  Directories@0() => (PathDirectories result);
+  Resolve@1(BaseDirectory base, string? relative) => (string result);
+};

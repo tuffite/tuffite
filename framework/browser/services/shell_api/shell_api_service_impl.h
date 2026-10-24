@@ -8,7 +8,7 @@
 #include "base/memory/raw_ref.h"
 #include "tuffite/components/dispatch/browser/host_dispatch.h"
 #include "tuffite/components/dispatch/browser/request_registry.h"
-#include "tuffite/components/dispatch/browser/rpc_router.h"
+#include "tuffite/components/dispatch/browser/rpc.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service.h"
 namespace content {
 class BrowserContext;

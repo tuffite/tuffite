@@ -1,0 +1,9 @@
+{# Shared by Chromium's extra_cpp_template_paths, using its resolved Mojom IR. #}
+{% macro snake(name) -%}{% for ch in name %}{% if ch|upper == ch and ch|lower != ch and not loop.first and name[loop.index0-1] != '_' %}_{% endif %}{{ch|lower}}{% endfor %}{%- endmacro %}
+{% macro idl(kind, nullable=true) -%}
+{%- if nullable and kind|is_nullable_kind -%}{{idl(kind,false)}}?
+{%- elif kind|is_array_kind -%}array<{{idl(kind.kind)}}>
+{%- elif kind|is_struct_kind or kind|is_enum_kind -%}{{kind.name}}
+{%- else -%}{{ {'b':'bool','i8':'int8','u8':'uint8','i16':'int16','u16':'uint16','i32':'int32','u32':'uint32','i64':'int64','u64':'uint64','f':'float','d':'double','s':'string'}[kind.spec.lstrip('?')] }}
+{%- endif -%}
+{%- endmacro %}

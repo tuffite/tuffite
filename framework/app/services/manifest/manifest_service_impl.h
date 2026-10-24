@@ -39,6 +39,8 @@ class ManifestServiceImpl final : public ManifestService {
       std::string_view method) const override;
   std::vector<std::string> ExecuteJavaScriptOrigins(
       const url::Origin& origin) const override;
+  std::string ApplicationInterface(std::string_view channel) const override;
+  bool IsApplicationInterface(std::string_view service) const override;
   bool IsApplicationCommandRequest(std::string_view channel,
                                    uint64_t command_id) const override;
   bool IsShellApiOriginAllowed(const url::Origin& origin) const override;
@@ -48,7 +50,9 @@ class ManifestServiceImpl final : public ManifestService {
                                 std::string_view channel) const override;
   bool IsShellApiScopeAllowed(const url::Origin& origin,
                               std::string_view method,
-                              std::string_view resource) const override;
+                              std::string_view resource,
+                              std::string_view kind,
+                              bool write = false) const override;
   bool IsExplorerNavigationAllowed(const url::Origin& caller,
                                    const GURL& url) const override;
   bool IsWindowUrlAllowed(const url::Origin& caller,
@@ -94,7 +98,6 @@ class ManifestServiceImpl final : public ManifestService {
           "https: http:; frame-src 'self' https:; object-src 'none'; "
           "base-uri 'none'"};
   std::string app_host_;
-  std::string shell_api_namespace_;
   std::string serialized_;
   GURL entry_url_;
   std::vector<app::AppWindow> windows_;

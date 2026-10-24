@@ -11,8 +11,10 @@ source_set("commands") {
     "//tuffite/framework/browser/services/shell_api",
     "//tuffite/framework/test:abi_host_bridge_unittests",
   ]
-  public = [ "registry.h" ]
+  public = [ "builtin.h" ]
   sources = [
+    "builtin.cc",
+    "builtin.h",
     "dialog.cc",
     "dialog.h",
     "fs.cc",
@@ -24,8 +26,6 @@ source_set("commands") {
     "network.h",
     "path.cc",
     "path.h",
-    "registry.cc",
-    "registry.h",
     "remoting.cc",
     "remoting.h",
     "storage.cc",

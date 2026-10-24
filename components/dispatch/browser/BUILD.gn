@@ -4,21 +4,20 @@ source_set("browser") {
     "dispatch_host.h",
     "host_dispatch.h",
     "request_registry.h",
+    "rpc.h",
     "rpc_handler.h",
-    "rpc_route.h",
-    "rpc_router.h",
   ]
   sources = [
+    "context.cc",
     "context.h",
     "dispatch_host.cc",
     "dispatch_host.h",
     "host_dispatch.h",
     "request_registry.cc",
     "request_registry.h",
+    "rpc.cc",
+    "rpc.h",
     "rpc_handler.h",
-    "rpc_route.h",
-    "rpc_router.cc",
-    "rpc_router.h",
   ]
   public_deps = [
     "//base",
@@ -34,18 +33,5 @@ source_set("browser") {
     "//skia",
     "//ui/base",
     "//ui/snapshot",
-  ]
-}
-
-source_set("shell_api_protocol") {
-  public = [ "shell_api_protocol.h" ]
-  sources = [
-    "shell_api_protocol.cc",
-    "shell_api_protocol.h",
-  ]
-  public_deps = [
-    ":browser",
-    "//base",
-    "//tuffite/components/dispatch/common:implementation",
   ]
 }

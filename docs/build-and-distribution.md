@@ -154,7 +154,7 @@ fn main() -> Result<(), String> {
 
 Both components are required, in either addition order, and duplicates are
 rejected. Framework resolution runs before generation. Source manifests put
-namespace, declarations and facade under `build.shellApi`. Packaging removes
+Mojom source paths under `build.mojomSources`. Packaging removes
 `build` and emits only namespace and command IDs under the runtime
 `app.shellApi`; capability grants remain under `app.security.capabilities`.
 
@@ -264,8 +264,8 @@ path for local development; CI builds compile it out. Normal production launches
 have no CLI-issued nonce and therefore cannot activate the override. The packaged
 `tuffite.json`, application scheme,
 resource root, and production archives are unchanged. Applications should use
-the `tuffite/vite` plugin so `/tuffite-runtime.js`,
-`/tuffite-shell-api.js`, the generated application facade, and optional local
+the `tuffite/vite` plugin so `/tuffite.js`,
+`/tuffite.js`, the generated application facade, and optional local
 preview assets are available from the development origin.
 
 ### Current Playground workflow
@@ -500,12 +500,9 @@ Manifest schema v2 separates runtime application policy from packaging:
       "script": "mise exec -- bun run dev",
       "cwd": "packages/ui"
     },
-    "shellApi": {
-      "namespace": "playground",
-      "definitions": [
-        "shell_api.d.ts"
+    "mojomSources": [
+        "shell_api.mojom"
       ]
-    }
   },
   "bundle": {
     "executable": "demo",

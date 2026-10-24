@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Playground Mojom codec check</title>
+<p id="result">Checking Browser Rust and Utility Rust…</p>
+<script type="module">
+import * as frameworkApi from "/tuffite.js";
+
+
+import {commands, diagnostics, echo, aux, createPlaygroundApi, mojomTypes} from '/shell_api.js';
+import {encodeMojom, invokeBinary} from '/tuffite.js';
+window.__mojomBoundary = async () => {
+    const value = {small:255, large:(1n << 64n)-1n, enabled:false, visible:true,
+      medium:65535, signedValue:-2147483648, fraction:-0.25,
+      nested:{label:'boundary 🌍', bytes:new Uint8Array([])}};
+    const result = await commands.echoMojom(value);
+    let rejected = false;
+    try { await commands.echoMojom({...value, small:256}); }
+    catch { rejected = true; }
+    return {large:result.large.toString(), signed:result.signedValue, label:result.nested.label,
+      bytes:result.nested.bytes.length, enabled:result.enabled, visible:result.visible, rejected};
+};
+try {
+  if (['fs','storage','window'].some(name => Object.hasOwn(globalThis.tuffite,name))) {
+    throw new Error('Framework business methods leaked onto the native global');
+  }
+  window.__frameworkModuleOnly = true;
+  const sample = {small:7, large:(1n << 63n) + 17n, enabled:true, visible:false,
+    medium:513, signedValue:-12345, fraction:1.25,
+    nested:{label:'你好', bytes:new Uint8Array([0,1,255])}};
+  const browser = await commands.echoMojom(sample);
+  const utility = await echo.roundTrip(sample);
+  const other = await aux.roundTrip(sample);
+  const sharedState = await aux.readState();
+  const browserPid = await diagnostics.processId();
+  const utilityPid = await aux.processId();
+  if (sharedState !== sample.large || !browserPid || !utilityPid || browserPid === utilityPid) {
+    throw new Error('interfaces do not share Worker state or Utility process isolation failed');
+  }
+  window.__interfaceOwnership = {sharedState:true, separateProcess:true, browserPid, utilityPid};
+  if (other.large !== sample.large) throw new Error('wrong typed service response');
+  const denied = async (operation) => {
+    try { await operation(); } catch (error) {
+      if ((error.status ?? error.cause?.status) === 2) return;
+      throw error;
+    }
+    throw new Error('native authorization unexpectedly allowed forged/raw call');
+  };
+  await denied(() => frameworkApi.storage.get('scope-probe'));
+  await denied(() => frameworkApi.window.list());
+  await denied(() => commands.doSomething('scope-probe'));
+  await denied(() => echo.restricted(sample));
+  window.__scopedGrantsRejected = true;
+  await denied(() => frameworkApi.utility.invoke('playground.Echo', 91001n, new Uint8Array()));
+  await denied(() => frameworkApi.utility.cancel('playground.Echo', 91001n));
+  await denied(() => frameworkApi.utility.invoke('playground::typed_utility::Worker', 91002n, new Uint8Array()));
+  await denied(() => frameworkApi.utility.cancel('playground::typed_utility::Worker', 91002n));
+  let captured;
+  const capture = createPlaygroundApi(async (channel, id, fingerprint, payload) => {
+    captured = {id, fingerprint, payload};
+    return encodeMojom(mojomTypes.AuxRoundTripResponse, {result:sample});
+  });
+  await capture.aux.roundTrip(sample);
+  await denied(() => invokeBinary('playground.Echo.RoundTrip', captured.id, captured.fingerprint, captured.payload));
+  await capture.echo.roundTrip(sample);
+  let schemaMismatch = false;
+  try { await invokeBinary('playground.Echo.RoundTrip', captured.id, captured.fingerprint ^ 1n, captured.payload); }
+  catch (error) { if (error.code !== 'schema_mismatch') throw error; schemaMismatch = true; }
+  if (!schemaMismatch) throw new Error('Utility accepted a mismatched schema');
+  window.__typedUtilitySecurity = {rawBypassDenied:true, rawCancelDenied:true, forgedServiceDenied:true, schemaMismatchRejected:true};
+  for (const value of [browser, utility]) {
+    if (value.large !== sample.large || value.signedValue !== sample.signedValue ||
+        value.medium !== sample.medium || value.fraction !== sample.fraction ||
+        value.small !== sample.small || !value.enabled || value.visible ||
+        value.nested.label !== sample.nested.label || value.nested.bytes.join() !== '0,1,255') {
+      throw new Error('Mojom cross-process round trip mismatch');
+    }
+  }
+  window.__mojomSmoke = {browser:true, utility:true};
+  document.querySelector('#result').textContent = 'Browser Rust and Utility Rust passed';
+} catch (error) {
+  document.title = `Mojom error: ${error.message}`;
+  document.querySelector('#result').textContent = error.stack;
+}
+</script>
+</html>

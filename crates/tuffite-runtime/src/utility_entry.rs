@@ -113,17 +113,29 @@ pub(crate) fn validate_registration(
             "duplicate utility service name or V8 resource origin: {name}"
         ));
     }
+    for (index, interface) in registration.interfaces().iter().enumerate() {
+        if !is_identifier(interface) || interface.contains(':') || !interface.contains('.') {
+            return Err(format!("invalid ShellAPI interface: {interface}"));
+        }
+        if registration.interfaces()[..index].contains(interface)
+            || existing
+                .iter()
+                .any(|item| item.interfaces().contains(interface) || item.name() == *interface)
+        {
+            return Err(format!("duplicate Utility interface: {interface}"));
+        }
+    }
+    if existing
+        .iter()
+        .any(|item| item.interfaces().contains(&name))
+    {
+        return Err(format!("utility name conflicts with interface: {name}"));
+    }
     Ok(())
 }
 
 fn is_identifier(name: &str) -> bool {
-    let bytes = name.as_bytes();
-    if bytes.is_empty() || bytes.len() > MAX_SERVICE_NAME_BYTES {
-        return false;
-    }
-    let is_start = |byte: u8| byte.is_ascii_alphabetic() || matches!(byte, b'_' | b'$');
-    let is_continue = |byte: u8| is_start(byte) || byte.is_ascii_digit();
-    is_start(bytes[0]) && bytes[1..].iter().copied().all(is_continue)
+    crate::utility::is_valid_service_name(name)
 }
 
 fn parse_handle(value: FfiHandle) -> Result<UtilityHandle, Status> {
@@ -183,6 +195,50 @@ pub(crate) unsafe extern "C" fn utility_runtime<A: Registrations>(
         unsafe {
             *runtime = registration.runtime();
         }
+        Status::Ok
+    }))
+    .unwrap_or(Status::Internal)
+}
+
+pub unsafe extern "C" fn resolve_utility_route<A: Registrations>(
+    name: ByteSlice,
+    owner_out: *mut ByteSlice,
+) -> Status {
+    catch_unwind(AssertUnwindSafe(|| {
+        if owner_out.is_null() {
+            return Status::InvalidArgument;
+        }
+        // SAFETY: The caller provides writable output storage.
+        unsafe {
+            owner_out.write(ByteSlice {
+                data: std::ptr::null(),
+                len: 0,
+            });
+        };
+        if name.len == 0 || name.len > MAX_SERVICE_NAME_BYTES {
+            return Status::InvalidArgument;
+        }
+        // SAFETY: Input bytes are readable for the duration of this callback.
+        let bytes = match unsafe { borrowed_bytes(name.data, name.len) } {
+            Ok(bytes) => bytes,
+            Err(status) => return status,
+        };
+        let Ok(name) = std::str::from_utf8(bytes) else {
+            return Status::InvalidArgument;
+        };
+        let Some(owner) = A::utility_services().iter().find(|item| {
+            !item.interfaces().is_empty()
+                && (item.name() == name || item.interfaces().contains(&name))
+        }) else {
+            return Status::NotFound;
+        };
+        // SAFETY: Output is writable; name storage is static and outlives the callback.
+        unsafe {
+            owner_out.write(ByteSlice {
+                data: owner.name().as_ptr(),
+                len: owner.name().len(),
+            });
+        };
         Status::Ok
     }))
     .unwrap_or(Status::Internal)
@@ -1041,6 +1097,84 @@ mod tests {
             Ok(Box::new(EchoSession {
                 emitter: request.emitter(),
             }))
+        }
+    }
+
+    #[test]
+    fn interface_registration_and_route_lookup_are_unambiguous() {
+        const WORKER: UtilityServiceRegistration = UtilityServiceRegistration::typed::<EchoService>(
+            "app::workers.Worker",
+            &["demo.Echo", "demo.Aux"],
+        );
+        struct Grouped;
+        impl Registrations for Grouped {
+            fn utility_services() -> &'static [UtilityServiceRegistration] {
+                const SERVICES: &[UtilityServiceRegistration] = &[
+                    WORKER,
+                    UtilityServiceRegistration::new::<EchoService>("raw"),
+                ];
+                SERVICES
+            }
+        }
+        assert!(validate_registration(&[], WORKER).is_ok());
+        assert!(
+            validate_registration(
+                &[WORKER],
+                UtilityServiceRegistration::typed::<EchoService>("other", &["demo.Aux"])
+            )
+            .is_err()
+        );
+        assert!(
+            validate_registration(
+                &[],
+                UtilityServiceRegistration::typed::<EchoService>("bad", &["demo.Aux", "demo.Aux"])
+            )
+            .is_err()
+        );
+        assert!(
+            validate_registration(
+                &[],
+                UtilityServiceRegistration::typed::<EchoService>("bad", &["demo::Aux"])
+            )
+            .is_err()
+        );
+        assert!(
+            validate_registration(
+                &[WORKER],
+                UtilityServiceRegistration::new::<EchoService>("demo.Aux")
+            )
+            .is_err()
+        );
+        for name in [
+            "demo.Echo",
+            "demo.Aux",
+            "app::workers.Worker",
+            "raw",
+            "missing",
+        ] {
+            let mut owner = ByteSlice::from_slice(b"stale");
+            // SAFETY: Both input and output storage are valid throughout the call.
+            let status = unsafe {
+                resolve_utility_route::<Grouped>(
+                    ByteSlice::from_slice(name.as_bytes()),
+                    &raw mut owner,
+                )
+            };
+            if name == "raw" || name == "missing" {
+                assert_eq!(status, Status::NotFound);
+                assert!(owner.data.is_null());
+                assert_eq!(owner.len, 0);
+            } else {
+                assert_eq!(status, Status::Ok);
+                // SAFETY: Successful resolver returns static readable owner bytes.
+                assert_eq!(
+                    unsafe { slice::from_raw_parts(owner.data, owner.len) },
+                    b"app::workers.Worker"
+                );
+            }
+        }
+        for name in ["", "a:", "a:::b", "a..b", "1bad", "a.", ".a"] {
+            assert!(!is_identifier(name), "{name}");
         }
     }
 

@@ -1,4 +1,4 @@
-import "/shell_api.js";
+import "/tuffite.js";
 const output = document.querySelector("#event-output");
 const events = [];
 const requests = [];

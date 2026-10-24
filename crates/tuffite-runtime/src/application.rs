@@ -53,6 +53,7 @@ pub const fn for_application<B: Browser, R: Registrations>() -> AbiApplication {
         utility_runtime: Some(crate::utility_entry::utility_runtime::<R>),
         resolve_v8: Some(crate::abi::resolve_v8),
         utility_start_with_context: Some(crate::utility_entry::start_utility_with_context::<R>),
+        resolve_utility_route: Some(crate::utility_entry::resolve_utility_route::<R>),
         start: Some(crate::abi::start_browser::<B>),
         dispatch: Some(crate::abi::dispatch_browser),
         stop: Some(crate::abi::stop_browser),

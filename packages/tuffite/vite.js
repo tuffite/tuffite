@@ -17,8 +17,7 @@ export function tuffite(options = {}) {
     ? JSON.parse(readFileSync(manifestPath, "utf8"))
     : undefined;
   const mounts = [
-    ["/tuffite-runtime.js", resolve(packageRoot, "runtime.js")],
-    ["/tuffite-shell-api.js", resolve(packageRoot, "generated/index.js")],
+    ["/tuffite.js", resolve(packageRoot, "generated/index.js")],
   ];
   const manifestStatic = Object.fromEntries(
     (manifest?.bundle?.resources ?? []).map((root) => [
@@ -31,13 +30,14 @@ export function tuffite(options = {}) {
     resolve(applicationRoot, root),
   ]);
   const shellApi = options.shellApi ??
-    (manifest?.app?.shellApi
-      ? { url: "/shell_api.js", file: "generated/shell_api.js" }
+    (manifest?.build?.mojomSources?.length
+      ? { url: "/shell_api.js", file: "generated/index.js" }
       : undefined);
   const generatedMount = shellApi
     ? [shellApi.url, resolve(applicationRoot, shellApi.file)]
     : undefined;
-  const buildModules = new Map([...mounts, ...(generatedMount ? [generatedMount] : [])]);
+  const generatedMounts = generatedMount ? [generatedMount] : [];
+  const buildModules = new Map([...mounts, ...generatedMounts]);
   const virtualPrefix = "\0tuffite-runtime:";
   return {
     name: "tuffite-dev-runtime",
@@ -46,7 +46,11 @@ export function tuffite(options = {}) {
         throw new Error(`Missing application Shell API bindings: ${generatedMount[1]}. Build the application with Cargo first so build.rs generates them, then start or build the frontend.`);
       }
     },
-    resolveId(id) {
+    resolveId(id, importer) {
+      if (id.startsWith(".") && importer?.startsWith(virtualPrefix)) {
+        const pathname = new URL(id, `http://tuffite.local${importer.slice(virtualPrefix.length)}`).pathname;
+        if (buildModules.has(pathname)) return `${virtualPrefix}${pathname}`;
+      }
       return buildModules.has(id) ? `${virtualPrefix}${id}` : undefined;
     },
     async load(id) {
@@ -55,12 +59,13 @@ export function tuffite(options = {}) {
       return source ? readFile(source, "utf8") : undefined;
     },
     async generateBundle() {
-      if (!generatedMount) return;
-      this.emitFile({
-        type: "asset",
-        fileName: generatedMount[0].replace(/^\/+/, ""),
-        source: await readFile(generatedMount[1], "utf8"),
-      });
+      for (const [url, source] of generatedMounts) {
+        this.emitFile({
+          type: "asset",
+          fileName: url.replace(/^\/+/, ""),
+          source: await readFile(source, "utf8"),
+        });
+      }
     },
     configureServer(server) {
       server.middlewares.use(async (request, response, next) => {
@@ -80,10 +85,8 @@ export function tuffite(options = {}) {
         }
         const framework = mounts.find(([url]) => url === pathname);
         if (framework) return sendJavaScript(framework[1], response, next);
-        const generated = generatedMount && pathname === generatedMount[0]
-          ? generatedMount[1]
-          : undefined;
-        if (generated) return sendJavaScript(generated, response, next);
+        const generated = generatedMounts.find(([url]) => pathname === url);
+        if (generated) return sendJavaScript(generated[1], response, next);
         for (const [prefix, root] of staticRoots) {
           if (!pathname.startsWith(prefix)) continue;
           const relative = pathname.slice(prefix.length);

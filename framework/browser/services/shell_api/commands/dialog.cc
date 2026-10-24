@@ -19,7 +19,6 @@
 #include "content/public/browser/web_contents.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
-#include "tuffite/framework/browser/services/shell_api/commands/registry.h"
 #include "tuffite/framework/browser/web_contents_role.h"
 #include "ui/shell_dialogs/select_file_dialog.h"
 #include "ui/shell_dialogs/select_file_policy.h"
@@ -29,10 +28,10 @@ namespace tuffite::shell_api::dialog {
 
 using generated::OpenDirectoryDialogOptions;
 using generated::OpenFileDialogOptions;
-using generated::dialog::OpenDirectoryCallback;
-using generated::dialog::OpenDirectoryRequest;
-using generated::dialog::OpenFileCallback;
-using generated::dialog::OpenFileRequest;
+using OpenDirectoryCallback = generated::Dialog::OpenDirectoryCallback;
+using OpenDirectoryRequestPtr = generated::Dialog::OpenDirectoryRequestPtr;
+using OpenFileCallback = generated::Dialog::OpenFileCallback;
+using OpenFileRequestPtr = generated::Dialog::OpenFileRequestPtr;
 
 namespace {
 
@@ -90,7 +89,7 @@ class PendingDialog final : public ui::SelectFileDialog::Listener,
             std::unique_ptr<ui::SelectFileDialog::FileTypeInfo> file_types,
             gfx::NativeWindow owning_window) {
     if (!dialog_) {
-      std::move(callback_).Run(kStatusUnavailable, {});
+      rpc::Reject(callback_, rpc::Status::kUnavailable);
       return false;
     }
     CHECK(!g_dialog_active);
@@ -121,7 +120,7 @@ class PendingDialog final : public ui::SelectFileDialog::Listener,
   void Complete(std::optional<std::string> path) {
     CHECK(g_dialog_active);
     g_dialog_active = false;
-    std::move(callback_).Run(kStatusOk, std::move(path));
+    std::move(callback_).Run(rpc::Status::kOk, std::move(path));
     Release();
   }
 
@@ -139,7 +138,7 @@ bool IsAuthorized(content::RenderFrameHost& frame, bool file) {
          &frame == web_contents->GetPrimaryMainFrame() &&
          manifest->IsShellApiCommandAllowed(
              frame.GetLastCommittedOrigin(),
-             file ? "tuffite.dialog.openFile" : "tuffite.dialog.openDirectory");
+             file ? "tuffite.Dialog.OpenFile" : "tuffite.Dialog.OpenDirectory");
 }
 
 void Show(content::RenderFrameHost& frame,
@@ -149,20 +148,20 @@ void Show(content::RenderFrameHost& frame,
           std::optional<std::vector<std::vector<std::string>>> extensions,
           SelectionCallback callback) {
   if (!IsAuthorized(frame, file)) {
-    std::move(callback).Run(kStatusAccessDenied, {});
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
   if (g_dialog_active) {
-    std::move(callback).Run(kStatusUnavailable, {});
+    rpc::Reject(callback, rpc::Status::kUnavailable);
     return;
   }
   if (title.size() > 512 || default_path.size() > 32 * 1024) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
   auto file_types = file ? MakeFileTypes(extensions) : nullptr;
   if (file && extensions && !file_types) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
   if (file_types && file_types->extensions.empty()) {
@@ -181,30 +180,38 @@ void Show(content::RenderFrameHost& frame,
 
 }  // namespace
 
-void OpenFile(const ::tuffite::dispatch::Context& context,
-              OpenFileRequest&& request,
-              OpenFileCallback&& callback) {
-  if (!context.sender) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void DialogImpl::OpenFile(const dispatch::Context& context,
+                          OpenFileRequestPtr request,
+                          OpenFileCallback callback) {
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  OpenFileDialogOptions options =
-      request.options.value_or(OpenFileDialogOptions());
-  Show(context.frame(), true, options.title.value_or(""),
-       options.default_path.value_or(""), std::move(options.extensions),
+  if (!IsUnscopedAllowed(context, generated::Dialog::kOpenFile)) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
+    return;
+  }
+  auto options = request->options ? std::move(request->options)
+                                  : OpenFileDialogOptions::New();
+  Show(context.frame(), true, options->title.value_or(""),
+       options->default_path.value_or(""), std::move(options->extensions),
        std::move(callback));
 }
 
-void OpenDirectory(const ::tuffite::dispatch::Context& context,
-                   OpenDirectoryRequest&& request,
-                   OpenDirectoryCallback&& callback) {
-  if (!context.sender) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void DialogImpl::OpenDirectory(const dispatch::Context& context,
+                               OpenDirectoryRequestPtr request,
+                               OpenDirectoryCallback callback) {
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  OpenDirectoryDialogOptions options =
-      request.options.value_or(OpenDirectoryDialogOptions());
-  Show(context.frame(), false, options.title.value_or(""), "", std::nullopt,
+  if (!IsUnscopedAllowed(context, generated::Dialog::kOpenDirectory)) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
+    return;
+  }
+  auto options = request->options ? std::move(request->options)
+                                  : OpenDirectoryDialogOptions::New();
+  Show(context.frame(), false, options->title.value_or(""), "", std::nullopt,
        std::move(callback));
 }
 

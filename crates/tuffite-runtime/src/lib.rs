@@ -10,6 +10,7 @@ mod dispatch;
 mod executor;
 mod handle;
 mod javascript_extension;
+pub mod mojom;
 pub mod protocol;
 mod runtime;
 mod shell_api;

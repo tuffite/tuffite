@@ -63,10 +63,7 @@ pub fn check(path: &Path) -> Result<Value, String> {
     }
     let build = required(root, "build", "build")?;
     check_build(build)?;
-    check_app(
-        required(root, "app", "app")?,
-        build["shellApi"]["namespace"].as_str().unwrap(),
-    )?;
+    check_app(required(root, "app", "app")?)?;
     if let Some(bundle) = root.get("bundle") {
         check_bundle(bundle)?;
     }
@@ -114,7 +111,7 @@ pub(super) fn validate_output_name(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn check_app(value: &Value, namespace: &str) -> Result<(), String> {
+fn check_app(value: &Value) -> Result<(), String> {
     let app = object(value, "app")?;
     known_fields(
         app,
@@ -130,12 +127,14 @@ fn check_app(value: &Value, namespace: &str) -> Result<(), String> {
     )?;
     if let Some(utilities) = app.get("utilities") {
         for (name, definition) in object(utilities, "app.utilities")? {
-            let mut bytes = name.bytes();
             if name.len() > 128
-                || !bytes
-                    .next()
-                    .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_' || b == b'$')
-                || !bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$')
+                || !name.replace("::", ".").split('.').all(|part| {
+                    let mut bytes = part.bytes();
+                    bytes
+                        .next()
+                        .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_' || b == b'$')
+                        && bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$')
+                })
             {
                 return Err("app.utilities: invalid service name".to_owned());
             }
@@ -164,7 +163,14 @@ fn check_app(value: &Value, namespace: &str) -> Result<(), String> {
         }
     }
     if let Some(assets) = app.get("assets") {
-        check_assets(assets, namespace)?;
+        let entry = app
+            .get("windows")
+            .and_then(|windows| windows.pointer("/0/url"))
+            .and_then(Value::as_str);
+        let scheme = entry
+            .and_then(|url| url.split_once("://").map(|(scheme, _)| scheme))
+            .ok_or("app.windows: missing entry URL scheme")?;
+        check_assets(assets, scheme)?;
     }
     if let Some(network) = app.get("network") {
         check_network(network)?;
@@ -328,7 +334,7 @@ fn check_assets(value: &Value, scheme: &str) -> Result<(), String> {
             }
             for pattern in route["paths"].as_array().unwrap() {
                 let pattern = pattern.as_str().unwrap();
-                if matches!(pattern, "/tuffite-runtime.js" | "/tuffite-shell-api.js") {
+                if pattern == "/tuffite.js" {
                     return Err(format!("{path}: reserved framework route"));
                 }
                 let prefix = pattern.strip_suffix('*').unwrap_or(pattern);
@@ -357,22 +363,16 @@ fn check_assets(value: &Value, scheme: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn check_shell_api(value: &Value) -> Result<(), String> {
-    let path = "build.shellApi";
-    let shell = object(value, path)?;
-    known_fields(shell, path, &["namespace", "definitions", "facade"])?;
-    nonempty_string(shell.get("namespace"), &format!("{path}.namespace"))?;
-    strings(
-        required(shell, "definitions", &format!("{path}.definitions"))?,
-        &format!("{path}.definitions"),
-        false,
-    )?;
-    if let Some(facade) = shell.get("facade") {
-        one_of(
-            facade,
-            &format!("{path}.facade"),
-            &["application", "framework"],
-        )?;
+fn check_mojom_sources(value: &Value) -> Result<(), String> {
+    let path = "build.mojomSources";
+    strings(value, path, false)?;
+    if value.as_array().unwrap().iter().any(|value| {
+        Path::new(value.as_str().unwrap())
+            .extension()
+            .and_then(|s| s.to_str())
+            != Some("mojom")
+    }) {
+        return Err("build.mojomSources: only .mojom contracts are supported".into());
     }
     Ok(())
 }
@@ -496,7 +496,7 @@ fn check_build(value: &Value) -> Result<(), String> {
         build,
         "build",
         &[
-            "shellApi",
+            "mojomSources",
             "devPackage",
             "devUrl",
             "beforeDevCommand",
@@ -506,7 +506,7 @@ fn check_build(value: &Value) -> Result<(), String> {
             "profile",
         ],
     )?;
-    check_shell_api(required(build, "shellApi", "build.shellApi")?)?;
+    check_mojom_sources(required(build, "mojomSources", "build.mojomSources")?)?;
     for hook in ["beforeBuildCommand", "beforePackageCommand"] {
         if let Some(command) = build.get(hook) {
             let command: super::hooks::BuildCommand = serde_json::from_value(command.clone())
@@ -633,18 +633,32 @@ fn strings(value: &Value, path: &str, empty_allowed: bool) -> Result<(), String>
     Ok(())
 }
 
-fn one_of(value: &Value, path: &str, allowed: &[&str]) -> Result<(), String> {
-    let value = nonempty_string(Some(value), path)?;
-    if allowed.contains(&value) {
-        Ok(())
-    } else {
-        Err(format!("{path}: expected one of {}", allowed.join(", ")))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn utility_startup_configuration_accepts_rust_owner_paths() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../../../playground/tuffite.json")).unwrap();
+        for name in ["playground::typed_utility::Worker", "echo", "demo.Worker"] {
+            let mut app = fixture["app"].clone();
+            app["utilities"] = serde_json::json!({name: {"configuration": {"mode": 7}}});
+            assert!(check_app(&app).is_ok(), "{name}");
+        }
+        for name in [
+            "",
+            "app:::Worker",
+            "app..Worker",
+            "app::",
+            "::Worker",
+            "app:Worker",
+        ] {
+            let mut app = fixture["app"].clone();
+            app["utilities"] = serde_json::json!({name: {}});
+            assert!(check_app(&app).is_err(), "{name}");
+        }
+    }
 
     #[test]
     fn discovery_uses_nearest_manifest_and_explicit_paths_never_fall_back() {
@@ -750,12 +764,9 @@ mod tests {
         );
         assert!(check_windows(&serde_json::json!([{ "label":"a", "url":"demo://a/home", "width":400, "height":300, "minWidth":500 }])).is_err());
         assert!(
-            check_app(
-                &serde_json::json!({"identifier":"demo", "capabilities":{}}),
-                "demo"
-            )
-            .unwrap_err()
-            .contains("unknown field")
+            check_app(&serde_json::json!({"identifier":"demo", "capabilities":{}}))
+                .unwrap_err()
+                .contains("unknown field")
         );
         assert!(check_network(&serde_json::json!({"allow":["*"]})).is_err());
     }

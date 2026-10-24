@@ -3,8 +3,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use serde::Deserialize;
-
 use super::{emit, emit_files, generate_bindings};
 
 #[derive(Debug)]
@@ -16,13 +14,6 @@ pub struct GeneratedBindings {
     pub declarations: String,
     /// Per-input Rust fragments keyed by `<stem>.rs`.
     pub rust_files: BTreeMap<String, String>,
-    /// Per-input JavaScript metadata modules keyed by `<stem>.js`.
-    pub javascript_files: BTreeMap<String, String>,
-    /// Per-input portable declarations keyed by `<stem>.d.ts`.
-    pub declaration_files: BTreeMap<String, String>,
-    /// Generated C++ files keyed by filename (for example `dialog.h` and
-    /// `dialog.cc`), with one pair per input `.d.ts`.
-    pub cpp_files: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -32,9 +23,8 @@ pub enum OutputMode {
 }
 
 /// Selects the transport used by the generated JavaScript Proxy facade.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum Facade {
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum Facade {
     /// Application commands are encoded and sent through binary `ShellAPI` IPC.
     #[default]
     Application,
@@ -60,8 +50,6 @@ pub struct Generator {
     rust: Option<Output>,
     rust_file: Option<Output>,
     javascript: Option<Output>,
-    cpp: Option<Output>,
-    cpp_include_root: String,
     facade: Option<Facade>,
 }
 
@@ -77,8 +65,6 @@ impl Generator {
             rust: None,
             rust_file: None,
             javascript: None,
-            cpp: None,
-            cpp_include_root: "tuffite/framework/shell_api".to_owned(),
             facade: None,
         }
     }
@@ -97,7 +83,7 @@ impl Generator {
         self
     }
 
-    /// Writes or verifies `index.js`, `index.d.ts` and per-input modules together.
+    /// Writes or verifies `index.js` and `index.d.ts` together.
     #[must_use]
     pub fn javascript(mut self, directory: impl Into<PathBuf>, mode: OutputMode) -> Self {
         self.javascript = Some(Output::new(directory, mode));
@@ -111,24 +97,10 @@ impl Generator {
         self
     }
 
-    /// Writes or verifies per-input C++ headers/sources and shared protocol files.
-    #[must_use]
-    pub fn cpp(mut self, directory: impl Into<PathBuf>, mode: OutputMode) -> Self {
-        self.cpp = Some(Output::new(directory, mode));
-        self
-    }
-
-    /// Sets the include root used for cross-file generated C++ headers.
-    #[must_use]
-    pub fn cpp_include_root(mut self, root: impl Into<String>) -> Self {
-        self.cpp_include_root = root.into();
-        self
-    }
-
-    /// Overrides the facade transport declared by the input manifest.
-    #[must_use]
-    pub fn facade(mut self, facade: Facade) -> Self {
-        self.facade = Some(facade);
+    /// Only Framework maintenance commands can select the reserved transport.
+    #[cfg(feature = "cli")]
+    pub(crate) fn framework(mut self) -> Self {
+        self.facade = Some(Facade::Framework);
         self
     }
 
@@ -141,8 +113,7 @@ impl Generator {
     }
 
     pub(super) fn generate_for_build(self) -> Result<BuildGeneration, String> {
-        let (bindings, inputs) =
-            generate_bindings(&self.manifest, self.facade, &self.cpp_include_root)?;
+        let (bindings, inputs) = generate_bindings(&self.manifest, self.facade)?;
         let mut rerun_paths = BTreeSet::from([self.manifest.clone()]);
         rerun_paths.extend(inputs);
         if let Some(output) = self.rust_file {
@@ -178,29 +149,6 @@ impl Generator {
             output.child("index.d.ts").file(
                 &bindings.declarations,
                 "TypeScript declarations",
-                &self.manifest,
-                &mut rerun_paths,
-            )?;
-            output.files(
-                &bindings.javascript_files,
-                "JavaScript ShellAPI module",
-                ".tuffite-javascript-outputs.json",
-                &self.manifest,
-                &mut rerun_paths,
-            )?;
-            output.files(
-                &bindings.declaration_files,
-                "TypeScript ShellAPI declaration",
-                ".tuffite-declaration-outputs.json",
-                &self.manifest,
-                &mut rerun_paths,
-            )?;
-        }
-        if let Some(output) = self.cpp {
-            output.files(
-                &bindings.cpp_files,
-                "C++ ShellAPI file",
-                ".tuffite-cpp-outputs.json",
                 &self.manifest,
                 &mut rerun_paths,
             )?;

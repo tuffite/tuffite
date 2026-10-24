@@ -9,7 +9,7 @@ const nestedReady = new Promise((resolve) => {
 // request must still be rejected, even when this origin has a method grant.
 try {
   await window.tuffite.invoke(
-    "playground.commands.doSomething",
+    "playground.Commands.DoSomething",
     new Uint8Array(),
   );
   document.title = "Explorer Wire Validation Failed";

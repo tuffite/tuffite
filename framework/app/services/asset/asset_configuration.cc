@@ -10,8 +10,7 @@
 #include "url/origin.h"
 namespace tuffite::asset {
 std::string AssetConfiguration::ResolveAssetRoute(const GURL& url) const {
-  if (url.path() == "/tuffite-runtime.js" ||
-      url.path() == "/tuffite-shell-api.js") {
+  if (url.path() == "/tuffite.js") {
     return std::string(url.path());
   }
   const auto origin = url::Origin::Create(url);

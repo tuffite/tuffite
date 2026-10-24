@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/json/json_reader.h"
+#include "base/json/json_writer.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
 #include "url/url_util.h"
@@ -25,7 +27,7 @@ constexpr char kManifest[] = R"({
           "shellApi": [
             "originlab.*",
             {
-              "method": "tuffite.fs.readFile",
+              "method": "tuffite.Fs.ReadFile",
               "allow": [
                 {
                   "path": "resource/allowed/*"
@@ -33,7 +35,7 @@ constexpr char kManifest[] = R"({
               ]
             },
             {
-              "method": "tuffite.fs.exists",
+              "method": "tuffite.Fs.Exists",
               "allow": [
                 {
                   "path": "resource/allowed/*"
@@ -41,7 +43,7 @@ constexpr char kManifest[] = R"({
               ]
             },
             {
-              "method": "tuffite.fs.writeFile",
+              "method": "tuffite.Fs.WriteFile",
               "allow": [
                 {
                   "path": "data/safe/*"
@@ -49,7 +51,7 @@ constexpr char kManifest[] = R"({
               ]
             },
             {
-              "method": "tuffite.fs.createDir",
+              "method": "tuffite.Fs.CreateDir",
               "allow": [
                 {
                   "path": "data/safe/*"
@@ -57,7 +59,7 @@ constexpr char kManifest[] = R"({
               ]
             },
             {
-              "method": "tuffite.fs.removeFile",
+              "method": "tuffite.Fs.RemoveFile",
               "allow": [
                 {
                   "path": "data/safe/*"
@@ -65,7 +67,7 @@ constexpr char kManifest[] = R"({
               ]
             },
             {
-              "method": "tuffite.net.request",
+              "method": "tuffite.Net.Request",
               "allow": [
                 {
                   "url": "https://example.com/api/*"
@@ -73,17 +75,17 @@ constexpr char kManifest[] = R"({
               ]
             },
             {
-              "method": "tuffite.fs.readFile",
+              "method": "tuffite.Fs.ReadFile",
               "allow": [
                 {
                   "path": "data/**"
                 }
               ]
             },
-            "tuffite.window.focus",
-            "tuffite.window.close",
+            "tuffite.Window.Focus",
+            "tuffite.Window.Close",
             {
-              "method": "tuffite.window.close",
+              "method": "tuffite.Window.Close",
               "allow": [
                 {
                   "window": "others"
@@ -99,7 +101,7 @@ constexpr char kManifest[] = R"({
             "originlab://*.preview"
           ],
           "shellApi": [
-            "tuffite.path.directories"
+            "tuffite.Path.Directories"
           ]
         },
         {
@@ -125,7 +127,7 @@ constexpr char kManifest[] = R"({
           ],
           "shellApi": [
             {
-              "method": "tuffite.fs.readFile",
+              "method": "tuffite.Fs.ReadFile",
               "deny": [
                 {
                   "path": "data/secrets/**"
@@ -133,7 +135,7 @@ constexpr char kManifest[] = R"({
               ]
             },
             {
-              "method": "tuffite.window.close",
+              "method": "tuffite.Window.Close",
               "deny": [
                 {
                   "window": "others"
@@ -141,7 +143,7 @@ constexpr char kManifest[] = R"({
               ]
             },
             {
-              "method": "tuffite.net.request",
+              "method": "tuffite.Net.Request",
               "deny": [
                 {
                   "url": "https://example.com/api/private/**"
@@ -161,19 +163,19 @@ constexpr char kManifest[] = R"({
       }
     ],
     "shellApi": {
-      "namespace": "originlab",
+
       "commandIds": {
-        "tuffite.path.directories": "0000000000000000",
+        "tuffite.Path.Directories": "0000000000000000",
         "originlab.commands.allowed": "0000000000000001",
         "originlab.commands.denied": "0000000000000002",
-        "tuffite.fs.readFile": "0000000000000000",
-        "tuffite.fs.exists": "0000000000000000",
-        "tuffite.fs.writeFile": "0000000000000000",
-        "tuffite.fs.createDir": "0000000000000000",
-        "tuffite.fs.removeFile": "0000000000000000",
-        "tuffite.net.request": "0000000000000000",
-        "tuffite.window.focus": "0000000000000000",
-        "tuffite.window.close": "0000000000000000"
+        "tuffite.Fs.ReadFile": "0000000000000000",
+        "tuffite.Fs.Exists": "0000000000000000",
+        "tuffite.Fs.WriteFile": "0000000000000000",
+        "tuffite.Fs.CreateDir": "0000000000000000",
+        "tuffite.Fs.RemoveFile": "0000000000000000",
+        "tuffite.Net.Request": "0000000000000000",
+        "tuffite.Window.Focus": "0000000000000000",
+        "tuffite.Window.Close": "0000000000000000"
       }
     },
     "network": {},
@@ -236,6 +238,31 @@ TEST_F(OriginCapabilityTest, ProductNameDefaultsToApplicationIdentity) {
   EXPECT_EQ(manifest_->app_info().product_name, "com.example.originlab");
 }
 
+TEST_F(OriginCapabilityTest, MojomModulesDoNotDependOnTheAssetScheme) {
+  auto text = std::string(kManifest);
+  // Keep originlab:// URLs while the generated table contains two unrelated
+  // modules. Method identity and interface routing come only from that table.
+  const std::string marker =
+      "\"originlab.commands.allowed\": \"0000000000000001\",";
+  const auto at = text.find(marker);
+  ASSERT_NE(at, std::string::npos);
+  text.insert(at, "\"other.files.Fs.Read\": \"0000000000000011\",\n");
+  ASSERT_TRUE(
+      base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), text));
+  auto manifest = ManifestServiceFactory::Load(root_.GetPath(), &error_);
+  ASSERT_TRUE(manifest) << error_;
+  EXPECT_EQ(manifest->app_info().scheme, "originlab");
+  EXPECT_EQ(manifest->ApplicationInterface("other.files.Fs.Read"),
+            "other.files.Fs");
+  EXPECT_TRUE(manifest->IsApplicationCommandRequest("other.files.Fs.Read", 17));
+  EXPECT_TRUE(manifest->IsApplicationInterface("originlab.commands"));
+  EXPECT_TRUE(manifest->IsApplicationInterface("other.files.Fs"));
+  EXPECT_TRUE(
+      manifest->ApplicationInterface("tuffite.Path.Directories").empty());
+  EXPECT_TRUE(manifest->ApplicationInterface("other.files.Fs.Unknown").empty());
+  EXPECT_FALSE(manifest->IsAllShellApiAllowed(Origin("originlab://main")));
+}
+
 TEST_F(OriginCapabilityTest, ProductNameIsIndependentFromIdentity) {
   auto text = std::string(kManifest);
   text.insert(1, "\"productName\":\"Origin Lab\",");
@@ -284,9 +311,9 @@ TEST_F(OriginCapabilityTest, UnionGrantsRemainOriginScoped) {
   auto preview = Origin("originlab://demo.preview/page");
   EXPECT_NE(artifact, preview);
   EXPECT_TRUE(manifest_->IsShellApiCommandAllowed(artifact,
-                                                  "tuffite.path.directories"));
+                                                  "tuffite.Path.Directories"));
   EXPECT_TRUE(
-      manifest_->IsShellApiCommandAllowed(preview, "tuffite.path.directories"));
+      manifest_->IsShellApiCommandAllowed(preview, "tuffite.Path.Directories"));
   EXPECT_TRUE(manifest_->IsShellApiCommandAllowed(
       artifact, "originlab.commands.allowed"));
   EXPECT_FALSE(manifest_->IsShellApiCommandAllowed(
@@ -294,9 +321,9 @@ TEST_F(OriginCapabilityTest, UnionGrantsRemainOriginScoped) {
   EXPECT_FALSE(manifest_->IsShellApiCommandAllowed(
       artifact, "originlab.commands.denied"));
   EXPECT_FALSE(manifest_->IsShellApiCommandAllowed(Origin("originlab://other/"),
-                                                   "tuffite.path.directories"));
+                                                   "tuffite.Path.Directories"));
   EXPECT_FALSE(manifest_->IsShellApiCommandAllowed(
-      Origin("data:text/html,hello"), "tuffite.path.directories"));
+      Origin("data:text/html,hello"), "tuffite.Path.Directories"));
   EXPECT_FALSE(manifest_->IsExplorerOriginAllowed(artifact));
   EXPECT_TRUE(manifest_->IsExplorerOriginAllowed(Origin("originlab://main/")));
   EXPECT_TRUE(manifest_->assets().IsAppUrl(
@@ -315,15 +342,15 @@ TEST_F(OriginCapabilityTest,
       manifest_->assets().IsAppUrl(GURL("originlab://public/index.html")));
   EXPECT_FALSE(manifest_->IsShellApiOriginAllowed(public_origin));
   EXPECT_FALSE(manifest_->IsExplorerOriginAllowed(public_origin));
-  EXPECT_FALSE(manifest_->IsShellApiCommandAllowed(app, "tuffite.storage.get"));
+  EXPECT_FALSE(manifest_->IsShellApiCommandAllowed(app, "tuffite.Storage.Get"));
   EXPECT_TRUE(
       manifest_->IsShellApiCommandAllowed(app, "originlab.commands.allowed"));
   EXPECT_TRUE(manifest_->ResolveFileSystemPath(app, "resource", "allowed/a",
-                                               false, "tuffite.fs.readFile"));
+                                               false, "tuffite.Fs.ReadFile"));
   EXPECT_FALSE(manifest_->ResolveFileSystemPath(
-      public_origin, "resource", "allowed/a", false, "tuffite.fs.readFile"));
+      public_origin, "resource", "allowed/a", false, "tuffite.Fs.ReadFile"));
   EXPECT_FALSE(manifest_->ResolveFileSystemPath(app, "resource", "private/a",
-                                                false, "tuffite.fs.readFile"));
+                                                false, "tuffite.Fs.ReadFile"));
   EXPECT_TRUE(manifest_->IsNetworkUrlAllowed(
       app, GURL("https://example.com/api/items")));
   EXPECT_FALSE(manifest_->IsNetworkUrlAllowed(
@@ -387,17 +414,17 @@ TEST_F(OriginCapabilityTest,
        ResourceDenialsOverrideUnionWithoutLeakingMethodScopes) {
   const auto owner = Origin("originlab://main/");
   EXPECT_TRUE(manifest_->ResolveFileSystemPath(owner, "data", "safe/a", false,
-                                               "tuffite.fs.readFile"));
+                                               "tuffite.Fs.ReadFile"));
   EXPECT_FALSE(manifest_->ResolveFileSystemPath(owner, "data", "secrets/a",
-                                                false, "tuffite.fs.readFile"));
+                                                false, "tuffite.Fs.ReadFile"));
   EXPECT_FALSE(manifest_->ResolveFileSystemPath(owner, "data", "safe/a", false,
-                                                "tuffite.fs.exists"));
-  EXPECT_TRUE(manifest_->IsShellApiScopeAllowed(owner, "tuffite.window.focus",
-                                                "current"));
-  EXPECT_FALSE(manifest_->IsShellApiScopeAllowed(owner, "tuffite.window.focus",
-                                                 "others"));
-  EXPECT_FALSE(manifest_->IsShellApiScopeAllowed(owner, "tuffite.window.close",
-                                                 "others"));
+                                                "tuffite.Fs.Exists"));
+  EXPECT_TRUE(manifest_->IsShellApiScopeAllowed(owner, "tuffite.Window.Focus",
+                                                "current", "window"));
+  EXPECT_FALSE(manifest_->IsShellApiScopeAllowed(owner, "tuffite.Window.Focus",
+                                                 "others", "window"));
+  EXPECT_FALSE(manifest_->IsShellApiScopeAllowed(owner, "tuffite.Window.Close",
+                                                 "others", "window"));
   EXPECT_FALSE(manifest_->IsNetworkUrlAllowed(
       owner, GURL("https://example.com/api/private/token")));
 }
@@ -413,59 +440,105 @@ TEST_F(OriginCapabilityTest,
   ASSERT_TRUE(manifest) << error_;
   const auto owner = Origin("originlab://main/");
   EXPECT_TRUE(
-      manifest->IsShellApiCommandAllowed(owner, "tuffite.path.directories"));
+      manifest->IsShellApiCommandAllowed(owner, "tuffite.Path.Directories"));
   EXPECT_FALSE(manifest->IsShellApiCommandAllowed(owner, "tuffite.unknown"));
   EXPECT_FALSE(manifest->IsShellApiCommandAllowed(Origin("originlab://public/"),
-                                                  "tuffite.path.directories"));
+                                                  "tuffite.Path.Directories"));
   EXPECT_TRUE(manifest->ResolveFileSystemPath(owner, "data", "safe/a", false,
-                                              "tuffite.fs.readFile"));
+                                              "tuffite.Fs.ReadFile"));
   EXPECT_FALSE(manifest->ResolveFileSystemPath(owner, "data", "secrets/a",
-                                               false, "tuffite.fs.readFile"));
+                                               false, "tuffite.Fs.ReadFile"));
   EXPECT_FALSE(manifest->ResolveFileSystemPath(owner, "data", "safe/a", false,
-                                               "tuffite.fs.exists"));
+                                               "tuffite.Fs.Exists"));
   EXPECT_FALSE(manifest->IsNetworkUrlAllowed(
       owner, GURL("https://example.com/api/private/token")));
 }
 
-TEST_F(OriginCapabilityTest, NamespaceGroupScopesApplyOnlyToResourceMethods) {
+TEST_F(OriginCapabilityTest, NamespaceGroupScopesAreValidatedByTheApi) {
   auto contents = std::string(kManifest);
-  auto pos = contents.find("\"tuffite.window.focus\"");
+  auto pos = contents.find("\"tuffite.Window.Focus\"");
   ASSERT_NE(pos, std::string::npos);
-  contents.replace(pos, std::string("\"tuffite.window.focus\"").size(),
-                   R"({"method":"tuffite.window.*","allow":[{"window":"*"}]})");
-  pos = contents.find("\"tuffite.window.focus\":");
+  contents.replace(pos, std::string("\"tuffite.Window.Focus\"").size(),
+                   R"({"method":"tuffite.Window.*","allow":[{"window":"*"}]})");
+  pos = contents.find("\"tuffite.Window.Focus\":");
   ASSERT_NE(pos, std::string::npos);
-  contents.insert(pos, R"("tuffite.window.current":"0000000000000000",)");
+  contents.insert(pos, R"("tuffite.Window.Current":"0000000000000000",)");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), contents));
   auto manifest = ManifestServiceFactory::Load(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
   const auto owner = Origin("originlab://main/");
   EXPECT_TRUE(
-      manifest->IsShellApiCommandAllowed(owner, "tuffite.window.current"));
-  EXPECT_TRUE(manifest->IsShellApiScopeAllowed(owner, "tuffite.window.focus",
-                                               "others"));
+      manifest->IsShellApiCommandAllowed(owner, "tuffite.Window.Current"));
+  EXPECT_FALSE(manifest->IsShellApiScopeAllowed(owner, "tuffite.Window.Current",
+                                                "", ""));
+  EXPECT_TRUE(manifest->IsShellApiScopeAllowed(owner, "tuffite.Window.Focus",
+                                               "others", "window"));
   // Existing deny scopes retain precedence over the group grant.
-  EXPECT_FALSE(manifest->IsShellApiScopeAllowed(owner, "tuffite.window.close",
-                                                "others"));
+  EXPECT_FALSE(manifest->IsShellApiScopeAllowed(owner, "tuffite.Window.Close",
+                                                "others", "window"));
   pos = contents.find(R"({"window":"*"})");
   ASSERT_NE(pos, std::string::npos);
   contents.replace(pos, std::string(R"({"window":"*"})").size(),
                    R"({"path":"data/*"})");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), contents));
-  EXPECT_FALSE(ManifestServiceFactory::Load(root_.GetPath(), &error_));
+  manifest = ManifestServiceFactory::Load(root_.GetPath(), &error_);
+  ASSERT_TRUE(manifest) << error_;
+  EXPECT_FALSE(manifest->IsShellApiScopeAllowed(owner, "tuffite.Window.Focus",
+                                                "others", "window"));
+  EXPECT_FALSE(manifest->IsShellApiScopeAllowed(owner, "tuffite.Window.Current",
+                                                "", ""));
 }
 
 TEST_F(OriginCapabilityTest, InvalidScopesAndPatternsFailAtStartup) {
   auto invalid = std::string(kManifest);
-  const auto pos = invalid.find("tuffite.path.directories");
+  const auto pos = invalid.find("tuffite.Path.Directories");
   ASSERT_NE(pos, std::string::npos);
-  invalid.replace(pos, std::string("tuffite.path.directories").size(),
-                  "tuffite.path.read*");
+  invalid.replace(pos, std::string("tuffite.Path.Directories").size(),
+                  "tuffite.Path.Read*");
   ASSERT_TRUE(
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), invalid));
   EXPECT_FALSE(ManifestServiceFactory::Load(root_.GetPath(), &error_));
+}
+
+TEST_F(OriginCapabilityTest, InterfaceIdentityAndMethodPermissions) {
+  EXPECT_EQ(manifest_->ApplicationInterface("originlab.commands.allowed"),
+            "originlab.commands");
+  EXPECT_EQ(manifest_->ApplicationInterface("originlab.commands.missing"), "");
+  EXPECT_TRUE(manifest_->IsApplicationInterface("originlab.commands"));
+  EXPECT_FALSE(manifest_->IsApplicationInterface("originlab"));
+  EXPECT_FALSE(manifest_->IsApplicationInterface("echo"));
+  EXPECT_TRUE(manifest_->IsShellApiCommandAllowed(
+      Origin("originlab://demo.artifact"), "originlab.commands.allowed"));
+  EXPECT_FALSE(manifest_->IsShellApiCommandAllowed(
+      Origin("originlab://demo.artifact"), "originlab.commands.denied"));
+  EXPECT_FALSE(manifest_->IsShellApiCommandAllowed(
+      Origin("originlab://other"), "originlab.commands.allowed"));
+}
+
+TEST_F(OriginCapabilityTest, RejectsLegacyRouteAndServiceGrants) {
+  auto config = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+  ASSERT_TRUE(config);
+  auto load = [&]() {
+    const auto json = base::WriteJson(*config);
+    EXPECT_TRUE(json);
+    EXPECT_TRUE(
+        base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), *json));
+    return ManifestServiceFactory::Load(root_.GetPath(), &error_);
+  };
+  config->SetByDottedPath("app.shellApi.utilityRoutes", base::DictValue());
+  EXPECT_FALSE(load());
+  config->FindDictByDottedPath("app.shellApi")->Remove("utilityRoutes");
+  auto& grants = *config->FindDictByDottedPath("app.security")
+                      ->FindList("capabilities")
+                      ->front()
+                      .GetDict()
+                      .FindList("shellApi");
+  grants.front() = base::Value(base::DictValue()
+                                   .Set("method", "originlab.commands.allowed")
+                                   .Set("service", "echo"));
+  EXPECT_FALSE(load());
 }
 
 TEST_F(OriginCapabilityTest, WireCommandCannotBeDisguisedAsAllowedChannel) {

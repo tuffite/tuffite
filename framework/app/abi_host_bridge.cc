@@ -17,12 +17,14 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
+#include "tuffite/components/dispatch/browser/rpc.h"
 #include "tuffite/components/dispatch/common/codec.h"
+#include "tuffite/components/dispatch/common/status.h"
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/utility/host_runtime.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
-#include "tuffite/framework/browser/services/shell_api/commands/registry.h"
+#include "tuffite/framework/browser/services/shell_api/commands/builtin.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service_factory.h"
 
 namespace tuffite {
@@ -136,6 +138,7 @@ std::unique_ptr<AbiHostBridge> AbiHostBridge::Create(
       .utility_runtime = nullptr,
       .resolve_v8 = nullptr,
       .utility_start_with_context = nullptr,
+      .resolve_utility_route = nullptr,
   };
   const tuffite_abi_version startup_version = tuffite_abi_baseline_version();
   if (application->header.struct_size >=
@@ -158,17 +161,21 @@ std::unique_ptr<AbiHostBridge> AbiHostBridge::Create(
     snapshot.resolve_v8 = application->resolve_v8;
   }
   const tuffite_abi_version context_version = tuffite_abi_baseline_version();
-  if (application->header.struct_size >= sizeof(tuffite_application) &&
+  if (application->header.struct_size >=
+          offsetof(tuffite_application, resolve_utility_route) &&
       tuffite_abi_is_compatible(application->header.version, context_version)) {
     snapshot.utility_start_with_context =
         application->utility_start_with_context;
+  }
+  if (application->header.struct_size >= sizeof(tuffite_application)) {
+    snapshot.resolve_utility_route = application->resolve_utility_route;
   }
   return base::WrapUnique(new AbiHostBridge(snapshot));
 }
 
 AbiHostBridge::AbiHostBridge(const tuffite_application& application)
     : shell_api_router_(
-          std::make_unique<rpc::Router>(shell_api::BuiltinRoutes())),
+          std::make_unique<rpc::Router>(shell_api::BuiltinServices())),
       application_(application) {
   utility_session_ = {
       .header =
@@ -203,6 +210,11 @@ const tuffite_abi_header* AbiHostBridge::QueryExtension(void* user_data,
   switch (capability) {
     case TUFFITE_CAPABILITY_BROWSER:
       return &bridge->browser_host_.header;
+    case TUFFITE_CAPABILITY_UTILITY_INTERFACES: {
+      static const auto header =
+          tuffite_abi_header_for_size(sizeof(tuffite_abi_header));
+      return &header;
+    }
     // Preserve the ABI 0.1.0 IDs for older consumers.
     case TUFFITE_CAPABILITY_SHELL_API:
       return &bridge->shell_api_.header;

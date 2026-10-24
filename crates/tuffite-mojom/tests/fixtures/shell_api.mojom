@@ -1,0 +1,10 @@
+// Source-distributed, handle-free Mojom contract compiled by tuff (no Python/GN).
+module playground;
+import "mojom_data.mojom";
+
+interface Commands {
+  DoSomething@0(string message) => (string result);
+  CheckUtilitySession@1() => (string result);
+  CheckJavascriptExtension@2() => (string result);
+  EchoMojom@3(MojomSample value) => (MojomSample result);
+};

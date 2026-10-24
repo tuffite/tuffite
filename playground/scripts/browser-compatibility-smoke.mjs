@@ -41,7 +41,7 @@ try {
   root = browser.contexts().flatMap(context => context.pages()).find(page => /\/(index|compatibility)\.html/.test(page.url()));
   assert.ok(root, 'Playground main page is required');
   await root.goto(new URL('compatibility.html', root.url()).href);
-  const info = await root.evaluate(url => window.tuffite.window.create({label:'compatibility-control',url,title:'Standard origin compatibility',bounds:{x:120,y:120,width:900,height:800},focused:false}), fixture);
+  const info = await root.evaluate(async url => (await import('/tuffite.js')).window.create({label:'compatibility-control',url,title:'Standard origin compatibility',bounds:{x:120,y:120,width:900,height:800},focused:false}), fixture);
   controlId = info.id;
   const windowDeadline = Date.now() + 15000;
   let reference;
@@ -122,6 +122,6 @@ try {
   }
   console.log('navigation-headers=passed');
 } finally {
-  if (root && controlId !== undefined) await root.evaluate(id => window.tuffite.window.close(id), controlId).catch(() => {});
+  if (root && controlId !== undefined) await root.evaluate(async id => (await import('/tuffite.js')).window.close(id), controlId).catch(() => {});
   await browser.close(); await new Promise(resolve => server.close(resolve));
 }

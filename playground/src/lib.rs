@@ -11,6 +11,7 @@ use tuffite::{
 };
 
 mod echo_utility;
+mod typed_utility;
 mod v8_utility;
 
 mod shell_api {
@@ -26,7 +27,7 @@ struct PlaygroundBrowser {
     javascript_extension_session: Arc<Mutex<Option<JavaScriptExtensionSessionHandle>>>,
 }
 
-#[tuffite::browser]
+#[tuffite::browser(interfaces(shell_api::Commands, shell_api::Diagnostics))]
 impl Browser for PlaygroundBrowser {
     fn new(context: BrowserContext) -> ApplicationResult<Self> {
         context.set_state(std::sync::Arc::new(v8_utility::ParserState {
@@ -49,17 +50,37 @@ impl Browser for PlaygroundBrowser {
     }
 }
 
-#[tuffite::main(browser = PlaygroundBrowser, utilities(echo_utility::EchoUtility, v8_utility::Parser))]
+#[tuffite::main(browser = PlaygroundBrowser, utilities(echo_utility::EchoUtility, v8_utility::Parser, typed_utility::Worker))]
 fn main() -> tuffite::app::Builder<PlaygroundBrowser> {
-    tuffite::app::Builder::<PlaygroundBrowser>::new().commands(tuffite::generate_handler![
-        do_something,
-        check_utility_session,
-        check_javascript_extension,
-    ])
+    tuffite::app::Builder::<PlaygroundBrowser>::new()
 }
 
-#[tuffite::command(shell_api::commands::CheckJavascriptExtension)]
-fn check_javascript_extension(app: &mut PlaygroundBrowser) -> Result<String, CommandError> {
+impl shell_api::Diagnostics for PlaygroundBrowser {
+    fn process_id(&self) -> Result<u32, tuffite::CommandError> {
+        Ok(std::process::id())
+    }
+}
+
+impl shell_api::Commands for PlaygroundBrowser {
+    fn do_something(&self, message: String) -> Result<String, CommandError> {
+        do_something(self, &message)
+    }
+    fn check_utility_session(&self) -> Result<String, CommandError> {
+        check_utility_session(self)
+    }
+    fn check_javascript_extension(&self) -> Result<String, CommandError> {
+        check_javascript_extension(self)
+    }
+    fn echo_mojom(
+        &self,
+        value: shell_api::MojomSample,
+    ) -> Result<shell_api::MojomSample, CommandError> {
+        Ok(value)
+    }
+}
+
+#[allow(clippy::too_many_lines)]
+fn check_javascript_extension(app: &PlaygroundBrowser) -> Result<String, CommandError> {
     let mut current = app
         .javascript_extension_session
         .lock()
@@ -182,8 +203,7 @@ fn check_javascript_extension(app: &mut PlaygroundBrowser) -> Result<String, Com
     Ok("JavaScript extension session started".to_owned())
 }
 
-#[tuffite::command(shell_api::commands::DoSomething)]
-fn do_something(app: &mut PlaygroundBrowser, message: String) -> Result<String, CommandError> {
+fn do_something(app: &PlaygroundBrowser, message: &str) -> Result<String, CommandError> {
     app.events
         .emit("playground:command", message.as_bytes())
         .map_err(|error| CommandError::Failed(error.to_string()))?;
@@ -196,8 +216,7 @@ fn do_something(app: &mut PlaygroundBrowser, message: String) -> Result<String, 
     Ok(format!("Rust received: {message}"))
 }
 
-#[tuffite::command(shell_api::commands::CheckUtilitySession)]
-fn check_utility_session(app: &mut PlaygroundBrowser) -> Result<String, CommandError> {
+fn check_utility_session(app: &PlaygroundBrowser) -> Result<String, CommandError> {
     let mut current = app
         .utility_session
         .lock()
@@ -300,4 +319,42 @@ fn init_tracing() {
         .with_writer(std::io::stderr)
         .with_ansi(false)
         .try_init();
+}
+
+#[cfg(test)]
+mod mojom_tests {
+    use super::shell_api::MojomSample;
+    use tuffite::__private::mojom::Struct;
+
+    #[test]
+    fn matches_official_cpp_fixture_and_rejects_corrupt_data() {
+        let hex = include_str!("../../components/dispatch/test/mojom_sample.inc")
+            .trim()
+            .trim_matches('"');
+        let bytes = hex
+            .as_bytes()
+            .chunks_exact(2)
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect::<Vec<_>>();
+        let sample = MojomSample::decode_mojom(&bytes).unwrap();
+        assert_eq!(sample.large, (1_u64 << 63) + 17);
+        assert_eq!(sample.signed_value, -12345);
+        assert_eq!(sample.nested.label, "你好");
+        assert_eq!(sample.encode_mojom().unwrap(), bytes);
+        for length in 0..bytes.len() {
+            assert!(MojomSample::decode_mojom(&bytes[..length]).is_err());
+        }
+        let mut corrupt = bytes.clone();
+        corrupt[4] = 1;
+        assert!(MojomSample::decode_mojom(&corrupt).is_err());
+        let mut corrupt = bytes.clone();
+        corrupt[32..40].fill(255);
+        assert!(MojomSample::decode_mojom(&corrupt).is_err());
+        let mut corrupt = bytes.clone();
+        corrupt.extend_from_slice(&[0; 8]);
+        assert!(MojomSample::decode_mojom(&corrupt).is_err());
+        let mut corrupt = bytes.clone();
+        corrupt[48..56].copy_from_slice(&8_u64.to_le_bytes());
+        assert!(MojomSample::decode_mojom(&corrupt).is_err());
+    }
 }

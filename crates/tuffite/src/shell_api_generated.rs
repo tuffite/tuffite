@@ -1,71 +1,43 @@
-// Generated from ../../framework/shell_api/common.d.ts, ../../framework/shell_api/dialog.d.ts, ../../framework/shell_api/path.d.ts, ../../framework/shell_api/remoting.d.ts, ../../framework/shell_api/fs.d.ts, ../../framework/shell_api/storage.d.ts, ../../framework/shell_api/log.d.ts, ../../framework/shell_api/network.d.ts, ../../framework/shell_api/utility.d.ts, ../../framework/shell_api/window.d.ts. Do not edit.
-#[derive(Clone, Debug, Eq, PartialEq)]
+// Generated from Framework Mojom contracts.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde")]
+#[repr(i32)]
 pub enum BaseDirectory {
-    Resource,
-    Data,
-    Cache,
-    Temp,
+    #[default]
+    Resource = 0,
+    Data = 1,
+    Cache = 2,
+    Temp = 3,
 }
-impl ::tuffite::__private::serde::Serialize for BaseDirectory {
-    fn serialize<S: ::tuffite::__private::serde::Serializer>(
+impl ::tuffite::__private::mojom::Value for BaseDirectory {
+    const WIDTH: usize = 4;
+    fn put(
         &self,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        let value: String = match self {
-            Self::Resource => String::from("resource"),
-            Self::Data => String::from("data"),
-            Self::Cache => String::from("cache"),
-            Self::Temp => String::from("temp"),
-        };
-        ::tuffite::__private::serde::Serialize::serialize(&value, serializer)
-    }
-}
-impl<'de> ::tuffite::__private::serde::Deserialize<'de> for BaseDirectory {
-    fn deserialize<D: ::tuffite::__private::serde::Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Self, D::Error> {
-        let value = <String as ::tuffite::__private::serde::Deserialize>::deserialize(
-            deserializer,
-        )?;
-        match value {
-            value if value == String::from("resource") => Ok(Self::Resource),
-            value if value == String::from("data") => Ok(Self::Data),
-            value if value == String::from("cache") => Ok(Self::Cache),
-            value if value == String::from("temp") => Ok(Self::Temp),
-            _ => {
-                Err(
-                    ::tuffite::__private::serde::de::Error::custom(
-                        "invalid Shell API enum value",
-                    ),
-                )
-            }
-        }
-    }
-}
-impl ::tuffite::__private::codec::Encode for BaseDirectory {
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let value: String = match self {
-            Self::Resource => String::from("resource"),
-            Self::Data => String::from("data"),
-            Self::Cache => String::from("cache"),
-            Self::Temp => String::from("temp"),
-        };
-        ::tuffite::__private::codec::Encode::encode(&value, encoder)
+        w.scalar(at, &(*self as i32))
     }
-}
-impl ::tuffite::__private::codec::Decode for BaseDirectory {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        let value = <String as ::tuffite::__private::codec::Decode>::decode(decoder)?;
-        match value {
-            value if value == String::from("resource") => Ok(Self::Resource),
-            value if value == String::from("data") => Ok(Self::Data),
-            value if value == String::from("cache") => Ok(Self::Cache),
-            value if value == String::from("temp") => Ok(Self::Temp),
+        match r.scalar::<i32>(at)? {
+            0 => Ok(Self::Resource),
+            1 => Ok(Self::Data),
+            2 => Ok(Self::Cache),
+            3 => Ok(Self::Temp),
             _ => Err(::tuffite::__private::codec::CodecError),
         }
     }
@@ -73,357 +45,2900 @@ impl ::tuffite::__private::codec::Decode for BaseDirectory {
 #[derive(
     Clone,
     Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct DialogOpenDirectoryRequest {
+    pub r#options: Option<OpenDirectoryDialogOptions>,
+}
+impl ::tuffite::__private::mojom::Value for DialogOpenDirectoryRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for DialogOpenDirectoryRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#options, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#options: <Option<
+                OpenDirectoryDialogOptions,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct DialogOpenDirectoryResponse {
+    pub r#result: Option<String>,
+}
+impl ::tuffite::__private::mojom::Value for DialogOpenDirectoryResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for DialogOpenDirectoryResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct DialogOpenFileRequest {
+    pub r#options: Option<OpenFileDialogOptions>,
+}
+impl ::tuffite::__private::mojom::Value for DialogOpenFileRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for DialogOpenFileRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#options, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#options: <Option<
+                OpenFileDialogOptions,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct DialogOpenFileResponse {
+    pub r#result: Option<String>,
+}
+impl ::tuffite::__private::mojom::Value for DialogOpenFileResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for DialogOpenFileResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct FsCreateDirRequest {
+    pub r#base: BaseDirectory,
+    pub r#path: String,
+}
+impl ::tuffite::__private::mojom::Value for FsCreateDirRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for FsCreateDirRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#base, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#path, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#base: <BaseDirectory as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#path: <String as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct FsCreateDirResponse {}
+impl ::tuffite::__private::mojom::Value for FsCreateDirResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for FsCreateDirResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct FsExistsRequest {
+    pub r#base: BaseDirectory,
+    pub r#path: String,
+}
+impl ::tuffite::__private::mojom::Value for FsExistsRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for FsExistsRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#base, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#path, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#base: <BaseDirectory as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#path: <String as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct FsExistsResponse {
+    pub r#result: bool,
+}
+impl ::tuffite::__private::mojom::Value for FsExistsResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for FsExistsResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <bool as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct FsReadFileRequest {
+    pub r#base: BaseDirectory,
+    pub r#path: String,
+}
+impl ::tuffite::__private::mojom::Value for FsReadFileRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for FsReadFileRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#base, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#path, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#base: <BaseDirectory as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#path: <String as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct FsReadFileResponse {
+    pub r#result: Vec<u8>,
+}
+impl ::tuffite::__private::mojom::Value for FsReadFileResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for FsReadFileResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <Vec<
+                u8,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct FsRemoveFileRequest {
+    pub r#base: BaseDirectory,
+    pub r#path: String,
+}
+impl ::tuffite::__private::mojom::Value for FsRemoveFileRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for FsRemoveFileRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#base, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#path, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#base: <BaseDirectory as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#path: <String as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct FsRemoveFileResponse {}
+impl ::tuffite::__private::mojom::Value for FsRemoveFileResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for FsRemoveFileResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct FsWriteFileRequest {
+    pub r#base: BaseDirectory,
+    pub r#path: String,
+    pub r#contents: Vec<u8>,
+}
+impl ::tuffite::__private::mojom::Value for FsWriteFileRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for FsWriteFileRequest {
+    const SIZE: usize = 32;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#base, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#path, w, base + 16, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#contents, w, base + 24, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#base: <BaseDirectory as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#path: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 16,
+                0,
+            )?,
+            r#contents: <Vec<
+                u8,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 24, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct FsWriteFileResponse {}
+impl ::tuffite::__private::mojom::Value for FsWriteFileResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for FsWriteFileResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct LogDebugRequest {
+    pub r#message: String,
+}
+impl ::tuffite::__private::mojom::Value for LogDebugRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for LogDebugRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#message, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#message: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct LogDebugResponse {}
+impl ::tuffite::__private::mojom::Value for LogDebugResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for LogDebugResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct LogErrorRequest {
+    pub r#message: String,
+}
+impl ::tuffite::__private::mojom::Value for LogErrorRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for LogErrorRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#message, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#message: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct LogErrorResponse {}
+impl ::tuffite::__private::mojom::Value for LogErrorResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for LogErrorResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct LogInfoRequest {
+    pub r#message: String,
+}
+impl ::tuffite::__private::mojom::Value for LogInfoRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for LogInfoRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#message, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#message: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct LogInfoResponse {}
+impl ::tuffite::__private::mojom::Value for LogInfoResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for LogInfoResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct LogTraceRequest {
+    pub r#message: String,
+}
+impl ::tuffite::__private::mojom::Value for LogTraceRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for LogTraceRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#message, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#message: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct LogTraceResponse {}
+impl ::tuffite::__private::mojom::Value for LogTraceResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for LogTraceResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct LogWarnRequest {
+    pub r#message: String,
+}
+impl ::tuffite::__private::mojom::Value for LogWarnRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for LogWarnRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#message, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#message: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct LogWarnResponse {}
+impl ::tuffite::__private::mojom::Value for LogWarnResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for LogWarnResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct NetRequestRequest {
+    pub r#url: String,
+}
+impl ::tuffite::__private::mojom::Value for NetRequestRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for NetRequestRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#url, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#url: <String as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct NetRequestResponse {
+    pub r#result: NetworkResponse,
+}
+impl ::tuffite::__private::mojom::Value for NetRequestResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for NetRequestResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <NetworkResponse as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct NetworkResponse {
-    pub status: f64,
-    pub body: ::tuffite::Bytes,
+    pub r#status: f64,
+    pub r#body: Vec<u8>,
 }
-impl ::tuffite::__private::codec::Encode for NetworkResponse {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for NetworkResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.status, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.body, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for NetworkResponse {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for NetworkResponse {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#status, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#body, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            status: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            body: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#status: <f64 as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#body: <Vec<
+                u8,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct OpenDirectoryDialogOptions {
-    pub title: Option<String>,
+    pub r#title: Option<String>,
 }
-impl ::tuffite::__private::codec::Encode for OpenDirectoryDialogOptions {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for OpenDirectoryDialogOptions {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.title, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for OpenDirectoryDialogOptions {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for OpenDirectoryDialogOptions {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#title, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            title: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#title: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct OpenFileDialogOptions {
-    pub title: Option<String>,
-    pub default_path: Option<String>,
-    pub extensions: Option<Vec<Vec<String>>>,
+    pub r#title: Option<String>,
+    pub r#default_path: Option<String>,
+    pub r#extensions: Option<Vec<Vec<String>>>,
 }
-impl ::tuffite::__private::codec::Encode for OpenFileDialogOptions {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for OpenFileDialogOptions {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.title, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.default_path, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.extensions, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for OpenFileDialogOptions {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for OpenFileDialogOptions {
+    const SIZE: usize = 32;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#title, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#default_path, w, base + 16, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#extensions, w, base + 24, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            title: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            default_path: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            extensions: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#title: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#default_path: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+            r#extensions: <Option<
+                Vec<Vec<String>>,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 24, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct PathDirectories {
-    pub resource: String,
-    pub data: String,
-    pub cache: String,
-    pub temp: String,
+    pub r#resource: String,
+    pub r#data: String,
+    pub r#cache: String,
+    pub r#temp: String,
 }
-impl ::tuffite::__private::codec::Encode for PathDirectories {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for PathDirectories {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.resource, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.data, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.cache, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.temp, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for PathDirectories {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for PathDirectories {
+    const SIZE: usize = 40;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#resource, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#data, w, base + 16, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#cache, w, base + 24, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#temp, w, base + 32, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            resource: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            data: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            cache: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            temp: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#resource: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#data: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 16,
+                0,
+            )?,
+            r#cache: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 24,
+                0,
+            )?,
+            r#temp: <String as ::tuffite::__private::mojom::Value>::get(r, base + 32, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct PathDirectoriesRequest {}
+impl ::tuffite::__private::mojom::Value for PathDirectoriesRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for PathDirectoriesRequest {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct PathDirectoriesResponse {
+    pub r#result: PathDirectories,
+}
+impl ::tuffite::__private::mojom::Value for PathDirectoriesResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for PathDirectoriesResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <PathDirectories as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct PathResolveRequest {
+    pub r#base: BaseDirectory,
+    pub r#relative: Option<String>,
+}
+impl ::tuffite::__private::mojom::Value for PathResolveRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for PathResolveRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#base, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#relative, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#base: <BaseDirectory as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#relative: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct PathResolveResponse {
+    pub r#result: String,
+}
+impl ::tuffite::__private::mojom::Value for PathResolveResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for PathResolveResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct RemotingCapabilities {
-    pub available: bool,
-    pub protocol: String,
-    pub video_codecs: Vec<String>,
-    pub input: bool,
-    pub clipboard: bool,
-    pub reconnect: bool,
-    pub snapshot: bool,
+    pub r#available: bool,
+    pub r#protocol: String,
+    pub r#video_codecs: Vec<String>,
+    pub r#input: bool,
+    pub r#clipboard: bool,
+    pub r#reconnect: bool,
+    pub r#snapshot: bool,
 }
-impl ::tuffite::__private::codec::Encode for RemotingCapabilities {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for RemotingCapabilities {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.available, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.protocol, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.video_codecs, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.input, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.clipboard, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.reconnect, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.snapshot, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for RemotingCapabilities {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for RemotingCapabilities {
+    const SIZE: usize = 32;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#available, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#protocol, w, base + 16, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#video_codecs, w, base + 24, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#input, w, base + 8, 1)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#clipboard, w, base + 8, 2)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#reconnect, w, base + 8, 3)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#snapshot, w, base + 8, 4)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            available: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            protocol: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            video_codecs: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            input: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            clipboard: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            reconnect: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            snapshot: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#available: <bool as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#protocol: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 16,
+                0,
+            )?,
+            r#video_codecs: <Vec<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 24, 0)?,
+            r#input: <bool as ::tuffite::__private::mojom::Value>::get(r, base + 8, 1)?,
+            r#clipboard: <bool as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                2,
+            )?,
+            r#reconnect: <bool as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                3,
+            )?,
+            r#snapshot: <bool as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                4,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingCapabilitiesRequest {}
+impl ::tuffite::__private::mojom::Value for RemotingCapabilitiesRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingCapabilitiesRequest {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingCapabilitiesResponse {
+    pub r#result: RemotingCapabilities,
+}
+impl ::tuffite::__private::mojom::Value for RemotingCapabilitiesResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingCapabilitiesResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <RemotingCapabilities as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingCaptureRequest {
+    pub r#screen_id: Option<i64>,
+}
+impl ::tuffite::__private::mojom::Value for RemotingCaptureRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingCaptureRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.boolean(base + 8, 0, self.r#screen_id.is_some())?;
+        if let Some(value) = &self.r#screen_id {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 16, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#screen_id: if r.boolean(base + 8, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 16, 0)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingCaptureResponse {
+    pub r#result: RemotingSnapshot,
+}
+impl ::tuffite::__private::mojom::Value for RemotingCaptureResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingCaptureResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <RemotingSnapshot as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct RemotingIceCandidate {
-    pub mid: String,
-    pub m_line_index: f64,
-    pub candidate: String,
+    pub r#mid: String,
+    pub r#m_line_index: f64,
+    pub r#candidate: String,
 }
-impl ::tuffite::__private::codec::Encode for RemotingIceCandidate {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for RemotingIceCandidate {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.mid, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.m_line_index, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.candidate, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for RemotingIceCandidate {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for RemotingIceCandidate {
+    const SIZE: usize = 32;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#mid, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#m_line_index, w, base + 16, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#candidate, w, base + 24, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            mid: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            m_line_index: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            candidate: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#mid: <String as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#m_line_index: <f64 as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 16,
+                0,
+            )?,
+            r#candidate: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 24,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct RemotingIceServer {
-    pub urls: Vec<String>,
-    pub username: Option<String>,
-    pub credential: Option<String>,
+    pub r#urls: Vec<String>,
+    pub r#username: Option<String>,
+    pub r#credential: Option<String>,
 }
-impl ::tuffite::__private::codec::Encode for RemotingIceServer {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for RemotingIceServer {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.urls, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.username, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.credential, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for RemotingIceServer {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for RemotingIceServer {
+    const SIZE: usize = 32;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#urls, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#username, w, base + 16, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#credential, w, base + 24, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            urls: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            username: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            credential: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#urls: <Vec<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#username: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+            r#credential: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 24, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingInjectInputRequest {
+    pub r#event: RemotingInputEvent,
+}
+impl ::tuffite::__private::mojom::Value for RemotingInjectInputRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingInjectInputRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#event, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#event: <RemotingInputEvent as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingInjectInputResponse {}
+impl ::tuffite::__private::mojom::Value for RemotingInjectInputResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingInjectInputResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct RemotingInputEvent {
-    pub kind: String,
-    pub pressed: Option<bool>,
-    pub usb_keycode: Option<f64>,
-    pub text: Option<String>,
-    pub x: Option<f64>,
-    pub y: Option<f64>,
-    pub button: Option<String>,
-    pub button_down: Option<bool>,
-    pub wheel_delta_x: Option<f64>,
-    pub wheel_delta_y: Option<f64>,
-    pub wheel_ticks_x: Option<f64>,
-    pub wheel_ticks_y: Option<f64>,
-    pub clipboard_mime_type: Option<String>,
-    pub clipboard_data: Option<::tuffite::Bytes>,
+    pub r#kind: String,
+    pub r#pressed: Option<bool>,
+    pub r#usb_keycode: Option<f64>,
+    pub r#text: Option<String>,
+    pub r#x: Option<f64>,
+    pub r#y: Option<f64>,
+    pub r#button: Option<String>,
+    pub r#button_down: Option<bool>,
+    pub r#wheel_delta_x: Option<f64>,
+    pub r#wheel_delta_y: Option<f64>,
+    pub r#wheel_ticks_x: Option<f64>,
+    pub r#wheel_ticks_y: Option<f64>,
+    pub r#clipboard_mime_type: Option<String>,
+    pub r#clipboard_data: Option<Vec<u8>>,
 }
-impl ::tuffite::__private::codec::Encode for RemotingInputEvent {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for RemotingInputEvent {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.kind, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.pressed, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.usb_keycode, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.text, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.x, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.y, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.button, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.button_down, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.wheel_delta_x, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.wheel_delta_y, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.wheel_ticks_x, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.wheel_ticks_y, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.clipboard_mime_type, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.clipboard_data, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for RemotingInputEvent {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for RemotingInputEvent {
+    const SIZE: usize = 112;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#kind, w, base + 8, 0)?;
+        w.boolean(base + 16, 0, self.r#pressed.is_some())?;
+        if let Some(value) = &self.r#pressed {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 16, 1)?;
+        }
+        w.boolean(base + 16, 2, self.r#usb_keycode.is_some())?;
+        if let Some(value) = &self.r#usb_keycode {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 24, 0)?;
+        }
+        ::tuffite::__private::mojom::Value::put(&self.r#text, w, base + 32, 0)?;
+        w.boolean(base + 16, 3, self.r#x.is_some())?;
+        if let Some(value) = &self.r#x {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 40, 0)?;
+        }
+        w.boolean(base + 16, 4, self.r#y.is_some())?;
+        if let Some(value) = &self.r#y {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 48, 0)?;
+        }
+        ::tuffite::__private::mojom::Value::put(&self.r#button, w, base + 56, 0)?;
+        w.boolean(base + 16, 5, self.r#button_down.is_some())?;
+        if let Some(value) = &self.r#button_down {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 16, 6)?;
+        }
+        w.boolean(base + 16, 7, self.r#wheel_delta_x.is_some())?;
+        if let Some(value) = &self.r#wheel_delta_x {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 64, 0)?;
+        }
+        w.boolean(base + 17, 0, self.r#wheel_delta_y.is_some())?;
+        if let Some(value) = &self.r#wheel_delta_y {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 72, 0)?;
+        }
+        w.boolean(base + 17, 1, self.r#wheel_ticks_x.is_some())?;
+        if let Some(value) = &self.r#wheel_ticks_x {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 80, 0)?;
+        }
+        w.boolean(base + 17, 2, self.r#wheel_ticks_y.is_some())?;
+        if let Some(value) = &self.r#wheel_ticks_y {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 88, 0)?;
+        }
+        ::tuffite::__private::mojom::Value::put(
+            &self.r#clipboard_mime_type,
+            w,
+            base + 96,
+            0,
+        )?;
+        ::tuffite::__private::mojom::Value::put(
+            &self.r#clipboard_data,
+            w,
+            base + 104,
+            0,
+        )?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            kind: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            pressed: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            usb_keycode: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            text: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            x: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            y: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            button: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            button_down: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            wheel_delta_x: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            wheel_delta_y: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            wheel_ticks_x: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            wheel_ticks_y: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            clipboard_mime_type: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            clipboard_data: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#kind: <String as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#pressed: if r.boolean(base + 16, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 16, 1)?)
+            } else {
+                None
+            },
+            r#usb_keycode: if r.boolean(base + 16, 2)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 24, 0)?)
+            } else {
+                None
+            },
+            r#text: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 32, 0)?,
+            r#x: if r.boolean(base + 16, 3)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 40, 0)?)
+            } else {
+                None
+            },
+            r#y: if r.boolean(base + 16, 4)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 48, 0)?)
+            } else {
+                None
+            },
+            r#button: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 56, 0)?,
+            r#button_down: if r.boolean(base + 16, 5)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 16, 6)?)
+            } else {
+                None
+            },
+            r#wheel_delta_x: if r.boolean(base + 16, 7)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 64, 0)?)
+            } else {
+                None
+            },
+            r#wheel_delta_y: if r.boolean(base + 17, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 72, 0)?)
+            } else {
+                None
+            },
+            r#wheel_ticks_x: if r.boolean(base + 17, 1)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 80, 0)?)
+            } else {
+                None
+            },
+            r#wheel_ticks_y: if r.boolean(base + 17, 2)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 88, 0)?)
+            } else {
+                None
+            },
+            r#clipboard_mime_type: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 96, 0)?,
+            r#clipboard_data: <Option<
+                Vec<u8>,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 104, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingProcessSignalRequest {
+    pub r#id: i64,
+    pub r#signal: RemotingSignal,
+}
+impl ::tuffite::__private::mojom::Value for RemotingProcessSignalRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingProcessSignalRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#id, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#signal, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#id: <i64 as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#signal: <RemotingSignal as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 16,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingProcessSignalResponse {}
+impl ::tuffite::__private::mojom::Value for RemotingProcessSignalResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingProcessSignalResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingSendInputRequest {
+    pub r#id: i64,
+    pub r#event: RemotingInputEvent,
+}
+impl ::tuffite::__private::mojom::Value for RemotingSendInputRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingSendInputRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#id, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#event, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#id: <i64 as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#event: <RemotingInputEvent as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 16,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingSendInputResponse {}
+impl ::tuffite::__private::mojom::Value for RemotingSendInputResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingSendInputResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct RemotingSession {
-    pub id: i64,
-    pub state: String,
+    pub r#id: i64,
+    pub r#state: String,
 }
-impl ::tuffite::__private::codec::Encode for RemotingSession {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for RemotingSession {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.state, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for RemotingSession {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for RemotingSession {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#id, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#state, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            id: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            state: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#id: <i64 as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#state: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 16,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
@@ -431,3745 +2946,3812 @@ impl ::tuffite::__private::codec::Decode for RemotingSession {
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct RemotingSessionDescription {
     pub r#type: String,
-    pub sdp: String,
+    pub r#sdp: String,
 }
-impl ::tuffite::__private::codec::Encode for RemotingSessionDescription {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for RemotingSessionDescription {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.r#type, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.sdp, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for RemotingSessionDescription {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for RemotingSessionDescription {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#type, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#sdp, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            r#type: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            sdp: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#type: <String as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#sdp: <String as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct RemotingSignal {
-    pub sequence: i64,
-    pub description: Option<RemotingSessionDescription>,
-    pub candidates: Vec<RemotingIceCandidate>,
+    pub r#sequence: i64,
+    pub r#description: Option<RemotingSessionDescription>,
+    pub r#candidates: Vec<RemotingIceCandidate>,
 }
-impl ::tuffite::__private::codec::Encode for RemotingSignal {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for RemotingSignal {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.sequence, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.description, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.candidates, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for RemotingSignal {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for RemotingSignal {
+    const SIZE: usize = 32;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#sequence, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#description, w, base + 16, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#candidates, w, base + 24, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            sequence: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            description: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            candidates: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#sequence: <i64 as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#description: <Option<
+                RemotingSessionDescription,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+            r#candidates: <Vec<
+                RemotingIceCandidate,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 24, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct RemotingSnapshot {
-    pub width: f64,
-    pub height: f64,
-    pub mime_type: String,
-    pub data: ::tuffite::Bytes,
+    pub r#width: f64,
+    pub r#height: f64,
+    pub r#mime_type: String,
+    pub r#data: Vec<u8>,
 }
-impl ::tuffite::__private::codec::Encode for RemotingSnapshot {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for RemotingSnapshot {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.width, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.height, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.mime_type, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.data, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for RemotingSnapshot {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for RemotingSnapshot {
+    const SIZE: usize = 40;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#width, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#height, w, base + 16, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#mime_type, w, base + 24, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#data, w, base + 32, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            width: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            height: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            mime_type: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            data: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#width: <f64 as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#height: <f64 as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+            r#mime_type: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 24,
+                0,
+            )?,
+            r#data: <Vec<
+                u8,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 32, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct RemotingStartOptions {
-    pub auth_key: String,
-    pub ice_servers: Vec<RemotingIceServer>,
-    pub max_bitrate_kbps: Option<f64>,
-    pub target_framerate: Option<f64>,
-    pub screen_id: Option<i64>,
+    pub r#auth_key: String,
+    pub r#ice_servers: Vec<RemotingIceServer>,
+    pub r#max_bitrate_kbps: Option<f64>,
+    pub r#target_framerate: Option<f64>,
+    pub r#screen_id: Option<i64>,
 }
-impl ::tuffite::__private::codec::Encode for RemotingStartOptions {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for RemotingStartOptions {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.auth_key, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.ice_servers, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.max_bitrate_kbps, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.target_framerate, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.screen_id, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for RemotingStartOptions {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for RemotingStartOptions {
+    const SIZE: usize = 56;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#auth_key, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#ice_servers, w, base + 16, 0)?;
+        w.boolean(base + 24, 0, self.r#max_bitrate_kbps.is_some())?;
+        if let Some(value) = &self.r#max_bitrate_kbps {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 32, 0)?;
+        }
+        w.boolean(base + 24, 1, self.r#target_framerate.is_some())?;
+        if let Some(value) = &self.r#target_framerate {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 40, 0)?;
+        }
+        w.boolean(base + 24, 2, self.r#screen_id.is_some())?;
+        if let Some(value) = &self.r#screen_id {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 48, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            auth_key: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            ice_servers: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            max_bitrate_kbps: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            target_framerate: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            screen_id: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#auth_key: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#ice_servers: <Vec<
+                RemotingIceServer,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+            r#max_bitrate_kbps: if r.boolean(base + 24, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 32, 0)?)
+            } else {
+                None
+            },
+            r#target_framerate: if r.boolean(base + 24, 1)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 40, 0)?)
+            } else {
+                None
+            },
+            r#screen_id: if r.boolean(base + 24, 2)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 48, 0)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingStartRequest {
+    pub r#options: RemotingStartOptions,
+}
+impl ::tuffite::__private::mojom::Value for RemotingStartRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingStartRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#options, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#options: <RemotingStartOptions as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingStartResponse {
+    pub r#result: RemotingSession,
+}
+impl ::tuffite::__private::mojom::Value for RemotingStartResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingStartResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <RemotingSession as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct RemotingStats {
-    pub state: String,
-    pub route: String,
-    pub transport: String,
-    pub latency_ms: f64,
-    pub jitter_ms: f64,
-    pub available_bandwidth_kbps: f64,
-    pub packet_loss_percent: f64,
+    pub r#state: String,
+    pub r#route: String,
+    pub r#transport: String,
+    pub r#latency_ms: f64,
+    pub r#jitter_ms: f64,
+    pub r#available_bandwidth_kbps: f64,
+    pub r#packet_loss_percent: f64,
 }
-impl ::tuffite::__private::codec::Encode for RemotingStats {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for RemotingStats {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.state, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.route, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.transport, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.latency_ms, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.jitter_ms, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(
-            &self.available_bandwidth_kbps,
-            encoder,
-        )?;
-        ::tuffite::__private::codec::Encode::encode(&self.packet_loss_percent, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for RemotingStats {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for RemotingStats {
+    const SIZE: usize = 64;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#state, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#route, w, base + 16, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#transport, w, base + 24, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#latency_ms, w, base + 32, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#jitter_ms, w, base + 40, 0)?;
+        ::tuffite::__private::mojom::Value::put(
+            &self.r#available_bandwidth_kbps,
+            w,
+            base + 48,
+            0,
+        )?;
+        ::tuffite::__private::mojom::Value::put(
+            &self.r#packet_loss_percent,
+            w,
+            base + 56,
+            0,
+        )?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            state: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            route: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            transport: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            latency_ms: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            jitter_ms: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            available_bandwidth_kbps: ::tuffite::__private::codec::Decode::decode(
-                decoder,
+        let value = Self {
+            r#state: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
             )?,
-            packet_loss_percent: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+            r#route: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 16,
+                0,
+            )?,
+            r#transport: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 24,
+                0,
+            )?,
+            r#latency_ms: <f64 as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 32,
+                0,
+            )?,
+            r#jitter_ms: <f64 as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 40,
+                0,
+            )?,
+            r#available_bandwidth_kbps: <f64 as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 48,
+                0,
+            )?,
+            r#packet_loss_percent: <f64 as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 56,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingStatsRequest {
+    pub r#id: i64,
+}
+impl ::tuffite::__private::mojom::Value for RemotingStatsRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingStatsRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#id, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#id: <i64 as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingStatsResponse {
+    pub r#result: RemotingStats,
+}
+impl ::tuffite::__private::mojom::Value for RemotingStatsResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingStatsResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <RemotingStats as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingStopRequest {
+    pub r#id: i64,
+}
+impl ::tuffite::__private::mojom::Value for RemotingStopRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingStopRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#id, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#id: <i64 as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingStopResponse {}
+impl ::tuffite::__private::mojom::Value for RemotingStopResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingStopResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingTakeSignalsRequest {
+    pub r#id: i64,
+    pub r#after_sequence: Option<i64>,
+}
+impl ::tuffite::__private::mojom::Value for RemotingTakeSignalsRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingTakeSignalsRequest {
+    const SIZE: usize = 32;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#id, w, base + 8, 0)?;
+        w.boolean(base + 16, 0, self.r#after_sequence.is_some())?;
+        if let Some(value) = &self.r#after_sequence {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 24, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#id: <i64 as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#after_sequence: if r.boolean(base + 16, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 24, 0)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct RemotingTakeSignalsResponse {
+    pub r#result: Vec<RemotingSignal>,
+}
+impl ::tuffite::__private::mojom::Value for RemotingTakeSignalsResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for RemotingTakeSignalsResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <Vec<
+                RemotingSignal,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct StorageClearRequest {}
+impl ::tuffite::__private::mojom::Value for StorageClearRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for StorageClearRequest {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct StorageClearResponse {}
+impl ::tuffite::__private::mojom::Value for StorageClearResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for StorageClearResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct StorageGetRequest {
+    pub r#key: String,
+}
+impl ::tuffite::__private::mojom::Value for StorageGetRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for StorageGetRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#key, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#key: <String as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct StorageGetResponse {
+    pub r#result: Option<Vec<u8>>,
+}
+impl ::tuffite::__private::mojom::Value for StorageGetResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for StorageGetResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <Option<
+                Vec<u8>,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct StorageRemoveRequest {
+    pub r#key: String,
+}
+impl ::tuffite::__private::mojom::Value for StorageRemoveRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for StorageRemoveRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#key, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#key: <String as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct StorageRemoveResponse {}
+impl ::tuffite::__private::mojom::Value for StorageRemoveResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for StorageRemoveResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct StorageSetRequest {
+    pub r#key: String,
+    pub r#value: Vec<u8>,
+}
+impl ::tuffite::__private::mojom::Value for StorageSetRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for StorageSetRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#key, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#value, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#key: <String as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#value: <Vec<
+                u8,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct StorageSetResponse {}
+impl ::tuffite::__private::mojom::Value for StorageSetResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for StorageSetResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct UtilityCancelRequest {
+    pub r#name: String,
+    pub r#request_id: i64,
+}
+impl ::tuffite::__private::mojom::Value for UtilityCancelRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for UtilityCancelRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#name, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#request_id, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#name: <String as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#request_id: <i64 as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 16,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct UtilityCancelResponse {}
+impl ::tuffite::__private::mojom::Value for UtilityCancelResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for UtilityCancelResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct UtilityInvokeRequest {
+    pub r#name: String,
+    pub r#request_id: i64,
+    pub r#payload: Option<Vec<u8>>,
+}
+impl ::tuffite::__private::mojom::Value for UtilityInvokeRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for UtilityInvokeRequest {
+    const SIZE: usize = 32;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#name, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#request_id, w, base + 16, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#payload, w, base + 24, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#name: <String as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#request_id: <i64 as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 16,
+                0,
+            )?,
+            r#payload: <Option<
+                Vec<u8>,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 24, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct UtilityInvokeResponse {
+    pub r#result: Vec<u8>,
+}
+impl ::tuffite::__private::mojom::Value for UtilityInvokeResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for UtilityInvokeResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <Vec<
+                u8,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct WindowBounds {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
+    pub r#x: f64,
+    pub r#y: f64,
+    pub r#width: f64,
+    pub r#height: f64,
 }
-impl ::tuffite::__private::codec::Encode for WindowBounds {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for WindowBounds {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.x, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.y, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.width, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.height, encoder)?;
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowBounds {
+    const SIZE: usize = 40;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#x, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#y, w, base + 16, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#width, w, base + 24, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#height, w, base + 32, 0)?;
+        let _ = (w, base);
         Ok(())
     }
-}
-impl ::tuffite::__private::codec::Decode for WindowBounds {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            x: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            y: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            width: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            height: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#x: <f64 as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#y: <f64 as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+            r#width: <f64 as ::tuffite::__private::mojom::Value>::get(r, base + 24, 0)?,
+            r#height: <f64 as ::tuffite::__private::mojom::Value>::get(r, base + 32, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
-pub type WindowId = i64;
 #[derive(
     Clone,
     Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowCloseRequest {
+    pub r#id: Option<i64>,
+}
+impl ::tuffite::__private::mojom::Value for WindowCloseRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowCloseRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.boolean(base + 8, 0, self.r#id.is_some())?;
+        if let Some(value) = &self.r#id {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 16, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#id: if r.boolean(base + 8, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 16, 0)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowCloseResponse {}
+impl ::tuffite::__private::mojom::Value for WindowCloseResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowCloseResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowCreateRequest {
+    pub r#options: Option<WindowOptions>,
+}
+impl ::tuffite::__private::mojom::Value for WindowCreateRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowCreateRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#options, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#options: <Option<
+                WindowOptions,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowCreateResponse {
+    pub r#result: WindowInfo,
+}
+impl ::tuffite::__private::mojom::Value for WindowCreateResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowCreateResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <WindowInfo as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowCurrentRequest {}
+impl ::tuffite::__private::mojom::Value for WindowCurrentRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowCurrentRequest {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowCurrentResponse {
+    pub r#result: WindowInfo,
+}
+impl ::tuffite::__private::mojom::Value for WindowCurrentResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowCurrentResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <WindowInfo as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowFocusRequest {
+    pub r#id: Option<i64>,
+}
+impl ::tuffite::__private::mojom::Value for WindowFocusRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowFocusRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.boolean(base + 8, 0, self.r#id.is_some())?;
+        if let Some(value) = &self.r#id {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 16, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#id: if r.boolean(base + 8, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 16, 0)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowFocusResponse {
+    pub r#result: WindowInfo,
+}
+impl ::tuffite::__private::mojom::Value for WindowFocusResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowFocusResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <WindowInfo as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowGetBoundsRequest {
+    pub r#id: Option<i64>,
+}
+impl ::tuffite::__private::mojom::Value for WindowGetBoundsRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowGetBoundsRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.boolean(base + 8, 0, self.r#id.is_some())?;
+        if let Some(value) = &self.r#id {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 16, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#id: if r.boolean(base + 8, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 16, 0)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowGetBoundsResponse {
+    pub r#result: WindowBounds,
+}
+impl ::tuffite::__private::mojom::Value for WindowGetBoundsResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowGetBoundsResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <WindowBounds as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct WindowInfo {
-    pub id: WindowId,
-    pub label: String,
-    pub title: String,
-    pub url: String,
-    pub bounds: WindowBounds,
-    pub focused: bool,
-    pub minimized: bool,
-    pub maximized: bool,
-    pub fullscreen: bool,
+    pub r#id: i64,
+    pub r#label: String,
+    pub r#title: String,
+    pub r#url: String,
+    pub r#bounds: WindowBounds,
+    pub r#focused: bool,
+    pub r#minimized: bool,
+    pub r#maximized: bool,
+    pub r#fullscreen: bool,
 }
-impl ::tuffite::__private::codec::Encode for WindowInfo {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for WindowInfo {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.label, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.title, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.url, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.bounds, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.focused, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.minimized, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.maximized, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.fullscreen, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for WindowInfo {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for WindowInfo {
+    const SIZE: usize = 56;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#id, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#label, w, base + 16, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#title, w, base + 24, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#url, w, base + 32, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#bounds, w, base + 40, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#focused, w, base + 48, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#minimized, w, base + 48, 1)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#maximized, w, base + 48, 2)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#fullscreen, w, base + 48, 3)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            id: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            label: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            title: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            url: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            bounds: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            focused: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            minimized: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            maximized: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            fullscreen: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#id: <i64 as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#label: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 16,
+                0,
+            )?,
+            r#title: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 24,
+                0,
+            )?,
+            r#url: <String as ::tuffite::__private::mojom::Value>::get(r, base + 32, 0)?,
+            r#bounds: <WindowBounds as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 40,
+                0,
+            )?,
+            r#focused: <bool as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 48,
+                0,
+            )?,
+            r#minimized: <bool as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 48,
+                1,
+            )?,
+            r#maximized: <bool as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 48,
+                2,
+            )?,
+            r#fullscreen: <bool as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 48,
+                3,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 #[derive(
     Clone,
     Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowListRequest {}
+impl ::tuffite::__private::mojom::Value for WindowListRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowListRequest {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowListResponse {
+    pub r#result: Vec<WindowInfo>,
+}
+impl ::tuffite::__private::mojom::Value for WindowListResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowListResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <Vec<
+                WindowInfo,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowMaximizeRequest {
+    pub r#id: Option<i64>,
+}
+impl ::tuffite::__private::mojom::Value for WindowMaximizeRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowMaximizeRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.boolean(base + 8, 0, self.r#id.is_some())?;
+        if let Some(value) = &self.r#id {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 16, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#id: if r.boolean(base + 8, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 16, 0)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowMaximizeResponse {
+    pub r#result: WindowInfo,
+}
+impl ::tuffite::__private::mojom::Value for WindowMaximizeResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowMaximizeResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <WindowInfo as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowMinimizeRequest {
+    pub r#id: Option<i64>,
+}
+impl ::tuffite::__private::mojom::Value for WindowMinimizeRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowMinimizeRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.boolean(base + 8, 0, self.r#id.is_some())?;
+        if let Some(value) = &self.r#id {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 16, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#id: if r.boolean(base + 8, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 16, 0)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowMinimizeResponse {
+    pub r#result: WindowInfo,
+}
+impl ::tuffite::__private::mojom::Value for WindowMinimizeResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowMinimizeResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <WindowInfo as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
     PartialEq,
     ::tuffite::__private::serde::Serialize,
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct WindowOptions {
-    pub label: Option<String>,
-    pub url: Option<String>,
-    pub title: Option<String>,
-    pub bounds: Option<WindowBounds>,
-    pub focused: Option<bool>,
+    pub r#label: Option<String>,
+    pub r#url: Option<String>,
+    pub r#title: Option<String>,
+    pub r#bounds: Option<WindowBounds>,
+    pub r#focused: Option<bool>,
 }
-impl ::tuffite::__private::codec::Encode for WindowOptions {
-    fn encode(
+impl ::tuffite::__private::mojom::Value for WindowOptions {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
         &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
     ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        ::tuffite::__private::codec::Encode::encode(&self.label, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.url, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.title, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.bounds, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.focused, encoder)?;
-        Ok(())
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
     }
 }
-impl ::tuffite::__private::codec::Decode for WindowOptions {
-    fn decode(
-        decoder: &mut ::tuffite::__private::codec::Decoder<'_>,
+impl ::tuffite::__private::mojom::Struct for WindowOptions {
+    const SIZE: usize = 48;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#label, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#url, w, base + 16, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#title, w, base + 24, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#bounds, w, base + 32, 0)?;
+        w.boolean(base + 40, 0, self.r#focused.is_some())?;
+        if let Some(value) = &self.r#focused {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 40, 1)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
     ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
-        Ok(Self {
-            label: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            url: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            title: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            bounds: ::tuffite::__private::codec::Decode::decode(decoder)?,
-            focused: ::tuffite::__private::codec::Decode::decode(decoder)?,
-        })
+        let value = Self {
+            r#label: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#url: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+            r#title: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 24, 0)?,
+            r#bounds: <Option<
+                WindowBounds,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 32, 0)?,
+            r#focused: if r.boolean(base + 40, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 40, 1)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowRestoreRequest {
+    pub r#id: Option<i64>,
+}
+impl ::tuffite::__private::mojom::Value for WindowRestoreRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowRestoreRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.boolean(base + 8, 0, self.r#id.is_some())?;
+        if let Some(value) = &self.r#id {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 16, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#id: if r.boolean(base + 8, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 16, 0)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowRestoreResponse {
+    pub r#result: WindowInfo,
+}
+impl ::tuffite::__private::mojom::Value for WindowRestoreResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowRestoreResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <WindowInfo as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowSetBoundsRequest {
+    pub r#bounds: WindowBounds,
+    pub r#id: Option<i64>,
+}
+impl ::tuffite::__private::mojom::Value for WindowSetBoundsRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowSetBoundsRequest {
+    const SIZE: usize = 32;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#bounds, w, base + 8, 0)?;
+        w.boolean(base + 16, 0, self.r#id.is_some())?;
+        if let Some(value) = &self.r#id {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 24, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#bounds: <WindowBounds as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#id: if r.boolean(base + 16, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 24, 0)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowSetBoundsResponse {
+    pub r#result: WindowInfo,
+}
+impl ::tuffite::__private::mojom::Value for WindowSetBoundsResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowSetBoundsResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <WindowInfo as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowSetFullscreenRequest {
+    pub r#fullscreen: bool,
+    pub r#id: Option<i64>,
+}
+impl ::tuffite::__private::mojom::Value for WindowSetFullscreenRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowSetFullscreenRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#fullscreen, w, base + 8, 0)?;
+        w.boolean(base + 8, 1, self.r#id.is_some())?;
+        if let Some(value) = &self.r#id {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 16, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#fullscreen: <bool as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#id: if r.boolean(base + 8, 1)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 16, 0)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowSetFullscreenResponse {
+    pub r#result: WindowInfo,
+}
+impl ::tuffite::__private::mojom::Value for WindowSetFullscreenResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowSetFullscreenResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <WindowInfo as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowSetTitleRequest {
+    pub r#title: String,
+    pub r#id: Option<i64>,
+}
+impl ::tuffite::__private::mojom::Value for WindowSetTitleRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowSetTitleRequest {
+    const SIZE: usize = 32;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#title, w, base + 8, 0)?;
+        w.boolean(base + 16, 0, self.r#id.is_some())?;
+        if let Some(value) = &self.r#id {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 24, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#title: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#id: if r.boolean(base + 16, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 24, 0)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowSetTitleResponse {
+    pub r#result: WindowInfo,
+}
+impl ::tuffite::__private::mojom::Value for WindowSetTitleResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowSetTitleResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <WindowInfo as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
     }
 }
 pub mod dialog {
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct OpenFile {
-        pub options: Option<super::OpenFileDialogOptions>,
-    }
-    impl OpenFile {
-        pub fn respond(
-            response: Result<Option<String>, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type OpenFile = super::DialogOpenFileRequest;
+    impl ::tuffite::ShellApiRequest for super::DialogOpenFileRequest {
+        type Response = Option<String>;
+        const CHANNEL: &'static str = "tuffite.Dialog.OpenFile";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::DialogOpenFileResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
         }
     }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct OpenDirectory {
-        pub options: Option<super::OpenDirectoryDialogOptions>,
-    }
-    impl OpenDirectory {
-        pub fn respond(
-            response: Result<Option<String>, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type OpenDirectory = super::DialogOpenDirectoryRequest;
+    impl ::tuffite::ShellApiRequest for super::DialogOpenDirectoryRequest {
+        type Response = Option<String>;
+        const CHANNEL: &'static str = "tuffite.Dialog.OpenDirectory";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
         }
-    }
-}
-pub mod path {
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Directories {}
-    impl Directories {
-        pub fn respond(
-            response: Result<super::PathDirectories, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Resolve {
-        pub base: super::BaseDirectory,
-        pub relative: Option<String>,
-    }
-    impl Resolve {
-        pub fn respond(
-            response: Result<String, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-}
-pub mod remoting {
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Capabilities {}
-    impl Capabilities {
-        pub fn respond(
-            response: Result<super::RemotingCapabilities, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Start {
-        pub options: super::RemotingStartOptions,
-    }
-    impl Start {
-        pub fn respond(
-            response: Result<super::RemotingSession, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct ProcessSignal {
-        pub id: i64,
-        pub signal: super::RemotingSignal,
-    }
-    impl ProcessSignal {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct TakeSignals {
-        pub id: i64,
-        pub after_sequence: Option<i64>,
-    }
-    impl TakeSignals {
-        pub fn respond(
-            response: Result<Vec<super::RemotingSignal>, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct SendInput {
-        pub id: i64,
-        pub event: super::RemotingInputEvent,
-    }
-    impl SendInput {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Stop {
-        pub id: i64,
-    }
-    impl Stop {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Stats {
-        pub id: i64,
-    }
-    impl Stats {
-        pub fn respond(
-            response: Result<super::RemotingStats, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Capture {
-        pub screen_id: Option<i64>,
-    }
-    impl Capture {
-        pub fn respond(
-            response: Result<super::RemotingSnapshot, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct InjectInput {
-        pub event: super::RemotingInputEvent,
-    }
-    impl InjectInput {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::DialogOpenDirectoryResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
         }
     }
 }
 pub mod fs {
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct ReadFile {
-        pub base: super::BaseDirectory,
-        pub path: String,
-    }
-    impl ReadFile {
-        pub fn respond(
-            response: Result<::tuffite::Bytes, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type ReadFile = super::FsReadFileRequest;
+    impl ::tuffite::ShellApiRequest for super::FsReadFileRequest {
+        type Response = Vec<u8>;
+        const CHANNEL: &'static str = "tuffite.Fs.ReadFile";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::FsReadFileResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
         }
     }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct WriteFile {
-        pub base: super::BaseDirectory,
-        pub path: String,
-        pub contents: ::tuffite::Bytes,
-    }
-    impl WriteFile {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type WriteFile = super::FsWriteFileRequest;
+    impl ::tuffite::ShellApiRequest for super::FsWriteFileRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Fs.WriteFile";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::FsWriteFileResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
         }
     }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Exists {
-        pub base: super::BaseDirectory,
-        pub path: String,
-    }
-    impl Exists {
-        pub fn respond(
-            response: Result<bool, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type Exists = super::FsExistsRequest;
+    impl ::tuffite::ShellApiRequest for super::FsExistsRequest {
+        type Response = bool;
+        const CHANNEL: &'static str = "tuffite.Fs.Exists";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::FsExistsResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
         }
     }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct CreateDir {
-        pub base: super::BaseDirectory,
-        pub path: String,
-    }
-    impl CreateDir {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type CreateDir = super::FsCreateDirRequest;
+    impl ::tuffite::ShellApiRequest for super::FsCreateDirRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Fs.CreateDir";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::FsCreateDirResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
         }
     }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct RemoveFile {
-        pub base: super::BaseDirectory,
-        pub path: String,
-    }
-    impl RemoveFile {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type RemoveFile = super::FsRemoveFileRequest;
+    impl ::tuffite::ShellApiRequest for super::FsRemoveFileRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Fs.RemoveFile";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
         }
-    }
-}
-pub mod storage {
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Get {
-        pub key: String,
-    }
-    impl Get {
-        pub fn respond(
-            response: Result<Option<::tuffite::Bytes>, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Set {
-        pub key: String,
-        pub value: ::tuffite::Bytes,
-    }
-    impl Set {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Remove {
-        pub key: String,
-    }
-    impl Remove {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Clear {}
-    impl Clear {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::FsRemoveFileResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
         }
     }
 }
 pub mod log {
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Trace {
-        pub message: String,
-    }
-    impl Trace {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type Trace = super::LogTraceRequest;
+    impl ::tuffite::ShellApiRequest for super::LogTraceRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Log.Trace";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::LogTraceResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
         }
     }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Debug {
-        pub message: String,
-    }
-    impl Debug {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type Debug = super::LogDebugRequest;
+    impl ::tuffite::ShellApiRequest for super::LogDebugRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Log.Debug";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::LogDebugResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
         }
     }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Info {
-        pub message: String,
-    }
-    impl Info {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type Info = super::LogInfoRequest;
+    impl ::tuffite::ShellApiRequest for super::LogInfoRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Log.Info";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::LogInfoResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
         }
     }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Warn {
-        pub message: String,
-    }
-    impl Warn {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type Warn = super::LogWarnRequest;
+    impl ::tuffite::ShellApiRequest for super::LogWarnRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Log.Warn";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::LogWarnResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
         }
     }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Error {
-        pub message: String,
-    }
-    impl Error {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type Error = super::LogErrorRequest;
+    impl ::tuffite::ShellApiRequest for super::LogErrorRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Log.Error";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::LogErrorResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
         }
     }
 }
 pub mod net {
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Request {
-        pub url: String,
+    use super::NetworkResponse;
+    pub type Request = super::NetRequestRequest;
+    impl ::tuffite::ShellApiRequest for super::NetRequestRequest {
+        type Response = NetworkResponse;
+        const CHANNEL: &'static str = "tuffite.Net.Request";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::NetRequestResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
     }
-    impl Request {
-        pub fn respond(
-            response: Result<super::NetworkResponse, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+}
+pub mod path {
+    use super::PathDirectories;
+    pub type Directories = super::PathDirectoriesRequest;
+    impl ::tuffite::ShellApiRequest for super::PathDirectoriesRequest {
+        type Response = PathDirectories;
+        const CHANNEL: &'static str = "tuffite.Path.Directories";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::PathDirectoriesResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type Resolve = super::PathResolveRequest;
+    impl ::tuffite::ShellApiRequest for super::PathResolveRequest {
+        type Response = String;
+        const CHANNEL: &'static str = "tuffite.Path.Resolve";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::PathResolveResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+}
+pub mod remoting {
+    use super::{
+        RemotingCapabilities, RemotingSession, RemotingSignal, RemotingSnapshot,
+        RemotingStats,
+    };
+    pub type Capabilities = super::RemotingCapabilitiesRequest;
+    impl ::tuffite::ShellApiRequest for super::RemotingCapabilitiesRequest {
+        type Response = RemotingCapabilities;
+        const CHANNEL: &'static str = "tuffite.Remoting.Capabilities";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::RemotingCapabilitiesResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type Start = super::RemotingStartRequest;
+    impl ::tuffite::ShellApiRequest for super::RemotingStartRequest {
+        type Response = RemotingSession;
+        const CHANNEL: &'static str = "tuffite.Remoting.Start";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::RemotingStartResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type ProcessSignal = super::RemotingProcessSignalRequest;
+    impl ::tuffite::ShellApiRequest for super::RemotingProcessSignalRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Remoting.ProcessSignal";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::RemotingProcessSignalResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
+        }
+    }
+    pub type TakeSignals = super::RemotingTakeSignalsRequest;
+    impl ::tuffite::ShellApiRequest for super::RemotingTakeSignalsRequest {
+        type Response = Vec<RemotingSignal>;
+        const CHANNEL: &'static str = "tuffite.Remoting.TakeSignals";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::RemotingTakeSignalsResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type SendInput = super::RemotingSendInputRequest;
+    impl ::tuffite::ShellApiRequest for super::RemotingSendInputRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Remoting.SendInput";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::RemotingSendInputResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
+        }
+    }
+    pub type Stop = super::RemotingStopRequest;
+    impl ::tuffite::ShellApiRequest for super::RemotingStopRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Remoting.Stop";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::RemotingStopResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
+        }
+    }
+    pub type Stats = super::RemotingStatsRequest;
+    impl ::tuffite::ShellApiRequest for super::RemotingStatsRequest {
+        type Response = RemotingStats;
+        const CHANNEL: &'static str = "tuffite.Remoting.Stats";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::RemotingStatsResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type Capture = super::RemotingCaptureRequest;
+    impl ::tuffite::ShellApiRequest for super::RemotingCaptureRequest {
+        type Response = RemotingSnapshot;
+        const CHANNEL: &'static str = "tuffite.Remoting.Capture";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::RemotingCaptureResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type InjectInput = super::RemotingInjectInputRequest;
+    impl ::tuffite::ShellApiRequest for super::RemotingInjectInputRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Remoting.InjectInput";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::RemotingInjectInputResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
+        }
+    }
+}
+pub mod storage {
+    pub type Get = super::StorageGetRequest;
+    impl ::tuffite::ShellApiRequest for super::StorageGetRequest {
+        type Response = Option<Vec<u8>>;
+        const CHANNEL: &'static str = "tuffite.Storage.Get";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::StorageGetResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type Set = super::StorageSetRequest;
+    impl ::tuffite::ShellApiRequest for super::StorageSetRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Storage.Set";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::StorageSetResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
+        }
+    }
+    pub type Remove = super::StorageRemoveRequest;
+    impl ::tuffite::ShellApiRequest for super::StorageRemoveRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Storage.Remove";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::StorageRemoveResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
+        }
+    }
+    pub type Clear = super::StorageClearRequest;
+    impl ::tuffite::ShellApiRequest for super::StorageClearRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Storage.Clear";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::StorageClearResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
         }
     }
 }
 pub mod utility {
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Invoke {
-        pub name: String,
-        pub request_id: i64,
-        pub payload: Option<::tuffite::Bytes>,
-    }
-    impl Invoke {
-        pub fn respond(
-            response: Result<::tuffite::Bytes, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type Invoke = super::UtilityInvokeRequest;
+    impl ::tuffite::ShellApiRequest for super::UtilityInvokeRequest {
+        type Response = Vec<u8>;
+        const CHANNEL: &'static str = "tuffite.Utility.Invoke";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::UtilityInvokeResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
         }
     }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Cancel {
-        pub name: String,
-        pub request_id: i64,
-    }
-    impl Cancel {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    pub type Cancel = super::UtilityCancelRequest;
+    impl ::tuffite::ShellApiRequest for super::UtilityCancelRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Utility.Cancel";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::UtilityCancelResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
         }
     }
 }
 pub mod window {
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Current {}
-    impl Current {
-        pub fn respond(
-            response: Result<super::WindowInfo, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
+    use super::{WindowBounds, WindowInfo};
+    pub type Current = super::WindowCurrentRequest;
+    impl ::tuffite::ShellApiRequest for super::WindowCurrentRequest {
+        type Response = WindowInfo;
+        const CHANNEL: &'static str = "tuffite.Window.Current";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::WindowCurrentResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type List = super::WindowListRequest;
+    impl ::tuffite::ShellApiRequest for super::WindowListRequest {
+        type Response = Vec<WindowInfo>;
+        const CHANNEL: &'static str = "tuffite.Window.List";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::WindowListResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type Create = super::WindowCreateRequest;
+    impl ::tuffite::ShellApiRequest for super::WindowCreateRequest {
+        type Response = WindowInfo;
+        const CHANNEL: &'static str = "tuffite.Window.Create";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::WindowCreateResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type Focus = super::WindowFocusRequest;
+    impl ::tuffite::ShellApiRequest for super::WindowFocusRequest {
+        type Response = WindowInfo;
+        const CHANNEL: &'static str = "tuffite.Window.Focus";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::WindowFocusResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type Minimize = super::WindowMinimizeRequest;
+    impl ::tuffite::ShellApiRequest for super::WindowMinimizeRequest {
+        type Response = WindowInfo;
+        const CHANNEL: &'static str = "tuffite.Window.Minimize";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::WindowMinimizeResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type Maximize = super::WindowMaximizeRequest;
+    impl ::tuffite::ShellApiRequest for super::WindowMaximizeRequest {
+        type Response = WindowInfo;
+        const CHANNEL: &'static str = "tuffite.Window.Maximize";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::WindowMaximizeResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type Restore = super::WindowRestoreRequest;
+    impl ::tuffite::ShellApiRequest for super::WindowRestoreRequest {
+        type Response = WindowInfo;
+        const CHANNEL: &'static str = "tuffite.Window.Restore";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::WindowRestoreResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type SetFullscreen = super::WindowSetFullscreenRequest;
+    impl ::tuffite::ShellApiRequest for super::WindowSetFullscreenRequest {
+        type Response = WindowInfo;
+        const CHANNEL: &'static str = "tuffite.Window.SetFullscreen";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::WindowSetFullscreenResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type Close = super::WindowCloseRequest;
+    impl ::tuffite::ShellApiRequest for super::WindowCloseRequest {
+        type Response = ();
+        const CHANNEL: &'static str = "tuffite.Window.Close";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::WindowCloseResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            let _ = response;
+            Ok(())
+        }
+    }
+    pub type SetTitle = super::WindowSetTitleRequest;
+    impl ::tuffite::ShellApiRequest for super::WindowSetTitleRequest {
+        type Response = WindowInfo;
+        const CHANNEL: &'static str = "tuffite.Window.SetTitle";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::WindowSetTitleResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type GetBounds = super::WindowGetBoundsRequest;
+    impl ::tuffite::ShellApiRequest for super::WindowGetBoundsRequest {
+        type Response = WindowBounds;
+        const CHANNEL: &'static str = "tuffite.Window.GetBounds";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::WindowGetBoundsResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type SetBounds = super::WindowSetBoundsRequest;
+    impl ::tuffite::ShellApiRequest for super::WindowSetBoundsRequest {
+        type Response = WindowInfo;
+        const CHANNEL: &'static str = "tuffite.Window.SetBounds";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::WindowSetBoundsResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
         }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct List {}
-    impl List {
-        pub fn respond(
-            response: Result<Vec<super::WindowInfo>, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Create {
-        pub options: Option<super::WindowOptions>,
-    }
-    impl Create {
-        pub fn respond(
-            response: Result<super::WindowInfo, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Focus {
-        pub id: Option<super::WindowId>,
-    }
-    impl Focus {
-        pub fn respond(
-            response: Result<super::WindowInfo, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Minimize {
-        pub id: Option<super::WindowId>,
-    }
-    impl Minimize {
-        pub fn respond(
-            response: Result<super::WindowInfo, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Maximize {
-        pub id: Option<super::WindowId>,
-    }
-    impl Maximize {
-        pub fn respond(
-            response: Result<super::WindowInfo, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Restore {
-        pub id: Option<super::WindowId>,
-    }
-    impl Restore {
-        pub fn respond(
-            response: Result<super::WindowInfo, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct SetFullscreen {
-        pub fullscreen: bool,
-        pub id: Option<super::WindowId>,
-    }
-    impl SetFullscreen {
-        pub fn respond(
-            response: Result<super::WindowInfo, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct Close {
-        pub id: Option<super::WindowId>,
-    }
-    impl Close {
-        pub fn respond(
-            response: Result<(), ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct SetTitle {
-        pub title: String,
-        pub id: Option<super::WindowId>,
-    }
-    impl SetTitle {
-        pub fn respond(
-            response: Result<super::WindowInfo, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct GetBounds {
-        pub id: Option<super::WindowId>,
-    }
-    impl GetBounds {
-        pub fn respond(
-            response: Result<super::WindowBounds, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct SetBounds {
-        pub bounds: super::WindowBounds,
-        pub id: Option<super::WindowId>,
-    }
-    impl SetBounds {
-        pub fn respond(
-            response: Result<super::WindowInfo, ::tuffite::CommandError>,
-        ) -> ::tuffite::CommandResult {
-            use ::tuffite::__private::codec::Encode as _;
-            let response = response?;
-            let mut encoder = ::tuffite::__private::codec::Encoder::new();
-            response
-                .encode(&mut encoder)
-                .map_err(|_| {
-                    ::tuffite::CommandError::Failed(
-                        "unable to encode ShellAPI response".to_owned(),
-                    )
-                })?;
-            Ok(encoder.finish())
-        }
-    }
-}
-impl ::tuffite::ShellApiRequest for dialog::OpenFile {
-    type Response = Option<String>;
-    const CHANNEL: &'static str = "tuffite.dialog.openFile";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.options, encoder)?;
-        Ok(())
-    }
-}
-impl dialog::OpenFile {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.dialog.openFile",
-        0xf6c3_3f30_40f2_fe25u64,
-        0x3608_5a8d_453f_a7f9u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let options: Option<OpenFileDialogOptions> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { options })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            Option<OpenFileDialogOptions>,
-        ) -> Result<Option<String>, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.options))
-    }
-}
-impl ::tuffite::ShellApiRequest for dialog::OpenDirectory {
-    type Response = Option<String>;
-    const CHANNEL: &'static str = "tuffite.dialog.openDirectory";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.options, encoder)?;
-        Ok(())
-    }
-}
-impl dialog::OpenDirectory {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.dialog.openDirectory",
-        0xb48f_1748_2022_9a1du64,
-        0x466e_2f72_d286_69fau64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let options: Option<OpenDirectoryDialogOptions> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { options })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            Option<OpenDirectoryDialogOptions>,
-        ) -> Result<Option<String>, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.options))
-    }
-}
-impl ::tuffite::ShellApiRequest for path::Directories {
-    type Response = PathDirectories;
-    const CHANNEL: &'static str = "tuffite.path.directories";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        Ok(())
-    }
-}
-impl path::Directories {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.path.directories",
-        0xdc47_b521_6a77_1dc7u64,
-        0xb013_83ce_4e5b_a27au64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        if !command.payload().is_empty() {
-            return Err(
-                ::tuffite::CommandError::InvalidArgument(
-                    "trailing ShellAPI request data".to_owned(),
-                ),
-            );
-        }
-        Ok(Self {})
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A) -> Result<PathDirectories, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        Self::__tuffite_decode(command)?;
-        Self::respond(handler(application))
-    }
-}
-impl ::tuffite::ShellApiRequest for path::Resolve {
-    type Response = String;
-    const CHANNEL: &'static str = "tuffite.path.resolve";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.base, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.relative, encoder)?;
-        Ok(())
-    }
-}
-impl path::Resolve {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.path.resolve",
-        0xc97a_0a14_2d4f_8077u64,
-        0x0170_c444_04ed_c31cu64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let base: BaseDirectory = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let relative: Option<String> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { base, relative })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            BaseDirectory,
-            Option<String>,
-        ) -> Result<String, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.base, request.relative))
-    }
-}
-impl ::tuffite::ShellApiRequest for remoting::Capabilities {
-    type Response = RemotingCapabilities;
-    const CHANNEL: &'static str = "tuffite.remoting.capabilities";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        Ok(())
-    }
-}
-impl remoting::Capabilities {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.remoting.capabilities",
-        0xd95b_4f76_c83c_2718u64,
-        0x2669_08a3_eb5b_2aa5u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        if !command.payload().is_empty() {
-            return Err(
-                ::tuffite::CommandError::InvalidArgument(
-                    "trailing ShellAPI request data".to_owned(),
-                ),
-            );
-        }
-        Ok(Self {})
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A) -> Result<RemotingCapabilities, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        Self::__tuffite_decode(command)?;
-        Self::respond(handler(application))
-    }
-}
-impl ::tuffite::ShellApiRequest for remoting::Start {
-    type Response = RemotingSession;
-    const CHANNEL: &'static str = "tuffite.remoting.start";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.options, encoder)?;
-        Ok(())
-    }
-}
-impl remoting::Start {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.remoting.start",
-        0xef17_8b75_5bff_5be8u64,
-        0x351d_30bb_9a8e_0c61u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let options: RemotingStartOptions = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { options })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            RemotingStartOptions,
-        ) -> Result<RemotingSession, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.options))
-    }
-}
-impl ::tuffite::ShellApiRequest for remoting::ProcessSignal {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.remoting.processSignal";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.signal, encoder)?;
-        Ok(())
-    }
-}
-impl remoting::ProcessSignal {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.remoting.processSignal",
-        0x9259_0b17_22c0_f00cu64,
-        0x3259_6946_f161_45cfu64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let id: i64 = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let signal: RemotingSignal = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { id, signal })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, i64, RemotingSignal) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.id, request.signal))
-    }
-}
-impl ::tuffite::ShellApiRequest for remoting::TakeSignals {
-    type Response = Vec<RemotingSignal>;
-    const CHANNEL: &'static str = "tuffite.remoting.takeSignals";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.after_sequence, encoder)?;
-        Ok(())
-    }
-}
-impl remoting::TakeSignals {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.remoting.takeSignals",
-        0xcfd0_7b61_ea21_251bu64,
-        0x3583_8aef_6986_98a1u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let id: i64 = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let after_sequence: Option<i64> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { id, after_sequence })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            i64,
-            Option<i64>,
-        ) -> Result<Vec<RemotingSignal>, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.id, request.after_sequence))
-    }
-}
-impl ::tuffite::ShellApiRequest for remoting::SendInput {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.remoting.sendInput";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.event, encoder)?;
-        Ok(())
-    }
-}
-impl remoting::SendInput {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.remoting.sendInput",
-        0x8f01_760c_8fbd_e013u64,
-        0x9684_7a08_83ac_9883u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let id: i64 = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let event: RemotingInputEvent = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { id, event })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            i64,
-            RemotingInputEvent,
-        ) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.id, request.event))
-    }
-}
-impl ::tuffite::ShellApiRequest for remoting::Stop {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.remoting.stop";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        Ok(())
-    }
-}
-impl remoting::Stop {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.remoting.stop",
-        0x8db3_cd25_bc28_e427u64,
-        0x3289_69ae_8937_4051u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let id: i64 = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { id })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, i64) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.id))
-    }
-}
-impl ::tuffite::ShellApiRequest for remoting::Stats {
-    type Response = RemotingStats;
-    const CHANNEL: &'static str = "tuffite.remoting.stats";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        Ok(())
-    }
-}
-impl remoting::Stats {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.remoting.stats",
-        0xf501_1f12_12ad_4546u64,
-        0xe361_2f19_69a8_6fa4u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let id: i64 = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { id })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, i64) -> Result<RemotingStats, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.id))
-    }
-}
-impl ::tuffite::ShellApiRequest for remoting::Capture {
-    type Response = RemotingSnapshot;
-    const CHANNEL: &'static str = "tuffite.remoting.capture";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.screen_id, encoder)?;
-        Ok(())
-    }
-}
-impl remoting::Capture {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.remoting.capture",
-        0x155d_7c65_1339_b2b9u64,
-        0xbd9b_d620_30b9_dc25u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let screen_id: Option<i64> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { screen_id })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            Option<i64>,
-        ) -> Result<RemotingSnapshot, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.screen_id))
-    }
-}
-impl ::tuffite::ShellApiRequest for remoting::InjectInput {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.remoting.injectInput";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.event, encoder)?;
-        Ok(())
-    }
-}
-impl remoting::InjectInput {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.remoting.injectInput",
-        0x4d93_0f12_59de_1d5fu64,
-        0x3e2c_b856_ef0f_0c8eu64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let event: RemotingInputEvent = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { event })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, RemotingInputEvent) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.event))
-    }
-}
-impl ::tuffite::ShellApiRequest for fs::ReadFile {
-    type Response = ::tuffite::Bytes;
-    const CHANNEL: &'static str = "tuffite.fs.readFile";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.base, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.path, encoder)?;
-        Ok(())
-    }
-}
-impl fs::ReadFile {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.fs.readFile",
-        0xa26f_3393_8cdc_7294u64,
-        0xd411_76c0_7662_7b9bu64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let base: BaseDirectory = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let path: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { base, path })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            BaseDirectory,
-            String,
-        ) -> Result<::tuffite::Bytes, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.base, request.path))
-    }
-}
-impl ::tuffite::ShellApiRequest for fs::WriteFile {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.fs.writeFile";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.base, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.path, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.contents, encoder)?;
-        Ok(())
-    }
-}
-impl fs::WriteFile {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.fs.writeFile",
-        0x2f93_310d_ba55_c933u64,
-        0xe4ba_90d2_2c7b_5a79u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let base: BaseDirectory = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let path: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let contents: ::tuffite::Bytes = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { base, path, contents })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            BaseDirectory,
-            String,
-            ::tuffite::Bytes,
-        ) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.base, request.path, request.contents))
-    }
-}
-impl ::tuffite::ShellApiRequest for fs::Exists {
-    type Response = bool;
-    const CHANNEL: &'static str = "tuffite.fs.exists";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.base, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.path, encoder)?;
-        Ok(())
-    }
-}
-impl fs::Exists {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.fs.exists",
-        0xfebb_6a4e_2e5b_af29u64,
-        0xc294_caaa_f32f_6c6fu64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let base: BaseDirectory = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let path: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { base, path })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            BaseDirectory,
-            String,
-        ) -> Result<bool, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.base, request.path))
-    }
-}
-impl ::tuffite::ShellApiRequest for fs::CreateDir {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.fs.createDir";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.base, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.path, encoder)?;
-        Ok(())
-    }
-}
-impl fs::CreateDir {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.fs.createDir",
-        0x920d_3f68_cfee_5a2bu64,
-        0x3f9f_56ad_94d4_9c0cu64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let base: BaseDirectory = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let path: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { base, path })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, BaseDirectory, String) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.base, request.path))
-    }
-}
-impl ::tuffite::ShellApiRequest for fs::RemoveFile {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.fs.removeFile";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.base, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.path, encoder)?;
-        Ok(())
-    }
-}
-impl fs::RemoveFile {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.fs.removeFile",
-        0xefb0_bcaf_7707_86cau64,
-        0x3f9f_56ad_94d4_9c0cu64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let base: BaseDirectory = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let path: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { base, path })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, BaseDirectory, String) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.base, request.path))
-    }
-}
-impl ::tuffite::ShellApiRequest for storage::Get {
-    type Response = Option<::tuffite::Bytes>;
-    const CHANNEL: &'static str = "tuffite.storage.get";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.key, encoder)?;
-        Ok(())
-    }
-}
-impl storage::Get {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.storage.get",
-        0xb840_92a6_e6ca_f9a6u64,
-        0x71ea_bd90_27ef_4903u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let key: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { key })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            String,
-        ) -> Result<Option<::tuffite::Bytes>, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.key))
-    }
-}
-impl ::tuffite::ShellApiRequest for storage::Set {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.storage.set";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.key, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.value, encoder)?;
-        Ok(())
-    }
-}
-impl storage::Set {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.storage.set",
-        0x3ed2_e38b_c15b_bfb8u64,
-        0x9f36_d4f5_ebbe_c33eu64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let key: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let value: ::tuffite::Bytes = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { key, value })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            String,
-            ::tuffite::Bytes,
-        ) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.key, request.value))
-    }
-}
-impl ::tuffite::ShellApiRequest for storage::Remove {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.storage.remove";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.key, encoder)?;
-        Ok(())
-    }
-}
-impl storage::Remove {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.storage.remove",
-        0x3b36_008e_53d2_0f70u64,
-        0x40aa_8f27_e6e1_fd27u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let key: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { key })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, String) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.key))
-    }
-}
-impl ::tuffite::ShellApiRequest for storage::Clear {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.storage.clear";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        Ok(())
-    }
-}
-impl storage::Clear {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.storage.clear",
-        0x20da_5788_1305_2815u64,
-        0xd3c2_b7fb_02d6_33e2u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        if !command.payload().is_empty() {
-            return Err(
-                ::tuffite::CommandError::InvalidArgument(
-                    "trailing ShellAPI request data".to_owned(),
-                ),
-            );
-        }
-        Ok(Self {})
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        Self::__tuffite_decode(command)?;
-        Self::respond(handler(application))
-    }
-}
-impl ::tuffite::ShellApiRequest for log::Trace {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.log.trace";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.message, encoder)?;
-        Ok(())
-    }
-}
-impl log::Trace {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.log.trace",
-        0x4328_4b4e_0543_9064u64,
-        0x40aa_8f27_e6e1_fd27u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let message: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { message })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, String) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.message))
-    }
-}
-impl ::tuffite::ShellApiRequest for log::Debug {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.log.debug";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.message, encoder)?;
-        Ok(())
-    }
-}
-impl log::Debug {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.log.debug",
-        0xbe82_2657_209b_1e90u64,
-        0x40aa_8f27_e6e1_fd27u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let message: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { message })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, String) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.message))
-    }
-}
-impl ::tuffite::ShellApiRequest for log::Info {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.log.info";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.message, encoder)?;
-        Ok(())
-    }
-}
-impl log::Info {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.log.info",
-        0x4160_d54e_6426_a92cu64,
-        0x40aa_8f27_e6e1_fd27u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let message: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { message })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, String) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.message))
-    }
-}
-impl ::tuffite::ShellApiRequest for log::Warn {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.log.warn";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.message, encoder)?;
-        Ok(())
-    }
-}
-impl log::Warn {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.log.warn",
-        0xde6e_140a_5418_6f3eu64,
-        0x40aa_8f27_e6e1_fd27u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let message: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { message })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, String) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.message))
-    }
-}
-impl ::tuffite::ShellApiRequest for log::Error {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.log.error";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.message, encoder)?;
-        Ok(())
-    }
-}
-impl log::Error {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.log.error",
-        0xe2dc_7147_6939_9f0fu64,
-        0x40aa_8f27_e6e1_fd27u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let message: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { message })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, String) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.message))
-    }
-}
-impl ::tuffite::ShellApiRequest for net::Request {
-    type Response = NetworkResponse;
-    const CHANNEL: &'static str = "tuffite.net.request";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.url, encoder)?;
-        Ok(())
-    }
-}
-impl net::Request {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.net.request",
-        0x2a0a_1e40_0c90_3a7du64,
-        0x353b_4a12_fc82_fd19u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let url: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { url })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, String) -> Result<NetworkResponse, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.url))
-    }
-}
-impl ::tuffite::ShellApiRequest for utility::Invoke {
-    type Response = ::tuffite::Bytes;
-    const CHANNEL: &'static str = "tuffite.utility.invoke";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.name, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.request_id, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.payload, encoder)?;
-        Ok(())
-    }
-}
-impl utility::Invoke {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.utility.invoke",
-        0x41c7_d64a_8b6e_d93au64,
-        0xb528_7876_8ef6_9fb7u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let name: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let request_id: i64 = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let payload: Option<::tuffite::Bytes> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { name, request_id, payload })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            String,
-            i64,
-            Option<::tuffite::Bytes>,
-        ) -> Result<::tuffite::Bytes, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(
-            handler(application, request.name, request.request_id, request.payload),
-        )
-    }
-}
-impl ::tuffite::ShellApiRequest for utility::Cancel {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.utility.cancel";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.name, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.request_id, encoder)?;
-        Ok(())
-    }
-}
-impl utility::Cancel {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.utility.cancel",
-        0xff42_61ad_e322_8f69u64,
-        0x665d_1fc0_58af_d7beu64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let name: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let request_id: i64 = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { name, request_id })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, String, i64) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.name, request.request_id))
-    }
-}
-impl ::tuffite::ShellApiRequest for window::Current {
-    type Response = WindowInfo;
-    const CHANNEL: &'static str = "tuffite.window.current";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        Ok(())
-    }
-}
-impl window::Current {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.window.current",
-        0xa775_1ce3_5090_f0adu64,
-        0xbe8a_74fb_9eaf_bf49u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        if !command.payload().is_empty() {
-            return Err(
-                ::tuffite::CommandError::InvalidArgument(
-                    "trailing ShellAPI request data".to_owned(),
-                ),
-            );
-        }
-        Ok(Self {})
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A) -> Result<WindowInfo, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        Self::__tuffite_decode(command)?;
-        Self::respond(handler(application))
-    }
-}
-impl ::tuffite::ShellApiRequest for window::List {
-    type Response = Vec<WindowInfo>;
-    const CHANNEL: &'static str = "tuffite.window.list";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        Ok(())
-    }
-}
-impl window::List {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.window.list",
-        0xec4d_3013_18c9_bd74u64,
-        0xb9f2_e933_315b_14f4u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        if !command.payload().is_empty() {
-            return Err(
-                ::tuffite::CommandError::InvalidArgument(
-                    "trailing ShellAPI request data".to_owned(),
-                ),
-            );
-        }
-        Ok(Self {})
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A) -> Result<Vec<WindowInfo>, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        Self::__tuffite_decode(command)?;
-        Self::respond(handler(application))
-    }
-}
-impl ::tuffite::ShellApiRequest for window::Create {
-    type Response = WindowInfo;
-    const CHANNEL: &'static str = "tuffite.window.create";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.options, encoder)?;
-        Ok(())
-    }
-}
-impl window::Create {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.window.create",
-        0x2780_4c86_ebf9_7cf3u64,
-        0x9910_f247_5b83_26c4u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let options: Option<WindowOptions> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { options })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            Option<WindowOptions>,
-        ) -> Result<WindowInfo, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.options))
-    }
-}
-impl ::tuffite::ShellApiRequest for window::Focus {
-    type Response = WindowInfo;
-    const CHANNEL: &'static str = "tuffite.window.focus";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        Ok(())
-    }
-}
-impl window::Focus {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.window.focus",
-        0x7328_589a_4597_f73eu64,
-        0x1896_b9c0_d603_79f2u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let id: Option<WindowId> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { id })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            Option<WindowId>,
-        ) -> Result<WindowInfo, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.id))
-    }
-}
-impl ::tuffite::ShellApiRequest for window::Minimize {
-    type Response = WindowInfo;
-    const CHANNEL: &'static str = "tuffite.window.minimize";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        Ok(())
-    }
-}
-impl window::Minimize {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.window.minimize",
-        0x7103_a11c_2116_72d9u64,
-        0x1896_b9c0_d603_79f2u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let id: Option<WindowId> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { id })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            Option<WindowId>,
-        ) -> Result<WindowInfo, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.id))
-    }
-}
-impl ::tuffite::ShellApiRequest for window::Maximize {
-    type Response = WindowInfo;
-    const CHANNEL: &'static str = "tuffite.window.maximize";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        Ok(())
-    }
-}
-impl window::Maximize {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.window.maximize",
-        0x9ccd_2de1_2523_e120u64,
-        0x1896_b9c0_d603_79f2u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let id: Option<WindowId> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { id })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            Option<WindowId>,
-        ) -> Result<WindowInfo, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.id))
-    }
-}
-impl ::tuffite::ShellApiRequest for window::Restore {
-    type Response = WindowInfo;
-    const CHANNEL: &'static str = "tuffite.window.restore";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        Ok(())
-    }
-}
-impl window::Restore {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.window.restore",
-        0x83ee_03e8_39ae_389bu64,
-        0x1896_b9c0_d603_79f2u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let id: Option<WindowId> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { id })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            Option<WindowId>,
-        ) -> Result<WindowInfo, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.id))
-    }
-}
-impl ::tuffite::ShellApiRequest for window::SetFullscreen {
-    type Response = WindowInfo;
-    const CHANNEL: &'static str = "tuffite.window.setFullscreen";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.fullscreen, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        Ok(())
-    }
-}
-impl window::SetFullscreen {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.window.setFullscreen",
-        0x8930_6e3b_b335_392au64,
-        0xd87b_48da_1a9a_fa04u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let fullscreen: bool = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let id: Option<WindowId> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { fullscreen, id })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            bool,
-            Option<WindowId>,
-        ) -> Result<WindowInfo, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.fullscreen, request.id))
-    }
-}
-impl ::tuffite::ShellApiRequest for window::Close {
-    type Response = ();
-    const CHANNEL: &'static str = "tuffite.window.close";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        Ok(())
-    }
-}
-impl window::Close {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.window.close",
-        0xbef2_0904_2f19_30efu64,
-        0x8b2a_a9b1_8608_5f5bu64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let id: Option<WindowId> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { id })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(&mut A, Option<WindowId>) -> Result<(), ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.id))
-    }
-}
-impl ::tuffite::ShellApiRequest for window::SetTitle {
-    type Response = WindowInfo;
-    const CHANNEL: &'static str = "tuffite.window.setTitle";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.title, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        Ok(())
-    }
-}
-impl window::SetTitle {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.window.setTitle",
-        0x316f_0207_55c4_79cau64,
-        0x0457_3d00_d14e_1335u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let title: String = ::tuffite::__private::codec::Decode::decode(&mut decoder)
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let id: Option<WindowId> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { title, id })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            String,
-            Option<WindowId>,
-        ) -> Result<WindowInfo, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.title, request.id))
-    }
-}
-impl ::tuffite::ShellApiRequest for window::GetBounds {
-    type Response = WindowBounds;
-    const CHANNEL: &'static str = "tuffite.window.getBounds";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        Ok(())
-    }
-}
-impl window::GetBounds {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.window.getBounds",
-        0xe5a8_1d21_f786_57f1u64,
-        0x508f_19bc_5731_81eeu64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let id: Option<WindowId> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { id })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            Option<WindowId>,
-        ) -> Result<WindowBounds, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.id))
-    }
-}
-impl ::tuffite::ShellApiRequest for window::SetBounds {
-    type Response = WindowInfo;
-    const CHANNEL: &'static str = "tuffite.window.setBounds";
-    fn encode(
-        &self,
-        encoder: &mut ::tuffite::__private::codec::Encoder,
-    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
-        let _ = &encoder;
-        ::tuffite::__private::codec::Encode::encode(&self.bounds, encoder)?;
-        ::tuffite::__private::codec::Encode::encode(&self.id, encoder)?;
-        Ok(())
-    }
-}
-impl window::SetBounds {
-    pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-        "tuffite.window.setBounds",
-        0x5b73_dc63_3e97_3510u64,
-        0xfd14_6d8b_bf8b_2e49u64,
-    );
-    #[doc(hidden)]
-    pub fn __tuffite_decode(
-        command: ::tuffite::Command<'_>,
-    ) -> Result<Self, ::tuffite::CommandError> {
-        if command.id() != Self::COMMAND.id() {
-            return Err(::tuffite::CommandError::UnknownCommand);
-        }
-        if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
-            return Err(
-                ::tuffite::CommandError::SchemaMismatch(
-                    "ShellAPI schema fingerprint mismatch; regenerate application bindings"
-                        .to_owned(),
-                ),
-            );
-        }
-        let mut decoder = ::tuffite::__private::codec::Decoder::new(command.payload());
-        let bounds: WindowBounds = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        let id: Option<WindowId> = ::tuffite::__private::codec::Decode::decode(
-                &mut decoder,
-            )
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "invalid ShellAPI request".to_owned(),
-            ))?;
-        decoder
-            .finish()
-            .map_err(|_| ::tuffite::CommandError::InvalidArgument(
-                "trailing ShellAPI request data".to_owned(),
-            ))?;
-        Ok(Self { bounds, id })
-    }
-    #[doc(hidden)]
-    pub fn __tuffite_dispatch<A>(
-        command: ::tuffite::Command<'_>,
-        application: &mut A,
-        handler: fn(
-            &mut A,
-            WindowBounds,
-            Option<WindowId>,
-        ) -> Result<WindowInfo, ::tuffite::CommandError>,
-    ) -> ::tuffite::CommandResult {
-        let request = Self::__tuffite_decode(command)?;
-        Self::respond(handler(application, request.bounds, request.id))
     }
 }

@@ -1,4 +1,6 @@
-import "/shell_api.js";
+import * as frameworkApi from "/tuffite.js";
+
+import { commands, echo } from "/shell_api.js";
 import { setupUtilityLifecycle } from "./utility-lifecycle.js";
 import { setupWindowManagement } from "./window-management.js";
 
@@ -60,6 +62,7 @@ const ready = {
   largeAsset: explorerOnlySmoke,
   applicationEvent: explorerOnlySmoke,
   window: explorerOnlySmoke,
+  mojom: explorerOnlySmoke,
 };
 
 const explorerChecks = new Set();
@@ -373,6 +376,28 @@ function reportReady(feature) {
   }
 }
 
+async function checkMojom() {
+  try {
+    const sample = {
+      small: 7, large: (1n << 63n) + 17n, enabled: true, visible: false,
+      medium: 513, signedValue: -12345, fraction: 1.25,
+      nested: {label: "你好", bytes: new Uint8Array([0, 1, 255])},
+    };
+    const browser = await commands.echoMojom(sample);
+    const utility = await echo.roundTrip(sample);
+    for (const value of [browser, utility]) {
+      if (value.large !== sample.large || value.signedValue !== sample.signedValue ||
+          value.medium !== sample.medium || value.fraction !== sample.fraction ||
+          value.small !== sample.small || !value.enabled || value.visible ||
+          value.nested.label !== sample.nested.label || value.nested.bytes.join() !== '0,1,255') {
+        throw new Error('Mojom cross-process round trip mismatch');
+      }
+    }
+    window.__mojomSmoke = {browser:true, utility:true};
+    reportReady('mojom');
+  } catch (error) { reportError('Mojom', error); }
+}
+
 function reportError(feature, error) {
   document.title = `Tuffite ${feature} Error: ${error.message}`;
   if (feature === "explorer v2") {
@@ -393,7 +418,7 @@ const checkWindowManagement = setupWindowManagement({
 
 async function invoke() {
   try {
-    const response = await window.playground.commands.doSomething(
+    const response = await commands.doSomething(
       "hello from Chromium",
     );
     runtime.textContent = response;
@@ -407,13 +432,13 @@ async function invoke() {
 async function checkNetwork() {
   try {
     try {
-      await window.tuffite.net.request("http://localhost/");
+      await frameworkApi.net.request("http://localhost/");
       throw new Error("undeclared network host was allowed");
     } catch (error) {
       if (error.message === "undeclared network host was allowed") throw error;
     }
     const target = window.tuffite.networkTestUrl || "https://example.com/";
-    const response = await window.tuffite.net.request(target);
+    const response = await frameworkApi.net.request(target);
     networkOutput.textContent = `HTTP ${response.status} · ${response.body.byteLength} bytes`;
     if (response.status >= 200 && response.status < 400) reportReady("network");
   } catch (error) {
@@ -425,29 +450,29 @@ async function checkNetwork() {
 async function checkPlatformApis() {
   const output = document.querySelector("#platform");
   try {
-    const directories = await window.tuffite.path.directories();
-    const dataFile = await window.tuffite.path.resolve(
-      "data",
+    const directories = await frameworkApi.path.directories();
+    const dataFile = await frameworkApi.path.resolve(
+      frameworkApi.BaseDirectory.Data,
       "playground.bin",
     );
     const value = new TextEncoder().encode("persistent playground value");
-    await window.tuffite.fs.writeFile("data", "playground.bin", value);
-    const read = await window.tuffite.fs.readFile("data", "playground.bin");
+    await frameworkApi.fs.writeFile(frameworkApi.BaseDirectory.Data, "playground.bin", value);
+    const read = await frameworkApi.fs.readFile(frameworkApi.BaseDirectory.Data, "playground.bin");
     if (
       new TextDecoder().decode(read) !== "persistent playground value" ||
-      !(await window.tuffite.fs.exists("data", "playground.bin"))
+      !(await frameworkApi.fs.exists(frameworkApi.BaseDirectory.Data, "playground.bin"))
     ) {
       throw new Error("filesystem round trip failed");
     }
-    await window.tuffite.storage.set("playground", value);
-    const stored = await window.tuffite.storage.get("playground");
+    await frameworkApi.storage.set("playground", value);
+    const stored = await frameworkApi.storage.get("playground");
     if (
       !stored ||
       new TextDecoder().decode(stored) !== "persistent playground value"
     ) {
       throw new Error("storage round trip failed");
     }
-    await window.tuffite.log.info("Playground platform API smoke passed");
+    await frameworkApi.log.info("Playground platform API smoke passed");
     output.textContent = `data: ${directories.data}\nfile: ${dataFile}`;
     reportReady("platform");
   } catch (error) {
@@ -480,7 +505,7 @@ async function checkLargeAsset() {
 
 button.addEventListener("click", invoke);
 document.querySelector("#dialog-file").addEventListener("click", async () => {
-  const selected = await window.tuffite.dialog.openFile({
+  const selected = await frameworkApi.dialog.openFile({
     title: "Choose a Playground file",
     extensions: [["html", "md"]],
   });
@@ -489,7 +514,7 @@ document.querySelector("#dialog-file").addEventListener("click", async () => {
 document
   .querySelector("#dialog-directory")
   .addEventListener("click", async () => {
-    const selected = await window.tuffite.dialog.openDirectory({
+    const selected = await frameworkApi.dialog.openDirectory({
       title: "Choose a Playground directory",
     });
     dialogOutput.textContent = selected ?? "Directory selection cancelled";
@@ -1174,11 +1199,13 @@ if (!explorerOnlySmoke) {
   checkNetwork();
   checkPlatformApis();
   checkLargeAsset();
-  checkUtility();
-  window.playground.commands
+  // The lifecycle probe checks exact invocation counts; keep the codec probe
+  // outside that pair of requests to make the startup proof deterministic.
+  checkUtility().then(checkMojom);
+  commands
     .checkUtilitySession()
     .catch((error) => reportError("utility session", error));
-  window.playground.commands
+  commands
     .checkJavascriptExtension()
     .catch((error) => reportError("JavaScript extension", error));
   checkWindowManagement();

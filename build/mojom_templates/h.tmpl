@@ -1,0 +1,29 @@
+{% import 'macros.inc.tmpl' as m %}
+#pragma once
+
+#include "tuffite/components/dispatch/browser/rpc.h"
+#include "{{module.path}}-wire.mojom.h"
+{% for imported in imports %}#include "{{imported.path}}.h"
+{% endfor %}
+namespace tuffite::shell_api::generated {
+{% for enum in enums %}using {{enum.name}} = ::tuffite::wire::{{enum.name}};
+{% endfor %}
+{% for struct in structs %}using {{struct.name}} = ::tuffite::wire::{{struct.name}};
+using {{struct.name}}Ptr = ::tuffite::wire::{{struct.name}}Ptr;
+{% endfor %}
+{% for interface in interfaces %}
+class {{interface.name}} {
+ public:
+  virtual ~{{interface.name}}() = default;
+  static constexpr std::string_view kName = "{{module_namespace}}.{{interface.name}}";
+  static rpc::Service Bind(std::shared_ptr<{{interface.name}}> implementation);
+{% for method in interface.methods %}{% set name=method.name %}{% set response='::tuffite::wire::'+interface.name+name+'Response' %}
+  static constexpr std::string_view k{{name}} = "{{module_namespace}}.{{interface.name}}.{{name}}";
+  using {{name}}Method = rpc::Method<::tuffite::wire::{{interface.name}}{{name}}Request, {{response}}{% for field in method.response_parameters %}, &{{response}}::{{m.snake(field.name)}}{% endfor %}>;
+  using {{name}}RequestPtr = {{name}}Method::RequestPtr;
+  using {{name}}Callback = {{name}}Method::Callback;
+{% if method.response_parameters|length == 1 %}  using {{name}}Result = decltype({{response}}::{{m.snake(method.response_parameters[0].name)}});
+{% endif %}  virtual void {{name}}(const dispatch::Context& context, {{name}}RequestPtr request, {{name}}Callback callback) = 0;
+{% endfor %}};
+{% endfor %}
+}  // namespace tuffite::shell_api::generated

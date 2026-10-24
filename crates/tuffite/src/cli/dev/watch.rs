@@ -70,9 +70,8 @@ fn project_snapshot(root: &Path) -> BTreeMap<PathBuf, (u64, Option<std::time::Sy
             };
             let watched = matches!(
                 path.extension().and_then(|value| value.to_str()),
-                Some("rs" | "toml")
-            ) || name.ends_with(".d.ts")
-                || matches!(name, "build.rs" | "Cargo.lock" | "tuffite.json");
+                Some("rs" | "toml" | "mojom")
+            ) || matches!(name, "build.rs" | "Cargo.lock" | "tuffite.json");
             if watched {
                 let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
                 snapshot.insert(relative, (metadata.len(), metadata.modified().ok()));

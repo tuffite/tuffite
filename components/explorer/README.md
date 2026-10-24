@@ -37,7 +37,7 @@ The configuration separates resource routing, runtime settings and authorization
 | Field | Responsibility |
 | --- | --- |
 | `app.assets[]` | Map request origin + path to a packaged file or directory. |
-| `build.shellApi` | Business namespace, IDL definitions and facade generation. |
+| `build.mojomSources` | Mojom source paths; module names come from IDL. |
 | `app.windows[]` | Startup state and per-window min/max size constraints. |
 | `app.network` | Request timeout, maximum response size and HTTP/2 setting. |
 | `app.security.capabilities[]` | Positive operation grants and resource scopes by committed document origin. |
@@ -212,8 +212,8 @@ Paths are exact or terminal `/*` prefixes; directory routes strip the matching
 prefix and append the suffix to the configured directory. Exact routes win,
 then the longest prefix. Equal-priority rules with overlapping origins are
 configuration errors. There is no implicit root/SPA fallback: unmatched paths
-and missing files return 404. The framework owns `/tuffite-runtime.js` and
-`/tuffite-shell-api.js`; applications cannot replace those resources. URL and
+and missing files return 404. The framework owns `/tuffite.js` and
+`/tuffite.js`; applications cannot replace those resources. URL and
 origin are preserved even when multiple origins map to the same bytes.
 
 Capabilities are selected by the caller's committed document origin. Unmatched

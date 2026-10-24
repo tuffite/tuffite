@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "tuffite/framework/app/services/utility/host_runtime.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -90,6 +91,27 @@ void ConfigureUtilityHostRuntime(UtilityService& service,
                                  const tuffite_application& application,
                                  tuffite_handle_t runtime) {
   service.SetUtilityStartupConfigurations(manifest.UtilityConfigurations());
+  if (application.resolve_utility_route) {
+    service.SetUtilityInterfaceResolver(base::BindRepeating(
+        [](tuffite_resolve_utility_route_fn resolve,
+           std::string_view name) -> std::string {
+          tuffite_byte_slice_t owner{};
+          if (resolve(
+                  {reinterpret_cast<const uint8_t*>(name.data()), name.size()},
+                  &owner) != TUFFITE_STATUS_OK ||
+              !owner.data || owner.len == 0 || owner.len > 128) {
+            return {};
+          }
+          // SAFETY: The ABI producer returns application-lifetime readable
+          // bytes.
+          const auto bytes = UNSAFE_BUFFERS(base::span(owner.data, owner.len));
+          if (std::ranges::find(bytes, uint8_t{0}) != bytes.end()) {
+            return {};
+          }
+          return std::string(bytes.begin(), bytes.end());
+        },
+        application.resolve_utility_route));
+  }
   service.SetUtilityModuleResolver(base::BindRepeating(
       [](asset::AssetConfiguration assets, tuffite_resolve_v8_fn resolve,
          tuffite_handle_t runtime, std::string name, std::string url,

@@ -8,6 +8,7 @@
 #include <type_traits>
 
 #include "base/memory/raw_ref.h"
+#include "base/memory/weak_ptr.h"
 #include "components/keyed_service/core/keyed_service.h"
 
 namespace tuffite {
@@ -39,6 +40,9 @@ class ApplicationContext final {
   }
 
   AbiHostBridge& bridge() const { return *bridge_; }
+  base::WeakPtr<ApplicationContext> GetWeakPtr() {
+    return weak_factory_.GetWeakPtr();
+  }
 
  private:
   KeyedService* GetServiceByType(const void* service_type, bool create);
@@ -47,6 +51,7 @@ class ApplicationContext final {
   // Consumed once when the service graph eagerly creates ManifestService.
   std::unique_ptr<ManifestService> pending_manifest_;
   const raw_ref<AbiHostBridge> bridge_;
+  base::WeakPtrFactory<ApplicationContext> weak_factory_{this};
 };
 
 }  // namespace tuffite

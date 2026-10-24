@@ -17,7 +17,6 @@
 #include "content/public/browser/web_contents.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
-#include "tuffite/framework/browser/services/shell_api/commands/registry.h"
 #include "tuffite/framework/browser/services/window/window.h"
 #include "tuffite/framework/browser/services/window/window_service.h"
 #include "tuffite/framework/browser/services/window/window_service_factory.h"
@@ -25,41 +24,37 @@
 #include "url/gurl.h"
 namespace tuffite::shell_api::window {
 using generated::WindowBounds;
-using generated::WindowId;
+using WindowId = int64_t;
 using generated::WindowInfo;
-using generated::window::CloseCallback;
-using generated::window::CloseRequest;
-using generated::window::CreateCallback;
-using generated::window::CreateRequest;
-using generated::window::CurrentCallback;
-using generated::window::CurrentRequest;
-using generated::window::FocusCallback;
-using generated::window::FocusRequest;
-using generated::window::GetBoundsCallback;
-using generated::window::GetBoundsRequest;
-using generated::window::ListCallback;
-using generated::window::ListRequest;
-using generated::window::MaximizeCallback;
-using generated::window::MaximizeRequest;
-using generated::window::MinimizeCallback;
-using generated::window::MinimizeRequest;
-using generated::window::RestoreCallback;
-using generated::window::RestoreRequest;
-using generated::window::SetBoundsCallback;
-using generated::window::SetBoundsRequest;
-using generated::window::SetFullscreenCallback;
-using generated::window::SetFullscreenRequest;
-using generated::window::SetTitleCallback;
-using generated::window::SetTitleRequest;
+using CloseCallback = generated::Window::CloseCallback;
+using CloseRequestPtr = generated::Window::CloseRequestPtr;
+using CreateCallback = generated::Window::CreateCallback;
+using CreateRequestPtr = generated::Window::CreateRequestPtr;
+using CurrentCallback = generated::Window::CurrentCallback;
+using CurrentRequestPtr = generated::Window::CurrentRequestPtr;
+using FocusCallback = generated::Window::FocusCallback;
+using FocusRequestPtr = generated::Window::FocusRequestPtr;
+using GetBoundsCallback = generated::Window::GetBoundsCallback;
+using GetBoundsRequestPtr = generated::Window::GetBoundsRequestPtr;
+using ListCallback = generated::Window::ListCallback;
+using ListRequestPtr = generated::Window::ListRequestPtr;
+using MaximizeCallback = generated::Window::MaximizeCallback;
+using MaximizeRequestPtr = generated::Window::MaximizeRequestPtr;
+using MinimizeCallback = generated::Window::MinimizeCallback;
+using MinimizeRequestPtr = generated::Window::MinimizeRequestPtr;
+using RestoreCallback = generated::Window::RestoreCallback;
+using RestoreRequestPtr = generated::Window::RestoreRequestPtr;
+using SetBoundsCallback = generated::Window::SetBoundsCallback;
+using SetBoundsRequestPtr = generated::Window::SetBoundsRequestPtr;
+using SetFullscreenCallback = generated::Window::SetFullscreenCallback;
+using SetFullscreenRequestPtr = generated::Window::SetFullscreenRequestPtr;
+using SetTitleCallback = generated::Window::SetTitleCallback;
+using SetTitleRequestPtr = generated::Window::SetTitleRequestPtr;
 namespace {
 constexpr size_t kMaxTitleBytes = 4096;
-WindowBounds ToBounds(const gfx::Rect& bounds) {
-  return {
-      .x = static_cast<double>(bounds.x()),
-      .y = static_cast<double>(bounds.y()),
-      .width = static_cast<double>(bounds.width()),
-      .height = static_cast<double>(bounds.height()),
-  };
+generated::WindowBoundsPtr ToBounds(const gfx::Rect& bounds) {
+  return WindowBounds::New(bounds.x(), bounds.y(), bounds.width(),
+                           bounds.height());
 }
 
 bool ToCoordinate(double value, int* result) {
@@ -85,18 +80,11 @@ std::optional<gfx::Rect> ToRect(const WindowBounds& bounds) {
   return gfx::Rect(x, y, width, height);
 }
 
-WindowInfo ToInfo(const ::tuffite::window::Info& info) {
-  return {
-      .id = info.id,
-      .label = info.label,
-      .title = base::UTF16ToUTF8(info.state.title),
-      .url = info.url,
-      .bounds = ToBounds(info.state.bounds),
-      .focused = info.state.focused,
-      .minimized = info.state.minimized,
-      .maximized = info.state.maximized,
-      .fullscreen = info.state.fullscreen,
-  };
+generated::WindowInfoPtr ToInfo(const ::tuffite::window::Info& info) {
+  return WindowInfo::New(
+      info.id, info.label, base::UTF16ToUTF8(info.state.title), info.url,
+      ToBounds(info.state.bounds), info.state.focused, info.state.minimized,
+      info.state.maximized, info.state.fullscreen);
 }
 
 struct WindowCall {
@@ -110,12 +98,12 @@ struct WindowCall {
 // operations.
 template <typename Callback>
 std::optional<WindowCall> Authorize(const ::tuffite::dispatch::Context& context,
-                                    std::string_view method,
+                                    std::string_view command,
                                     std::optional<WindowId> id,
                                     Callback& callback,
                                     bool check_scope = true) {
-  if (!context.sender) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return std::nullopt;
   }
   auto& frame = context.frame();
@@ -127,21 +115,20 @@ std::optional<WindowCall> Authorize(const ::tuffite::dispatch::Context& context,
                : nullptr;
   auto* manifest = ManifestFor(frame);
   auto origin = frame.GetLastCommittedOrigin();
-  const std::string command = "tuffite.window." + std::string(method);
   if (!service->GetInfo(current) ||
       !manifest->IsShellApiCommandAllowed(origin, command)) {
-    std::move(callback).Run(kStatusAccessDenied, {});
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return std::nullopt;
   }
   auto* target = id ? service->FindById(*id) : current;
   if (!target) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return std::nullopt;
   }
-  if (check_scope &&
-      !manifest->IsShellApiScopeAllowed(
-          origin, command, target == current ? "current" : "others")) {
-    std::move(callback).Run(kStatusAccessDenied, {});
+  if (!manifest->IsShellApiScopeAllowed(
+          origin, command, target == current ? "current" : "others",
+          check_scope ? "window" : "")) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return std::nullopt;
   }
   return WindowCall{service, current, target, manifest, std::move(origin)};
@@ -151,45 +138,48 @@ void ReplyInfo(const WindowCall& call,
                Callback callback,
                bool succeeded = true) {
   auto info = succeeded ? call.service->GetInfo(call.target) : std::nullopt;
-  std::move(callback).Run(info ? kStatusOk : kStatusUnavailable,
-                          info ? ToInfo(*info) : WindowInfo());
+  std::move(callback).Run(info ? rpc::Status::kOk : rpc::Status::kUnavailable,
+                          info ? ToInfo(*info) : nullptr);
 }
 }  // namespace
-void Current(const ::tuffite::dispatch::Context& context,
-             CurrentRequest&&,
-             CurrentCallback&& callback) {
-  if (auto call = Authorize(context, "current", {}, callback, false)) {
+void WindowImpl::Current(const dispatch::Context& context,
+                         CurrentRequestPtr,
+                         CurrentCallback callback) {
+  if (auto call = Authorize(context, generated::Window::kCurrent, {}, callback,
+                            false)) {
     ReplyInfo(*call, std::move(callback));
   }
 }
-void List(const ::tuffite::dispatch::Context& context,
-          ListRequest&&,
-          ListCallback&& callback) {
-  if (auto call = Authorize(context, "list", {}, callback, false)) {
-    std::vector<WindowInfo> result;
+void WindowImpl::List(const dispatch::Context& context,
+                      ListRequestPtr,
+                      ListCallback callback) {
+  if (auto call =
+          Authorize(context, generated::Window::kList, {}, callback, false)) {
+    std::vector<generated::WindowInfoPtr> result;
     for (const auto& info : call->service->List()) {
       result.push_back(ToInfo(info));
     }
-    std::move(callback).Run(kStatusOk, std::move(result));
+    std::move(callback).Run(rpc::Status::kOk, std::move(result));
   }
 }
-void Create(const ::tuffite::dispatch::Context& context,
-            CreateRequest&& request,
-            CreateCallback&& callback) {
-  auto call = Authorize(context, "create", {}, callback, false);
+void WindowImpl::Create(const dispatch::Context& context,
+                        CreateRequestPtr request,
+                        CreateCallback callback) {
+  auto call =
+      Authorize(context, generated::Window::kCreate, {}, callback, false);
   if (!call) {
     return;
   }
-  const auto& options = request.options;
+  const auto& options = request->options;
   std::optional<gfx::Rect> bounds;
   if (options && options->bounds) {
     bounds = ToRect(*options->bounds);
     if (!bounds) {
-      std::move(callback).Run(kStatusInvalidArgument, {});
+      rpc::Reject(callback, rpc::Status::kInvalidArgument);
       return;
     }
     if (!::tuffite::window::Constraints{}.Contains(*bounds)) {
-      std::move(callback).Run(kStatusAccessDenied, {});
+      rpc::Reject(callback, rpc::Status::kAccessDenied);
       return;
     }
   }
@@ -199,7 +189,7 @@ void Create(const ::tuffite::dispatch::Context& context,
       duplicate |= info.label == *options->label;
     }
     if (duplicate) {
-      std::move(callback).Run(kStatusInvalidArgument, {});
+      rpc::Reject(callback, rpc::Status::kInvalidArgument);
       return;
     }
   }
@@ -207,13 +197,13 @@ void Create(const ::tuffite::dispatch::Context& context,
                        ? GURL(*options->url)
                        : call->manifest->app_info().entry_url;
   if (!call->manifest->IsWindowUrlAllowed(call->origin, url)) {
-    std::move(callback).Run(kStatusAccessDenied, {});
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
-  Window* created =
+  ::tuffite::Window* created =
       call->service->Create(bounds ? bounds->size() : gfx::Size());
   if (!created) {
-    std::move(callback).Run(kStatusUnavailable, {});
+    rpc::Reject(callback, rpc::Status::kUnavailable);
     return;
   }
   WebContentsRoleData::SetRole(created->web_contents(), WebContentsRole::kApp);
@@ -227,7 +217,7 @@ void Create(const ::tuffite::dispatch::Context& context,
       ((!options || options->focused.value_or(true)) &&
        !call->service->Focus(created))) {
     call->service->Close(created);
-    std::move(callback).Run(kStatusUnavailable, {});
+    rpc::Reject(callback, rpc::Status::kUnavailable);
     return;
   }
   if (options && !options->focused.value_or(true)) {
@@ -236,58 +226,64 @@ void Create(const ::tuffite::dispatch::Context& context,
   call->target = created;
   ReplyInfo(*call, std::move(callback));
 }
-void Focus(const ::tuffite::dispatch::Context& context,
-           FocusRequest&& request,
-           FocusCallback&& callback) {
-  if (auto call = Authorize(context, "focus", request.id, callback)) {
+void WindowImpl::Focus(const dispatch::Context& context,
+                       FocusRequestPtr request,
+                       FocusCallback callback) {
+  if (auto call = Authorize(context, generated::Window::kFocus, request->id,
+                            callback)) {
     const bool succeeded = call->service->Focus(call->target);
     ReplyInfo(*call, std::move(callback), succeeded);
   }
 }
-void Minimize(const ::tuffite::dispatch::Context& context,
-              MinimizeRequest&& request,
-              MinimizeCallback&& callback) {
-  if (auto call = Authorize(context, "minimize", request.id, callback)) {
+void WindowImpl::Minimize(const dispatch::Context& context,
+                          MinimizeRequestPtr request,
+                          MinimizeCallback callback) {
+  if (auto call = Authorize(context, generated::Window::kMinimize, request->id,
+                            callback)) {
     const bool succeeded = call->service->Minimize(call->target);
     ReplyInfo(*call, std::move(callback), succeeded);
   }
 }
-void Maximize(const ::tuffite::dispatch::Context& context,
-              MaximizeRequest&& request,
-              MaximizeCallback&& callback) {
-  if (auto call = Authorize(context, "maximize", request.id, callback)) {
+void WindowImpl::Maximize(const dispatch::Context& context,
+                          MaximizeRequestPtr request,
+                          MaximizeCallback callback) {
+  if (auto call = Authorize(context, generated::Window::kMaximize, request->id,
+                            callback)) {
     const bool succeeded = call->service->Maximize(call->target);
     ReplyInfo(*call, std::move(callback), succeeded);
   }
 }
-void Restore(const ::tuffite::dispatch::Context& context,
-             RestoreRequest&& request,
-             RestoreCallback&& callback) {
-  if (auto call = Authorize(context, "restore", request.id, callback)) {
+void WindowImpl::Restore(const dispatch::Context& context,
+                         RestoreRequestPtr request,
+                         RestoreCallback callback) {
+  if (auto call = Authorize(context, generated::Window::kRestore, request->id,
+                            callback)) {
     const bool succeeded = call->service->Restore(call->target);
     ReplyInfo(*call, std::move(callback), succeeded);
   }
 }
-void SetFullscreen(const ::tuffite::dispatch::Context& context,
-                   SetFullscreenRequest&& request,
-                   SetFullscreenCallback&& callback) {
-  if (auto call = Authorize(context, "setFullscreen", request.id, callback)) {
+void WindowImpl::SetFullscreen(const dispatch::Context& context,
+                               SetFullscreenRequestPtr request,
+                               SetFullscreenCallback callback) {
+  if (auto call = Authorize(context, generated::Window::kSetFullscreen,
+                            request->id, callback)) {
     const bool succeeded =
-        call->service->SetFullscreen(call->target, request.fullscreen);
+        call->service->SetFullscreen(call->target, request->fullscreen);
     ReplyInfo(*call, std::move(callback), succeeded);
   }
 }
-void Close(const ::tuffite::dispatch::Context& context,
-           CloseRequest&& request,
-           CloseCallback&& callback) {
-  if (auto call = Authorize(context, "close", request.id, callback)) {
+void WindowImpl::Close(const dispatch::Context& context,
+                       CloseRequestPtr request,
+                       CloseCallback callback) {
+  if (auto call = Authorize(context, generated::Window::kClose, request->id,
+                            callback)) {
     const auto info = call->service->GetInfo(call->target);
     if (!info) {
-      std::move(callback).Run(kStatusUnavailable, {});
+      rpc::Reject(callback, rpc::Status::kUnavailable);
       return;
     }
     auto service = call->service->GetWeakPtr();
-    std::move(callback).Run(kStatusOk, {});
+    std::move(callback).Run(rpc::Status::kOk);
     // The transport must receive its reply before its owning WebContents
     // closes.
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
@@ -302,40 +298,42 @@ void Close(const ::tuffite::dispatch::Context& context,
             service, info->id));
   }
 }
-void SetTitle(const ::tuffite::dispatch::Context& context,
-              SetTitleRequest&& request,
-              SetTitleCallback&& callback) {
-  if (request.title.size() > kMaxTitleBytes) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void WindowImpl::SetTitle(const dispatch::Context& context,
+                          SetTitleRequestPtr request,
+                          SetTitleCallback callback) {
+  if (request->title.size() > kMaxTitleBytes) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  if (auto call = Authorize(context, "setTitle", request.id, callback)) {
-    const bool succeeded =
-        call->service->SetTitle(call->target, base::UTF8ToUTF16(request.title));
+  if (auto call = Authorize(context, generated::Window::kSetTitle, request->id,
+                            callback)) {
+    const bool succeeded = call->service->SetTitle(
+        call->target, base::UTF8ToUTF16(request->title));
     ReplyInfo(*call, std::move(callback), succeeded);
   }
 }
-void GetBounds(const ::tuffite::dispatch::Context& context,
-               GetBoundsRequest&& request,
-               GetBoundsCallback&& callback) {
-  if (auto call = Authorize(context, "getBounds", request.id, callback)) {
+void WindowImpl::GetBounds(const dispatch::Context& context,
+                           GetBoundsRequestPtr request,
+                           GetBoundsCallback callback) {
+  if (auto call = Authorize(context, generated::Window::kGetBounds, request->id,
+                            callback)) {
     auto info = call->service->GetInfo(call->target);
-    std::move(callback).Run(
-        info ? kStatusOk : kStatusUnavailable,
-        info ? ToBounds(info->state.bounds) : WindowBounds());
+    std::move(callback).Run(info ? rpc::Status::kOk : rpc::Status::kUnavailable,
+                            info ? ToBounds(info->state.bounds) : nullptr);
   }
 }
-void SetBounds(const ::tuffite::dispatch::Context& context,
-               SetBoundsRequest&& request,
-               SetBoundsCallback&& callback) {
-  auto bounds = ToRect(request.bounds);
+void WindowImpl::SetBounds(const dispatch::Context& context,
+                           SetBoundsRequestPtr request,
+                           SetBoundsCallback callback) {
+  auto bounds = ToRect(*request->bounds);
   if (!bounds) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  if (auto call = Authorize(context, "setBounds", request.id, callback)) {
+  if (auto call = Authorize(context, generated::Window::kSetBounds, request->id,
+                            callback)) {
     if (!call->target->constraints().Contains(*bounds)) {
-      std::move(callback).Run(kStatusAccessDenied, {});
+      rpc::Reject(callback, rpc::Status::kAccessDenied);
       return;
     }
     const bool succeeded = call->service->SetBounds(call->target, *bounds);

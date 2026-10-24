@@ -1,3 +1,4 @@
+import * as frameworkApi from "/tuffite.js";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -49,16 +50,16 @@ function formatSnapshot(snapshot) {
 
 async function invoke(operation, message = '') {
   const requestId = nextRequestId++;
-  return decodeSnapshot(await window.tuffite.utility.invoke(
+  return decodeSnapshot(await frameworkApi.utility.invoke(
       'echo', requestId, request(operation, message)));
 }
 
 async function checkCancellation() {
   const requestId = nextRequestId++;
-  const invocation = window.tuffite.utility.invoke(
+  const invocation = frameworkApi.utility.invoke(
       'echo', requestId, request(OPERATION.cancellable));
   await new Promise((resolve) => setTimeout(resolve, 30));
-  await window.tuffite.utility.cancel('echo', requestId);
+  await frameworkApi.utility.cancel('echo', requestId);
   try {
     await invocation;
     throw new Error('cancelled utility invocation unexpectedly succeeded');

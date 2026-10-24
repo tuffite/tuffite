@@ -4,15 +4,7 @@ import("//tuffite/tuffite_in_chromium.gni")
 assert(tuffite_in_chromium)
 import("//testing/test.gni")
 
-action("scope_registry") {
-  script = "//tuffite/build/scope_registry.py"
-  inputs = [ "//tuffite/framework/shell_api/scope_registry.json" ]
-  outputs = [ "$target_gen_dir/scope_registry.inc" ]
-  args = [
-    rebase_path(inputs[0], root_build_dir),
-    rebase_path(outputs[0], root_build_dir),
-  ]
-}
+
 
 source_set("manifest") {
   public = [
@@ -33,7 +25,6 @@ source_set("manifest") {
     "//url",
   ]
   deps = [
-    ":scope_registry",
     "//net",
     "//tuffite/framework/common:access",
   ]

@@ -144,20 +144,47 @@ def run_explorer_demo(
     grant_sandbox_access(test_root)
     port = requested_port or free_port()
     fixture_port = None
-    if script == "explorer-reload-smoke.mjs":
-        # Nested Explorer creation requires an explicit origin capability. Grant
-        # only our two local fixture origins in a disposable application copy.
-        fixture_port = free_port()
+    if script in ("explorer-reload-smoke.mjs", "mojom-smoke.mjs"):
+        # Let sandboxed child processes read the disposable package through
+        # test_root's inherited ACL, without changing workspace permissions.
         fixture_package = test_root / "application"
         shutil.copytree(package, fixture_package, symlinks=True)
-        manifest_path = fixture_package / "tuffite.json"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        manifest["app"]["security"]["capabilities"].append({
-            "identifier": "explorer-reload-fixture",
-            "origins": [f"http://127.0.0.1:{fixture_port}", f"http://localhost:{fixture_port}"],
-            "explorer": {"create": True},
-        })
-        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        if script == "explorer-reload-smoke.mjs":
+            # Grant only the two local nested-Explorer fixture origins.
+            fixture_port = free_port()
+            manifest_path = fixture_package / "tuffite.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["app"]["security"]["capabilities"].append({
+                "identifier": "explorer-reload-fixture",
+                "origins": [f"http://127.0.0.1:{fixture_port}", f"http://localhost:{fixture_port}"],
+                "explorer": {"create": True},
+            })
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        else:
+            # Exercise the real Browser/Utility paths without starting the
+            # unrelated Explorer demo. Keep the main origin and its grants.
+            manifest_path = fixture_package / "tuffite.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            main_window = manifest["app"]["windows"][0]
+            main_window["url"] = "playground://main/ui/dist/mojom-smoke.html"
+            manifest["app"]["windows"] = [main_window]
+            # These methods have no resource-scope API. Grant method access but
+            # attach incompatible constraints; the actual service must reject it.
+            scoped_methods = {
+                "tuffite.Storage.Get", "tuffite.Window.List",
+                "playground.Commands.DoSomething", "playground.Echo.Restricted",
+            }
+            for capability in manifest["app"]["security"]["capabilities"]:
+                grants = capability.get("shellApi", [])
+                capability["shellApi"] = [
+                    grant for grant in grants
+                    if (grant if isinstance(grant, str) else grant["method"]) not in scoped_methods
+                ]
+            manifest["app"]["security"]["capabilities"][0]["shellApi"].extend(
+                {"method": method, "allow": [{"path": "data/*"}]}
+                for method in sorted(scoped_methods)
+            )
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         application = fixture_package / application.relative_to(package)
         package = fixture_package
     command = [
@@ -242,6 +269,7 @@ def main() -> int:
     )
     parser.add_argument("--timeout", type=int, default=90)
     parser.add_argument("--keep-files", action="store_true")
+    parser.add_argument("--mojom", action="store_true", help="Verify generated Mojom Browser/Utility round trips through CDP.")
     parser.add_argument(
         "--explorer-demo",
         action="store_true",
@@ -319,7 +347,7 @@ def main() -> int:
         if public
         else Path(tempfile.gettempdir())
     )
-    if args.explorer_reload or args.explorer_ancestry or args.explorer_events or args.explorer_tabs or args.browser_compatibility or args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
+    if args.mojom or args.explorer_reload or args.explorer_ancestry or args.explorer_events or args.explorer_tabs or args.browser_compatibility or args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
         return run_explorer_demo(
             package,
             application,
@@ -327,6 +355,7 @@ def main() -> int:
             args.timeout,
             args.keep_files,
             args.cdp_port,
+            "mojom-smoke.mjs" if args.mojom else
             "explorer-reload-smoke.mjs" if args.explorer_reload else
             "explorer-ancestry-smoke.mjs" if args.explorer_ancestry else
             "explorer-event-smoke.mjs" if args.explorer_events else
@@ -373,7 +402,7 @@ def main() -> int:
     config_path = deployed / "tuffite.json"
     config = json.loads(config_path.read_text())
     config["app"]["security"]["capabilities"][0]["shellApi"].append({
-        "method": "tuffite.net.request",
+        "method": "tuffite.Net.Request",
         "allow": [{"url": f"http://127.0.0.1:{port}/*"}],
     })
     config_path.write_text(json.dumps(config))

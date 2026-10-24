@@ -161,7 +161,7 @@ try {
   assert.equal(portTransfer.same,false);
   console.log("handle phase: structured clone and MessagePort transfer passed");
   const windowMessages = await app.evaluate(async () => {
-    const win = await window.tuffite.window.current();
+    const win = await (await import('/tuffite.js')).window.current();
     const id = win.id;
     win.id = 0n;
     const buffer = new Uint8Array([1,2,3]).buffer;
@@ -201,7 +201,7 @@ try {
   assert.equal(windowMessages.returned,true);
   const originFailure = await app.evaluate(async () => {
     const handle = await window.transferDemo.active.detach();
-    const win = await window.tuffite.window.current();
+    const win = await (await import('/tuffite.js')).window.current();
     let invalid;
     try {win.postMessage({handle},{targetOrigin:"not-an-origin",transfer:[handle]});}catch(error){invalid=error.name;}
     const retained = handle.state;
@@ -229,8 +229,8 @@ try {
   await app.goto(new URL("transfer.html?sender-left",base).href);
   let receiver;
   await until(()=> (receiver=pages().find(page=>page.url().includes("receive="))),"Transferred receiver missing");
-  assert.equal((await receiver.evaluate(()=>window.transferDemo.snapshot())).state.documentId,late.after.state.documentId);
-  await receiver.evaluate(()=>window.tuffite.window.close());
+  assert.equal((await receiver.evaluate(async ()=>window.transferDemo.snapshot())).state.documentId,late.after.state.documentId);
+  await receiver.evaluate(async ()=>(await import('/tuffite.js')).window.close());
   await until(async()=> await targetCount()===0,"Closing the receiver retained its page");
   console.log(JSON.stringify({explorerHandle:"ok",stressTransfers:25,stressMs,exclusive:true,structuredTransfer:true,replaceRollback:true}));
 } finally { await browser.close(); }

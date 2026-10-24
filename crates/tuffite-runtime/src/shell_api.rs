@@ -4,16 +4,15 @@ use std::ffi::c_void;
 
 use tuffite_abi::{ByteSlice, Status};
 
-use crate::codec::{Decode, Decoder, Encoder};
-
 const MAX_REQUEST_BYTES: usize = 16 * 1024 * 1024;
 const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 
 /// Generated endpoint request with the same argument/result codecs as renderer calls.
 pub trait ShellApiRequest {
-    type Response: Decode + Send + 'static;
+    type Response: Send + 'static;
     const CHANNEL: &'static str;
-    fn encode(&self, encoder: &mut Encoder) -> Result<(), crate::codec::CodecError>;
+    fn encode(&self) -> Result<Vec<u8>, crate::codec::CodecError>;
+    fn decode(bytes: &[u8]) -> Result<Self::Response, crate::codec::CodecError>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
@@ -70,15 +69,13 @@ impl ShellApiHost {
     {
         let table = self.callbacks.ok_or(ShellApiError::Unavailable)?;
         let invoke = table.invoke.ok_or(ShellApiError::Unavailable)?;
-        let mut encoder = Encoder::new();
-        request
-            .encode(&mut encoder)
+        let bytes = request
+            .encode()
             .map_err(|_| ShellApiError::InvalidArgument)?;
-        let bytes = encoder.finish();
         if bytes.len() > MAX_REQUEST_BYTES {
             return Err(ShellApiError::InvalidArgument);
         }
-        let context = Box::into_raw(Box::new(ReplyContext::<R::Response> {
+        let context = Box::into_raw(Box::new(ReplyContext::<R> {
             reply: Box::new(reply),
         }))
         .cast::<c_void>();
@@ -92,12 +89,12 @@ impl ShellApiHost {
                 bytes.as_ptr(),
                 bytes.len(),
                 context,
-                Some(on_reply::<R::Response>),
+                Some(on_reply::<R>),
             )
         };
         if status != Status::Ok {
             // SAFETY: Rejection retains the allocation without invoking the callback.
-            drop(unsafe { Box::from_raw(context.cast::<ReplyContext<R::Response>>()) });
+            drop(unsafe { Box::from_raw(context.cast::<ReplyContext<R>>()) });
             return Err(match status {
                 Status::InvalidArgument => ShellApiError::InvalidArgument,
                 Status::InvalidState => ShellApiError::Unavailable,
@@ -109,11 +106,11 @@ impl ShellApiHost {
     }
 }
 
-struct ReplyContext<T> {
-    reply: Box<dyn FnOnce(Result<T, ShellApiError>) + Send>,
+struct ReplyContext<R: ShellApiRequest> {
+    reply: Box<dyn FnOnce(Result<R::Response, ShellApiError>) + Send>,
 }
 
-unsafe extern "C" fn on_reply<T: Decode>(
+unsafe extern "C" fn on_reply<R: ShellApiRequest>(
     context: *mut c_void,
     status: i32,
     payload: ByteSlice,
@@ -122,7 +119,7 @@ unsafe extern "C" fn on_reply<T: Decode>(
         return Status::InvalidArgument;
     }
     // SAFETY: Framework owns exactly one accepted reply allocation until completion.
-    let context = unsafe { Box::from_raw(context.cast::<ReplyContext<T>>()) };
+    let context = unsafe { Box::from_raw(context.cast::<ReplyContext<R>>()) };
     let result = match status {
         0 if payload.len <= MAX_RESPONSE_BYTES && (payload.len == 0 || !payload.data.is_null()) => {
             // SAFETY: The callback contract borrows readable bytes during this call.
@@ -131,13 +128,7 @@ unsafe extern "C" fn on_reply<T: Decode>(
             } else {
                 unsafe { std::slice::from_raw_parts(payload.data, payload.len) }
             };
-            let mut decoder = Decoder::new(bytes);
-            T::decode(&mut decoder)
-                .and_then(|value| {
-                    decoder.finish()?;
-                    Ok(value)
-                })
-                .map_err(|_| ShellApiError::InvalidResponse)
+            R::decode(bytes).map_err(|_| ShellApiError::InvalidResponse)
         }
         0 => Err(ShellApiError::InvalidResponse),
         1 => Err(ShellApiError::InvalidArgument),
@@ -157,7 +148,7 @@ unsafe extern "C" fn on_reply<T: Decode>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codec::Encode;
+    use crate::codec::{Decode, Decoder, Encode, Encoder};
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
@@ -167,8 +158,16 @@ mod tests {
     impl ShellApiRequest for Request {
         type Response = i64;
         const CHANNEL: &'static str = "tuffite.test.double";
-        fn encode(&self, encoder: &mut Encoder) -> Result<(), crate::codec::CodecError> {
-            self.0.encode(encoder)
+        fn encode(&self) -> Result<Vec<u8>, crate::codec::CodecError> {
+            let mut encoder = Encoder::new();
+            self.0.encode(&mut encoder)?;
+            Ok(encoder.finish())
+        }
+        fn decode(bytes: &[u8]) -> Result<i64, crate::codec::CodecError> {
+            let mut decoder = Decoder::new(bytes);
+            let value = i64::decode(&mut decoder)?;
+            decoder.finish()?;
+            Ok(value)
         }
     }
     struct Provider {

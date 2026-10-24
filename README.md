@@ -84,7 +84,7 @@ src/tuffite/
 |-- components/                         # No framework includes
 |   |-- dispatch/
 |   |   |-- common/ dispatcher.mojom / message.h / status.h / codec.* / switches.h
-|   |   |-- browser/ dispatch_host.* / rpc_router.* / request_registry.*
+|   |   |-- browser/ dispatch_host.* / rpc.* / request_registry.*
 |   |   |           / rpc_handler.h / host_dispatch.h
 |   |   |-- renderer/ dispatch_bindings.*
 |   |   `-- test/ codec_unittest.cc / request_registry_unittest.cc
@@ -187,39 +187,28 @@ responsibility.
 
 ### Generated builtin ShellAPI protocol
 
-Builtin ShellAPI declarations are split by domain (`common`, `dialog`, `fs`,
-`log`, `network`, `path`, `storage`, `utility`, and `window`) and listed
-explicitly in `packages/tuffite/tuffite.json`. The ordered `definitions` list is
-the deterministic input set; generation does not depend on filesystem glob
-order. The existing TypeScript parser merges the files as one schema, validates
-duplicate definitions and cross-file references, and emits all language outputs
-in one run.
+Builtin ShellAPI contracts are `.mojom` files under `framework/shell_api`, listed
+explicitly in `packages/tuffite/tuffite.json` and the GN target. Mojom modules
+and exact Interface/Method names define method identity and permissions; there
+is no namespace or facade configuration in the manifest.
 
-This repository owns the declarations and the single cross-language generator.
-`python3 x.py build --framework` incrementally builds the host generator. GN resolves that
-executable at its stable repository-relative Cargo output path; no generated
-GN args are required. The `shell_api_protocol` invocation declares the same
-ordered `.d.ts` inputs needed for GN's static output graph, derives their stems
-and mirrored `root_gen_dir` directory itself, and runs the generator once.
+The standalone Rust frontend powers Cargo/JS/TS generation. Native generation
+uses Chromium's official Mojom parser, IR and C++ generator. Its
+`extra_cpp_template_paths` extension renders Dispatch interfaces and route
+adapters from `build/mojom_templates`; per-source wire data contracts are then
+compiled by the official C++ generator. GN owns the whole native pipeline and
+has no dependency on a Rust host generator or `tuff framework generate-cpp`.
 
-Generated C++ is split into dependency-safe layers: checked-in typed protocol
-support under Dispatch and one generated pair per schema. Its namespaces
-mirror the selected `.d.ts` API root: top-level declarations stay directly
-under `tuffite::shell_api::generated`, while domain routes and nested declarations
-use namespaces such as `generated::fs` and `generated::window`. This preserves
-schema ownership and prevents unrelated domains from competing for flat type
-names.
-
-Business implementations under `framework/browser/services/shell_api/commands` receive typed
-requests and return typed results. They never include the protocol codec or
-append/read wire bytes directly. Each declared route has one generated adapter
-and one distinct business entry point. Shared implementation helpers may take
-an operation enum or typed request, but no handler performs a second dispatch
-using route strings. `BuiltinRoutes()` is generated from the schema and is the
-only builtin route table. The low-level codec under
-`components/dispatch/browser/shell_api_protocol` preserves the generated
-business payload wire format; the former Framework-local codecs and duplicated
-route table have been removed.
+Business classes under `framework/browser/services/shell_api/commands` inherit
+generated abstract interfaces and implement their typed methods with `override`.
+`BuiltinServices()` composes complete interface bindings; each generated
+interface has one dispatcher, with no per-method registry. Methods receive
+`(const dispatch::Context&, RequestPtr, Callback)`: identity is explicit and the
+ordinary OnceCallback only replies. Implementations use official C++ StructPtrs,
+enums and arrays directly; a common method runtime owns validation and codec
+work. Async operations explicitly capture needed identity with weak caller
+references. Service bindings and pending replies retain their implementation;
+business code does not encode or decode wire bytes.
 
 **UtilityService** owns the browser-side Supervisor and coordinates shutdown.
 The Supervisor owns per-service hosts and handles queues, sessions,

@@ -1,0 +1,1 @@
+module collision; struct Status { bool ready; }; interface Commands { Status(Status value) => (Status result); };

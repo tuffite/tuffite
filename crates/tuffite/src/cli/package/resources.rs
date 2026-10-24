@@ -4,7 +4,7 @@ use super::super::filesystem::{
     safe_relative_path,
 };
 use super::archive::collect_files;
-use super::{FRAMEWORK_SHELL_API_FILE, MANIFEST_FILE, RENDERER_RUNTIME_FILE};
+use super::{FRAMEWORK_SDK_FILE, MANIFEST_FILE};
 use serde::Deserialize;
 use std::fs;
 use std::path::{Component, Path};
@@ -69,8 +69,7 @@ pub(super) fn copy_resources(
         let relative = safe_relative_path(resource, "bundle.resources entry")?;
         if relative == Path::new("app.icns")
             || relative == Path::new("app.ico")
-            || relative == Path::new(RENDERER_RUNTIME_FILE)
-            || relative == Path::new(FRAMEWORK_SHELL_API_FILE)
+            || relative == Path::new(FRAMEWORK_SDK_FILE)
         {
             return Err(format!(
                 "bundle.resources entry is reserved by Tuffite: {resource}"

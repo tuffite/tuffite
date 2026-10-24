@@ -87,7 +87,7 @@ trait ErasedRegistry: Any + Send + Sync {
 }
 
 struct TypedRegistry<A> {
-    dispatch: DispatchFn<A>,
+    commands: Vec<CommandRegistry<A>>,
     utility_services: &'static [UtilityServiceRegistration],
     prepare: Option<StartupHook>,
 }
@@ -115,11 +115,20 @@ pub(crate) fn utility_definition(name: &str) -> Option<UtilityServiceRegistratio
         .find(|item| item.name() == name)
 }
 
+pub(crate) fn requires_utility_interfaces() -> bool {
+    registry().get().is_some_and(|entry| {
+        entry
+            .utility_services()
+            .iter()
+            .any(|item| !item.interfaces().is_empty())
+    })
+}
+
 struct RegisteredApplication<B>(std::marker::PhantomData<fn() -> B>);
 
-struct RegisteredBrowser<B> {
+struct RegisteredBrowser<B: 'static> {
     browser: B,
-    dispatch: DispatchFn<B>,
+    commands: &'static [CommandRegistry<B>],
 }
 
 impl<B: Browser> crate::application::Registrations for RegisteredApplication<B> {
@@ -133,19 +142,29 @@ impl<B: Browser> crate::application::Registrations for RegisteredApplication<B> 
 
 impl<B: Browser> Browser for RegisteredBrowser<B> {
     fn new(context: BrowserContext) -> ApplicationResult<Self> {
-        let dispatch = registry()
+        let commands = &registry()
             .get()
             .and_then(|entry| entry.as_any().downcast_ref::<TypedRegistry<B>>())
             .ok_or_else(|| ApplicationError::new("command registry is not installed"))?
-            .dispatch;
+            .commands;
         Ok(Self {
             browser: B::new(context)?,
-            dispatch,
+            commands,
         })
     }
 
     fn dispatch(&mut self, command: Command<'_>) -> CommandResult {
-        (self.dispatch)(&mut self.browser, command)
+        for registry in self.commands {
+            if registry.descriptors.is_empty()
+                || registry
+                    .descriptors
+                    .iter()
+                    .any(|entry| entry.id() == command.id())
+            {
+                return (registry.dispatch)(&mut self.browser, command);
+            }
+        }
+        Err(crate::CommandError::UnknownCommand)
     }
 
     fn shutdown(&mut self) -> ApplicationResult<()> {
@@ -212,7 +231,7 @@ type StartupHook = Box<dyn Fn(&mut ProcessLaunch) -> ApplicationResult<()> + Sen
 /// The main factory is evaluated once in every process loading the business
 /// library. It must only assemble definitions; hooks and browser state run later.
 pub struct Builder<B: Browser> {
-    commands: Option<CommandRegistry<B>>,
+    commands: Vec<CommandRegistry<B>>,
     prepare: Option<StartupHook>,
 }
 
@@ -221,7 +240,7 @@ impl<B: Browser> Builder<B> {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            commands: None,
+            commands: Vec::new(),
             prepare: None,
         }
     }
@@ -229,7 +248,14 @@ impl<B: Browser> Builder<B> {
     /// Installs generated handlers in place of the backend's dispatch method.
     #[must_use]
     pub fn commands(mut self, commands: CommandRegistry<B>) -> Self {
-        self.commands = Some(commands);
+        self.commands = vec![commands];
+        self
+    }
+
+    /// Registers a generated Mojom interface on this Browser backend.
+    #[must_use]
+    pub fn service(mut self, service: CommandRegistry<B>) -> Self {
+        self.commands.push(service);
         self
     }
 
@@ -249,16 +275,21 @@ impl<B: Browser> Builder<B> {
         self,
         utility_services: &'static [UtilityServiceRegistration],
     ) -> ApplicationResult<AbiApplication> {
-        let commands = self
-            .commands
-            .unwrap_or_else(|| CommandRegistry::new(B::dispatch, &[]));
-        for (index, descriptor) in commands.descriptors.iter().enumerate() {
+        let mut commands = self.commands;
+        if commands.is_empty() {
+            commands.push(CommandRegistry::new(B::dispatch, &[]));
+        }
+        let descriptors = commands
+            .iter()
+            .flat_map(|registry| registry.descriptors)
+            .collect::<Vec<_>>();
+        for (index, descriptor) in descriptors.iter().enumerate() {
             if descriptor.channel().is_empty() || !descriptor.channel().contains('.') {
                 return Err(ApplicationError::new(
                     "registered command channel is invalid",
                 ));
             }
-            if commands.descriptors[..index].iter().any(|registered| {
+            if descriptors[..index].iter().any(|registered| {
                 registered.channel() == descriptor.channel() || registered.id() == descriptor.id()
             }) {
                 return Err(ApplicationError::new(
@@ -267,13 +298,26 @@ impl<B: Browser> Builder<B> {
             }
         }
         for (index, registration) in utility_services.iter().copied().enumerate() {
+            if descriptors.iter().any(|entry| {
+                entry
+                    .channel()
+                    .rsplit_once('.')
+                    .is_some_and(|(interface, _)| {
+                        interface == registration.name()
+                            || registration.interfaces().contains(&interface)
+                    })
+            }) {
+                return Err(ApplicationError::new(
+                    "interface registered in both Browser and Utility",
+                ));
+            }
             crate::utility_entry::validate_registration(&utility_services[..index], registration)
                 .map_err(ApplicationError::new)?;
         }
         let has_prepare = self.prepare.is_some();
         registry()
             .set(Box::new(TypedRegistry::<B> {
-                dispatch: commands.dispatch,
+                commands,
                 utility_services,
                 prepare: self.prepare,
             }))
@@ -876,7 +920,31 @@ mod tests {
     #[test]
     fn builder_starts_without_registered_commands() {
         let builder = Builder::<App>::new();
-        assert!(builder.commands.is_none());
+        assert!(builder.commands.is_empty());
         assert!(builder.prepare.is_none());
+    }
+
+    #[test]
+    fn service_registration_rejects_duplicate_and_cross_process_interfaces() {
+        const DESCRIPTORS: &[CommandDescriptor] =
+            &[CommandDescriptor::new("demo.Commands.Ping", 42, 77)];
+        const SERVICES: &[UtilityServiceRegistration] = &[UtilityServiceRegistration::typed::<
+            Worker,
+        >("group", &["demo.Commands"])];
+        let registry = || CommandRegistry::<App>::new(App::dispatch, DESCRIPTORS);
+        let error = Builder::<App>::new()
+            .service(registry())
+            .into_application(SERVICES)
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("both Browser and Utility"));
+        let error = Builder::<App>::new()
+            .service(registry())
+            .service(registry())
+            .into_application(&[])
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("duplicate registered ShellAPI"));
+        crate::utility::validate_utility_names(SERVICES);
     }
 }

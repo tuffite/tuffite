@@ -31,6 +31,7 @@ impl<C: Send + Sync + 'static> Registry<C> {
                 context,
                 state: Mutex::new(State {
                     frozen: false,
+                    eager: Vec::new(),
                     providers,
                     instances: HashMap::new(),
                     stack: Vec::new(),
@@ -54,6 +55,9 @@ impl<C: Send + Sync + 'static> Registry<C> {
                     type_name::<F::Target>()
                 ));
             }
+            if factory.eager() {
+                state.eager.push(Request::of::<F::Target>());
+            }
             state.providers.insert(
                 id,
                 Box::new(move |context| {
@@ -74,6 +78,30 @@ impl<C: Send + Sync + 'static> Registry<C> {
     /// Prohibit further registration while retaining resolution and scope creation.
     pub fn freeze(&mut self) {
         self.inner.state().frozen = true;
+    }
+    /// Construct declared eager roots in registration order after freezing.
+    /// Dependencies precede consumers regardless of registration order. On failure,
+    /// dropping this registry releases every successfully constructed instance.
+    /// Repeated calls reuse cached instances; failed factories remain retryable.
+    pub fn initialize(&self) -> Result<()> {
+        let requests = {
+            let state = self.inner.state();
+            if !state.frozen {
+                return Err("Registry must be frozen before initialization".to_owned());
+            }
+            state
+                .eager
+                .iter()
+                .map(|request| Request {
+                    id: request.id,
+                    name: request.name,
+                })
+                .collect::<Vec<_>>()
+        };
+        for request in requests {
+            self.inner.resolve(request)?;
+        }
+        Ok(())
     }
     /// Create an independent registry retaining its parent and its own startup context.
     /// A local binding shadows the parent's identity without replacing its instance.
@@ -133,6 +161,7 @@ struct RegistryCore<C> {
 }
 struct State<C> {
     frozen: bool,
+    eager: Vec<Request>,
     providers: HashMap<TypeId, Provider<C>>,
     instances: HashMap<TypeId, Erased>,
     stack: Vec<(TypeId, &'static str)>,
@@ -253,6 +282,86 @@ impl<C> Drop for State<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Registrar as _;
+
+    #[test]
+    fn eager_roots_resolve_dependencies_and_unwind_failed_startup() {
+        struct Probe(&'static str, Arc<Mutex<Vec<&'static str>>>);
+        impl Drop for Probe {
+            fn drop(&mut self) {
+                self.1.lock().unwrap().push(self.0);
+            }
+        }
+        enum Dependency {}
+        enum Root {}
+        impl KeyedService for Dependency {
+            type Value = Probe;
+        }
+        impl KeyedService for Root {
+            type Value = Probe;
+        }
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut registry = Registry::new(Arc::new(()));
+        let observed = Arc::clone(&events);
+        registry
+            .register_eager(factory::<Root, _, _>(move |deps| {
+                deps.depends_on::<Dependency>()?;
+                Ok(Arc::new(Probe("root", Arc::clone(&observed))))
+            }))
+            .unwrap();
+        let observed = Arc::clone(&events);
+        registry
+            .register(factory::<Dependency, _, _>(move |_| {
+                Ok(Arc::new(Probe("dependency", Arc::clone(&observed))))
+            }))
+            .unwrap();
+        registry
+            .register_eager(factory::<Service<u32>, _, _>(|_| {
+                Err("startup failed".into())
+            }))
+            .unwrap();
+        registry
+            .register(factory::<Service<bool>, _, _>(|_| {
+                panic!("lazy binding must stay lazy")
+            }))
+            .unwrap();
+        assert!(registry.initialize().is_err());
+        assert!(registry.cached::<Root>().is_none());
+        registry.freeze();
+        assert!(
+            registry
+                .initialize()
+                .unwrap_err()
+                .contains("startup failed")
+        );
+        let root = registry.get::<Root>().unwrap();
+        assert!(registry.initialize().is_err());
+        assert!(Arc::ptr_eq(&root, &registry.get::<Root>().unwrap()));
+        drop(root);
+        drop(registry);
+        assert_eq!(*events.lock().unwrap(), ["root", "dependency"]);
+    }
+
+    #[test]
+    fn initialization_is_idempotent_and_local_to_each_scope() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let calls = Arc::new(AtomicUsize::new(0));
+        let observed = Arc::clone(&calls);
+        let mut registry = Registry::new(Arc::new(()));
+        registry
+            .register_eager(factory::<Service<usize>, _, _>(move |_| {
+                Ok(Arc::new(observed.fetch_add(1, Ordering::SeqCst)))
+            }))
+            .unwrap();
+        registry.freeze();
+        let mut child = registry.scope(());
+        child.freeze();
+        child.initialize().unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        registry.initialize().unwrap();
+        registry.initialize().unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
     struct NamedFactory;
 
     #[test]

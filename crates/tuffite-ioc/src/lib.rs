@@ -18,6 +18,10 @@ impl<T: ?Sized + Send + Sync + 'static> KeyedService for Service<T> {
 pub trait Factory<C>: Send + Sync + 'static {
     /// Consumer identity to which this factory binds; the instance is `Target::Value`.
     type Target: KeyedService;
+    /// Whether this binding is constructed during registry initialization.
+    fn eager(&self) -> bool {
+        false
+    }
     fn build(
         &self,
         context: &mut FactoryContext<'_, C>,
@@ -79,6 +83,23 @@ impl<'a, C> FactoryContext<'a, C> {
 /// Domain modules can register factories, without owning or resolving a registry.
 pub trait Registrar<C> {
     fn register<F: Factory<C>>(&mut self, factory: F) -> Result<&mut Self>;
+    /// Declare a scope root. Its dependencies are still resolved by the container.
+    fn register_eager<F: Factory<C>>(&mut self, factory: F) -> Result<&mut Self> {
+        self.register(EagerFactory(factory))
+    }
+}
+struct EagerFactory<F>(F);
+impl<C, F: Factory<C>> Factory<C> for EagerFactory<F> {
+    type Target = F::Target;
+    fn eager(&self) -> bool {
+        true
+    }
+    fn build(
+        &self,
+        context: &mut FactoryContext<'_, C>,
+    ) -> Result<Arc<<Self::Target as KeyedService>::Value>> {
+        self.0.build(context)
+    }
 }
 
 /// Registry integration only; business modules must not import this bridge.

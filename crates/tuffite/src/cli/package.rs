@@ -52,8 +52,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 const MANIFEST_FILE: &str = "manifest.json";
-const RENDERER_RUNTIME_FILE: &str = "tuffite-runtime.js";
-const FRAMEWORK_SHELL_API_FILE: &str = "tuffite-shell-api.js";
+const FRAMEWORK_SDK_FILE: &str = "tuffite.js";
 const ASSET_ROOT: &str = "assets";
 
 #[derive(clap::Args, Debug)]
@@ -243,7 +242,6 @@ impl<'a> Packager<'a> {
         }
         // Runtime metadata contains identities, never build-time declaration paths.
         packaged_manifest["app"]["shellApi"] = serde_json::json!({
-            "namespace": packaged_manifest["build"]["shellApi"]["namespace"],
             "commandIds": command_ids,
         });
         packaged_manifest

@@ -1,0 +1,18 @@
+{% import 'macros.inc.tmpl' as m %}
+// Data payloads derived by Chromium's official parser/generator.
+module {{module_namespace}}.wire;
+{% for imported in imports %}import "{{imported.path}}-wire.mojom";
+{% endfor %}
+{% for enum in enums %}enum {{enum.name}} {
+{% for value in enum.fields %}{{value.name}} = {{value.numeric_value}},
+{% endfor %}};
+{% endfor %}
+{% macro structure(name, fields) %}struct {{name}} {
+{% for field in fields %}{{m.idl(field.kind)}} {{m.snake(field.name)}};
+{% endfor %}};
+{% endmacro %}
+{% for struct in structs %}{{structure(struct.name,struct.fields)}}{% endfor %}
+{% for interface in interfaces %}{% for method in interface.methods %}
+{{structure(interface.name+method.name+'Request',method.parameters)}}
+{{structure(interface.name+method.name+'Response',method.response_parameters)}}
+{% endfor %}{% endfor %}

@@ -95,12 +95,13 @@ def test(context, args):
     if args.suite == "framework":
         style.run(context, check=True)
         distribution = context.source / "dist/tuffite-framework"
-        for manifest in ("packages/tuffite/tuffite.json", "playground/tuffite.json"):
-            context.application(["framework", "generate-js", manifest, "--output",
-                                 str(Path(manifest).parent / "generated"), "--check"], distribution)
+        context.application(["framework", "generate-js", "packages/tuffite/tuffite.json", "--output",
+                             "packages/tuffite/generated", "--check"], distribution)
         context.application(["framework", "generate-rust", "packages/tuffite/tuffite.json",
                              "--output", "crates/tuffite/src/shell_api_generated.rs", "--check"], distribution)
         context.command(["node", "scripts/test-browser-runtime.mjs"])
+        context.command(["node", "scripts/test-mojom-codec.mjs"])
+        context.command(["node", "scripts/test-framework-mojom-codec.mjs"])
         context.command(["python3", "-m", "unittest", "discover", "-s", "scripts/tests", "-v"])
         context.command(["cargo", "fmt", "--all", "--", "--check"])
         context.command(["cargo", "test", "--workspace", "--exclude", "playground", "--all-features"])
@@ -110,7 +111,7 @@ def test(context, args):
         args.targets = ["tuffite/framework:unittests"]
         native_action(context, args, "build")
         output = framework.chromium_output(args)
-        for name in ("dispatch_unittests", "capability_pattern_unittests", "abi_host_bridge_unittests", "explorer_browser_support_unittests", "utility_service_unittests", "remoting_service_unittests"):
+        for name in ("dispatch_unittests", "manifest_service_unittests", "capability_pattern_unittests", "abi_host_bridge_unittests", "explorer_browser_support_unittests", "utility_service_unittests", "remoting_service_unittests"):
             binary = output / framework.executable_name(name)
             require(context.dry_run or binary.is_file(), f"missing native test: {binary}")
             context.command([binary], cwd=output)
@@ -126,4 +127,7 @@ def test(context, args):
         command = ["python3", "playground/scripts/smoke.py", "--package", "dist/playground"]
         if args.suite == "explorer":
             command.append("--explorer-demo")
+        if args.suite == "smoke":
+            context.command([*command, "--mojom"])
+            context.command([*command, "--explorer-capabilities"])
         context.command(command)

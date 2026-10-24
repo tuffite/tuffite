@@ -157,7 +157,7 @@ impl Remoting {
             width: dimension(snapshot.width)?,
             height: dimension(snapshot.height)?,
             mime_type: snapshot.mime_type,
-            data_base64: base64::engine::general_purpose::STANDARD.encode(snapshot.data.0),
+            data_base64: base64::engine::general_purpose::STANDARD.encode(snapshot.data),
         })
     }
     pub async fn inject_input(&self, event: RemotingInputEvent) -> Result<(), String> {

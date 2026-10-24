@@ -37,6 +37,9 @@ class ManifestService : public KeyedService {
       std::string_view method) const = 0;
   virtual std::vector<std::string> ExecuteJavaScriptOrigins(
       const url::Origin& origin) const = 0;
+  // Immutable, package-owned routing. Renderer IPC never supplies a service.
+  virtual std::string ApplicationInterface(std::string_view channel) const = 0;
+  virtual bool IsApplicationInterface(std::string_view service) const = 0;
   virtual bool IsApplicationCommandRequest(std::string_view channel,
                                            uint64_t command_id) const = 0;
   virtual bool IsShellApiOriginAllowed(const url::Origin& origin) const = 0;
@@ -46,7 +49,9 @@ class ManifestService : public KeyedService {
                                         std::string_view channel) const = 0;
   virtual bool IsShellApiScopeAllowed(const url::Origin& origin,
                                       std::string_view method,
-                                      std::string_view resource) const = 0;
+                                      std::string_view resource,
+                                      std::string_view kind,
+                                      bool write = false) const = 0;
   virtual bool IsExplorerNavigationAllowed(const url::Origin& caller,
                                            const GURL& url) const = 0;
   virtual bool IsWindowUrlAllowed(const url::Origin& caller,

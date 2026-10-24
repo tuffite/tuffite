@@ -5,6 +5,7 @@ members = [
     "crates/tuffite-abi",
     "crates/tuffite-ioc",
     "crates/tuffite-macros",
+    "crates/tuffite-mojom",
     "crates/tuffite-runtime",
     "playground",
 ]
@@ -16,6 +17,7 @@ default-members = [
     "crates/tuffite-abi",
     "crates/tuffite-ioc",
     "crates/tuffite-macros",
+    "crates/tuffite-mojom",
     "crates/tuffite-runtime",
 ]
 resolver = "3"
@@ -40,10 +42,12 @@ module_name_repetitions = "allow"
 tuffite-abi = { path = "crates/tuffite-abi" }
 tuffite-ioc = { path = "crates/tuffite-ioc", default-features = false}
 tuffite-macros = { path = "crates/tuffite-macros" }
+tuffite-mojom = { path = "crates/tuffite-mojom" }
 tuffite-runtime = { path = "crates/tuffite-runtime" }
 
 anyhow = "1"
 thiserror = "2"
+miette = { version = "7.6", default-features = false, features = ["derive"] }
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
 
 [profile.release]

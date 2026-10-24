@@ -1,6 +1,7 @@
+import * as frameworkApi from "/tuffite.js";
 // Only App top-level documents expose the native window bridge. The transfer
 // lab also runs inside an ordinary iframe to exercise document ownership.
-if (window.top === window) await import("/shell_api.js");
+if (window.top === window) await import("/tuffite.js");
 
 const status = document.querySelector("#status");
 const hosts = document.querySelector("#hosts");
@@ -94,7 +95,7 @@ async function popout() {
       channel.onmessage = ({data}) => { if (data.type === "ready") resolve(); };
     });
     void ready.catch(() => {});
-    child = await window.tuffite.window.create({
+    child = await frameworkApi.window.create({
       url: destination.href, title: "Transferred Explorer",
       bounds: { x: 100, y: 100, width: 900, height: 600 },
     });
@@ -114,7 +115,7 @@ async function popout() {
     return { childId: child.id.toString(), before, after };
   } catch (error) {
     if (transfer?.state === "pending") await recover();
-    if (child) await window.tuffite.window.close(child.id);
+    if (child) await frameworkApi.window.close(child.id);
     throw error;
   } finally { clearTimeout(timer); channel.close(); ack.port1.close(); ack.port2.close(); }
 }

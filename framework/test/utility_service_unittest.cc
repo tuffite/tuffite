@@ -111,6 +111,36 @@ TEST_F(UtilityServiceTest, ServiceStartupConfigurationIsIndependentOfRequests) {
   EXPECT_EQ(launcher->process.startup_configuration,
             (std::vector<uint8_t>{7, 8, 9}));
 }
+TEST_F(UtilityServiceTest, RegistrationQueryDoesNotLaunchUtility) {
+  EXPECT_TRUE(service->IsRegisteredUtility("demo"));
+  EXPECT_FALSE(service->IsRegisteredUtility("missing"));
+  EXPECT_TRUE(service->ResolveUtilityInterface("demo").empty());
+  EXPECT_EQ(launcher->launches, 0u);
+  service->Shutdown();
+  EXPECT_FALSE(service->IsRegisteredUtility("demo"));
+}
+TEST_F(UtilityServiceTest, InterfacesShareOneHostAndLookupDoesNotLaunch) {
+  service->SetUtilityInterfaceResolver(
+      base::BindRepeating([](std::string_view name) {
+        return name == "demo.Echo" || name == "demo.Aux" || name == "demo"
+                   ? std::string("demo")
+                   : std::string();
+      }));
+  EXPECT_EQ(service->ResolveUtilityInterface("demo.Echo"), "demo");
+  EXPECT_EQ(service->ResolveUtilityInterface("demo.Aux"), "demo");
+  EXPECT_TRUE(service->ResolveUtilityInterface("missing").empty());
+  EXPECT_EQ(launcher->launches, 0u);
+  service->InvokeUtilityService(owner, 1,
+                                service->ResolveUtilityInterface("demo.Echo"),
+                                {}, base::DoNothing());
+  service->InvokeUtilityService(owner, 2,
+                                service->ResolveUtilityInterface("demo.Aux"),
+                                {}, base::DoNothing());
+  launcher->process.WaitForRequests(2);
+  EXPECT_EQ(launcher->launches, 1u);
+  service->Shutdown();
+  EXPECT_TRUE(service->ResolveUtilityInterface("demo.Echo").empty());
+}
 TEST_F(UtilityServiceTest, ShutdownFailsOnceAndNeverRestarts) {
   int replies = 0;
   int32_t status = 0;

@@ -17,20 +17,19 @@
 #include "base/task/thread_pool.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
-#include "tuffite/framework/browser/services/shell_api/commands/registry.h"
 #include "tuffite/framework/common/access.h"
 
 namespace tuffite::shell_api::storage {
 
-using generated::storage::ClearCallback;
-using generated::storage::ClearRequest;
-using generated::storage::GetCallback;
-using generated::storage::GetRequest;
-using generated::storage::GetResult;
-using generated::storage::RemoveCallback;
-using generated::storage::RemoveRequest;
-using generated::storage::SetCallback;
-using generated::storage::SetRequest;
+using ClearCallback = generated::Storage::ClearCallback;
+using ClearRequestPtr = generated::Storage::ClearRequestPtr;
+using GetCallback = generated::Storage::GetCallback;
+using GetRequestPtr = generated::Storage::GetRequestPtr;
+using GetResult = generated::Storage::GetResult;
+using RemoveCallback = generated::Storage::RemoveCallback;
+using RemoveRequestPtr = generated::Storage::RemoveRequestPtr;
+using SetCallback = generated::Storage::SetCallback;
+using SetRequestPtr = generated::Storage::SetRequestPtr;
 
 namespace {
 
@@ -64,23 +63,27 @@ base::FilePath StorageFile(const base::FilePath& root, std::string_view key) {
 
 }  // namespace
 
-void Get(const ::tuffite::dispatch::Context& context,
-         GetRequest&& request,
-         GetCallback&& callback) {
-  if (!context.sender) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void StorageImpl::Get(const dispatch::Context& context,
+                      GetRequestPtr request,
+                      GetCallback callback) {
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
+    return;
+  }
+  if (!IsUnscopedAllowed(context, generated::Storage::kGet)) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
   auto root = StorageRoot(context.frame());
   if (!root) {
-    std::move(callback).Run(kStatusUnavailable, {});
+    rpc::Reject(callback, rpc::Status::kUnavailable);
     return;
   }
-  if (!IsKey(request.key)) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+  if (!IsKey(request->key)) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  const auto file = StorageFile(*root, request.key);
+  const auto file = StorageFile(*root, request->key);
   StorageTaskRunner()->PostTaskAndReplyWithResult(
       FROM_HERE,
       base::BindOnce(
@@ -105,31 +108,35 @@ void Get(const ::tuffite::dispatch::Context& context,
       base::BindOnce(
           [](GetCallback callback, std::optional<GetResult> result) {
             if (!result) {
-              std::move(callback).Run(kStatusUnavailable, {});
+              rpc::Reject(callback, rpc::Status::kUnavailable);
               return;
             }
-            std::move(callback).Run(kStatusOk, std::move(*result));
+            std::move(callback).Run(rpc::Status::kOk, std::move(*result));
           },
           std::move(callback)));
 }
 
-void Set(const ::tuffite::dispatch::Context& context,
-         SetRequest&& request,
-         SetCallback&& callback) {
-  if (!context.sender) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void StorageImpl::Set(const dispatch::Context& context,
+                      SetRequestPtr request,
+                      SetCallback callback) {
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
+    return;
+  }
+  if (!IsUnscopedAllowed(context, generated::Storage::kSet)) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
   auto root = StorageRoot(context.frame());
   if (!root) {
-    std::move(callback).Run(kStatusUnavailable, {});
+    rpc::Reject(callback, rpc::Status::kUnavailable);
     return;
   }
-  if (!IsKey(request.key) || request.value.size() > kMaxValueBytes) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+  if (!IsKey(request->key) || request->value.size() > kMaxValueBytes) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  const auto file = StorageFile(*root, request.key);
+  const auto file = StorageFile(*root, request->key);
   StorageTaskRunner()->PostTaskAndReplyWithResult(
       FROM_HERE,
       base::BindOnce(
@@ -140,31 +147,36 @@ void Set(const ::tuffite::dispatch::Context& context,
                    base::ImportantFileWriter::WriteFileAtomically(
                        file, base::as_string_view(value), "TuffiteStorage");
           },
-          *root, file, std::move(request.value)),
+          *root, file, std::move(request->value)),
       base::BindOnce(
           [](SetCallback callback, bool ok) {
-            std::move(callback).Run(ok ? kStatusOk : kStatusUnavailable, {});
+            std::move(callback).Run(ok ? rpc::Status::kOk
+                                       : rpc::Status::kUnavailable);
           },
           std::move(callback)));
 }
 
-void Remove(const ::tuffite::dispatch::Context& context,
-            RemoveRequest&& request,
-            RemoveCallback&& callback) {
-  if (!context.sender) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void StorageImpl::Remove(const dispatch::Context& context,
+                         RemoveRequestPtr request,
+                         RemoveCallback callback) {
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
+    return;
+  }
+  if (!IsUnscopedAllowed(context, generated::Storage::kRemove)) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
   auto root = StorageRoot(context.frame());
   if (!root) {
-    std::move(callback).Run(kStatusUnavailable, {});
+    rpc::Reject(callback, rpc::Status::kUnavailable);
     return;
   }
-  if (!IsKey(request.key)) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+  if (!IsKey(request->key)) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  const auto file = StorageFile(*root, request.key);
+  const auto file = StorageFile(*root, request->key);
   StorageTaskRunner()->PostTaskAndReplyWithResult(
       FROM_HERE,
       base::BindOnce(
@@ -175,21 +187,26 @@ void Remove(const ::tuffite::dispatch::Context& context,
           *root, file),
       base::BindOnce(
           [](RemoveCallback callback, bool ok) {
-            std::move(callback).Run(ok ? kStatusOk : kStatusUnavailable, {});
+            std::move(callback).Run(ok ? rpc::Status::kOk
+                                       : rpc::Status::kUnavailable);
           },
           std::move(callback)));
 }
 
-void Clear(const ::tuffite::dispatch::Context& context,
-           ClearRequest&&,
-           ClearCallback&& callback) {
-  if (!context.sender) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void StorageImpl::Clear(const dispatch::Context& context,
+                        ClearRequestPtr,
+                        ClearCallback callback) {
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
+    return;
+  }
+  if (!IsUnscopedAllowed(context, generated::Storage::kClear)) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
   auto root = StorageRoot(context.frame());
   if (!root) {
-    std::move(callback).Run(kStatusUnavailable, {});
+    rpc::Reject(callback, rpc::Status::kUnavailable);
     return;
   }
   StorageTaskRunner()->PostTaskAndReplyWithResult(
@@ -201,7 +218,8 @@ void Clear(const ::tuffite::dispatch::Context& context,
           *root),
       base::BindOnce(
           [](ClearCallback callback, bool ok) {
-            std::move(callback).Run(ok ? kStatusOk : kStatusUnavailable, {});
+            std::move(callback).Run(ok ? rpc::Status::kOk
+                                       : rpc::Status::kUnavailable);
           },
           std::move(callback)));
 }

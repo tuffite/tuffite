@@ -1,0 +1,11 @@
+// Shell API contract. JS/TS, Rust and C++ adapters are generated.
+module tuffite;
+
+import "tuffite/framework/shell_api/common.mojom";
+
+interface Storage {
+  Get@0(string key) => (array<uint8>? result);
+  Set@1(string key, array<uint8> value) => ();
+  Remove@2(string key) => ();
+  Clear@3() => ();
+};

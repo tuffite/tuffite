@@ -1,0 +1,13 @@
+// Shell API contract. JS/TS, Rust and C++ adapters are generated.
+module tuffite;
+
+import "tuffite/framework/shell_api/common.mojom";
+
+struct NetworkResponse {
+  double status;
+  array<uint8> body;
+};
+
+interface Net {
+  Request@0(string url) => (NetworkResponse result);
+};

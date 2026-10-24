@@ -16,12 +16,21 @@
             "executeJavaScript": true
           },
           "shellApi": [
-            "playground.*",
-            "tuffite.storage.*",
-            "tuffite.log.*",
-            "tuffite.utility.*",
+            "playground.Commands.DoSomething",
+            "playground.Commands.CheckUtilitySession",
+            "playground.Commands.CheckJavascriptExtension",
+            "playground.Commands.EchoMojom",
+            "playground.Echo.RoundTrip",
+            "playground.Echo.Restricted",
+            "playground.Aux.RoundTrip",
+            "playground.Aux.ReadState",
+            "playground.Aux.ProcessId",
+            "playground.Diagnostics.ProcessId",
+            "tuffite.Storage.*",
+            "tuffite.Log.*",
+            "tuffite.Utility.*",
             {
-              "method": "tuffite.fs.readFile",
+              "method": "tuffite.Fs.ReadFile",
               "allow": [
                 {
                   "path": "resource/*"
@@ -29,7 +38,7 @@
               ]
             },
             {
-              "method": "tuffite.fs.exists",
+              "method": "tuffite.Fs.Exists",
               "allow": [
                 {
                   "path": "resource/*"
@@ -37,7 +46,7 @@
               ]
             },
             {
-              "method": "tuffite.fs.*",
+              "method": "tuffite.Fs.*",
               "allow": [
                 {
                   "path": "data/*"
@@ -51,7 +60,7 @@
               ]
             },
             {
-              "method": "tuffite.path.resolve",
+              "method": "tuffite.Path.Resolve",
               "allow": [
                 {
                   "path": "resource/*"
@@ -68,7 +77,7 @@
               ]
             },
             {
-              "method": "tuffite.net.request",
+              "method": "tuffite.Net.Request",
               "allow": [
                 {
                   "url": "http://example.com/*"
@@ -84,11 +93,78 @@
                 }
               ]
             },
-            "tuffite.path.directories",
-            "tuffite.dialog.openFile",
-            "tuffite.dialog.openDirectory",
+            "tuffite.Path.Directories",
+            "tuffite.Dialog.OpenFile",
+            "tuffite.Dialog.OpenDirectory",
+            "tuffite.Window.Current",
+            "tuffite.Window.List",
+            "tuffite.Window.Create",
             {
-              "method": "tuffite.window.*",
+              "method": "tuffite.Window.Focus",
+              "allow": [
+                {
+                  "window": "*"
+                }
+              ]
+            },
+            {
+              "method": "tuffite.Window.Minimize",
+              "allow": [
+                {
+                  "window": "*"
+                }
+              ]
+            },
+            {
+              "method": "tuffite.Window.Maximize",
+              "allow": [
+                {
+                  "window": "*"
+                }
+              ]
+            },
+            {
+              "method": "tuffite.Window.Restore",
+              "allow": [
+                {
+                  "window": "*"
+                }
+              ]
+            },
+            {
+              "method": "tuffite.Window.SetFullscreen",
+              "allow": [
+                {
+                  "window": "*"
+                }
+              ]
+            },
+            {
+              "method": "tuffite.Window.Close",
+              "allow": [
+                {
+                  "window": "*"
+                }
+              ]
+            },
+            {
+              "method": "tuffite.Window.SetTitle",
+              "allow": [
+                {
+                  "window": "*"
+                }
+              ]
+            },
+            {
+              "method": "tuffite.Window.GetBounds",
+              "allow": [
+                {
+                  "window": "*"
+                }
+              ]
+            },
+            {
+              "method": "tuffite.Window.SetBounds",
               "allow": [
                 {
                   "window": "*"
@@ -104,10 +180,10 @@
             "playground://*.preview"
           ],
           "shellApi": [
-            "tuffite.path.directories",
-            "tuffite.storage.get",
+            "tuffite.Path.Directories",
+            "tuffite.Storage.Get",
             {
-              "method": "tuffite.fs.readFile",
+              "method": "tuffite.Fs.ReadFile",
               "allow": [
                 {
                   "path": "resource/ui/dist/**"
@@ -127,7 +203,7 @@
             "playground://demo.artifact"
           ],
           "shellApi": [
-            "playground.commands.doSomething"
+            "playground.Commands.DoSomething"
           ]
         },
         {
@@ -136,7 +212,8 @@
             "playground://business"
           ],
           "shellApi": [
-            "playground.*"
+            "playground.Commands.DoSomething",
+            "playground.Echo.RoundTrip"
           ]
         }
       ]
@@ -214,12 +291,9 @@
       "script": "mise exec -- bun run dev",
       "cwd": "ui"
     },
-    "shellApi": {
-      "namespace": "playground",
-      "definitions": [
-        "shell_api.d.ts"
-      ]
-    }
+    "mojomSources": [
+      "shell_api.mojom"
+    ]
   },
   "bundle": {
     "resources": [

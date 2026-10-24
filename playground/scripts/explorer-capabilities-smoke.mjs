@@ -30,15 +30,23 @@ try {
   const a = await report(artifact), p = await report(preview);
   assert.notEqual(a.origin, p.origin, "Sharing a capability must not merge origins");
   for (const result of [a, p]) {
+    assert.equal(result.applicationGlobal, false);
+    for (const field of ['typedUtility', 'deniedEndpoint', 'deniedService']) {
+      assert.equal(result[field].allowed, false);
+      assert.equal(result[field].status, 2, 'Origin must not gain a Utility endpoint from another origin');
+    }
+    assert.equal(result.typedCommand.allowed, false);
+    assert.equal(result.typedCommand.status, 2, "Typed calls must be rejected by native authorization");
     assert.equal(result.read, "allowed");
     assert.match(result.write, /^denied:/);
     assert.doesNotMatch(result.write, /expected Uint8Array/, "Write denial must come from native authorization");
     assert.equal(result.createExplorer, false);
   }
   const fileScopes = await artifact.evaluate(async () => {
-    const allowed = await tuffite.fs.readFile("resource", "ui/dist/transfer-sample.html");
+    const frameworkApi = await import('/tuffite.js');
+    const allowed = await frameworkApi.fs.readFile(frameworkApi.BaseDirectory.Resource, "ui/dist/transfer-sample.html");
     const denied = async (path) => {
-      try { await tuffite.fs.readFile("resource", path); return false; }
+      try { await frameworkApi.fs.readFile(frameworkApi.BaseDirectory.Resource, path); return false; }
       catch (error) { return (error.status ?? error.cause?.status) === 2; }
     };
     return { allowed: allowed.length > 0, explicitDeny: await denied("ui/dist/index.html"), outsideScope: await denied("shell_api.js") };
@@ -75,6 +83,14 @@ try {
   await businessPage.waitForFunction(() => document.body.dataset.capabilityReport);
   const businessReport = await report(businessPage);
   assert.equal(businessReport.appCommand, "allowed");
+  assert.equal(businessReport.applicationGlobal, false);
+  assert.equal(businessReport.typedUtility.allowed, true, 'Explicit service/endpoint grant must reach Utility Rust');
+  for (const field of ['deniedEndpoint', 'deniedService']) {
+    assert.equal(businessReport[field].allowed, false);
+    assert.equal(businessReport[field].status, 2, 'Service and endpoint boundaries must both be enforced by native');
+  }
+  assert.equal(businessReport.typedCommand.allowed, false);
+  assert.equal(businessReport.typedCommand.status, 2, "Granting one IDL endpoint must not grant its siblings");
   assert.match(businessReport.read, /^denied:/, "Business API grants must not imply framework grants");
   assert.match(businessReport.write, /^denied:/);
   assert.equal(businessReport.createExplorer, false);
@@ -89,7 +105,7 @@ try {
     data.setUint16(4, 1, true);
     data.setBigUint64(8, 1n, true);
     data.setBigUint64(16, 0x12345678n, true);
-    try { await window.tuffite.invoke("playground.commands.doSomething", bytes); return "allowed"; }
+    try { await window.tuffite.invoke("playground.Commands.DoSomething", bytes); return "allowed"; }
     catch (error) { return { status: error.status, message: error.message }; }
   });
   assert.equal(forged.status, 2, "A forged channel must be rejected at the native authorization boundary");
@@ -111,5 +127,5 @@ try {
   assert.equal(scripted, "playground://other.preview");
   await app.evaluate(() => { window.capabilitiesDemo.artifact.remove(); window.capabilitiesDemo.preview.remove(); });
   await until(() => !pages().some((page) => /\.(artifact|preview)\//.test(page.url())), "Removed hosts retained live pages");
-  console.log(JSON.stringify({ originCapabilities: "passed", fileScopes, assetsWithoutGrants: "passed", businessDoesNotGrantFramework: "passed", unmappedAssetStatus: 404, artifact: a, preview: p, wireChannelForgery: "denied", navigationRevocation: "passed", cleanup: "passed" }, null, 2));
+  console.log(JSON.stringify({ originCapabilities: "passed", typedUtilityAllowed: "passed", typedUtilityEndpointDenied: "passed", typedUtilityServiceDenied: "passed", fileScopes, assetsWithoutGrants: "passed", businessDoesNotGrantFramework: "passed", unmappedAssetStatus: 404, artifact: a, preview: p, wireChannelForgery: "denied", navigationRevocation: "passed", cleanup: "passed" }, null, 2));
 } finally { await browser.close(); }

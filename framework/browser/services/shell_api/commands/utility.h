@@ -5,16 +5,19 @@
 #define TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_UTILITY_H_
 
 #include "tuffite/components/dispatch/browser/context.h"
-#include "tuffite/framework/shell_api/utility.h"
+#include "tuffite/framework/shell_api/utility.mojom.h"
 
 namespace tuffite::shell_api::utility {
 
-void Invoke(const ::tuffite::dispatch::Context& context,
-            generated::utility::InvokeRequest&& request,
-            generated::utility::InvokeCallback&& callback);
-void Cancel(const ::tuffite::dispatch::Context& context,
-            generated::utility::CancelRequest&& request,
-            generated::utility::CancelCallback&& callback);
+class UtilityImpl final : public generated::Utility {
+ public:
+  void Invoke(const dispatch::Context& context,
+              generated::Utility::InvokeRequestPtr request,
+              generated::Utility::InvokeCallback callback) override;
+  void Cancel(const dispatch::Context& context,
+              generated::Utility::CancelRequestPtr request,
+              generated::Utility::CancelCallback callback) override;
+};
 
 }  // namespace tuffite::shell_api::utility
 

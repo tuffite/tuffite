@@ -22,14 +22,13 @@
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
-#include "tuffite/framework/browser/services/shell_api/commands/registry.h"
 #include "url/gurl.h"
 
 namespace tuffite::shell_api::net {
 
-using generated::net::RequestCallback;
-using generated::net::RequestRequest;
-using generated::net::RequestResult;
+using RequestCallback = generated::Net::RequestCallback;
+using RequestRequestPtr = generated::Net::RequestRequestPtr;
+using RequestResult = generated::Net::RequestResult;
 
 namespace {
 
@@ -71,7 +70,7 @@ class NetworkRequest {
           semantics {
             sender: "Tuffite ShellAPI"
             description: "Performs a request initiated by a Tuffite app."
-            trigger: "The app calls window.tuffite.net.request()."
+            trigger: "The app calls window.tuffite.Net.Request()."
             data: "URL and standard Chromium network metadata."
             destination: WEBSITE
           }
@@ -92,19 +91,19 @@ class NetworkRequest {
   static void OnComplete(std::unique_ptr<NetworkRequest> request,
                          std::optional<std::string> body) {
     if (request->loader_->NetError() != 0) {
-      std::move(request->callback_).Run(kStatusUnavailable, {});
+      rpc::Reject(request->callback_, rpc::Status::kUnavailable);
       return;
     }
-    RequestResult result;
+    auto result = generated::NetworkResponse::New();
     if (request->loader_->ResponseInfo() &&
         request->loader_->ResponseInfo()->headers) {
-      result.status =
+      result->status =
           request->loader_->ResponseInfo()->headers->response_code();
     }
     if (body) {
-      result.body.assign(body->begin(), body->end());
+      result->body.assign(body->begin(), body->end());
     }
-    std::move(request->callback_).Run(kStatusOk, std::move(result));
+    std::move(request->callback_).Run(rpc::Status::kOk, std::move(result));
   }
 
   scoped_refptr<::network::SharedURLLoaderFactory> factory_;
@@ -114,21 +113,22 @@ class NetworkRequest {
 
 }  // namespace
 
-void Request(const ::tuffite::dispatch::Context& context,
-             RequestRequest&& request,
-             RequestCallback&& callback) {
-  if (!context.sender) {
-    std::move(callback).Run(kStatusInvalidArgument, {});
+void NetImpl::Request(const dispatch::Context& context,
+                      RequestRequestPtr request,
+                      RequestCallback callback) {
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
   const ManifestService* manifest = ManifestFor(context.frame());
-  const GURL target(request.url);
+  const GURL target(request->url);
   if (!manifest || !manifest->IsNetworkUrlAllowed(
-                       context.sender->GetLastCommittedOrigin(), target)) {
-    std::move(callback).Run(kStatusAccessDenied, {});
+                       context.sender()->GetLastCommittedOrigin(), target)) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
-  NetworkRequest::Start(context.sender->GetStoragePartition()
+  NetworkRequest::Start(context.sender()
+                            ->GetStoragePartition()
                             ->GetURLLoaderFactoryForBrowserProcess(),
                         *manifest, target, std::move(callback));
 }

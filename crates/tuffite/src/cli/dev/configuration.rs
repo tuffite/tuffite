@@ -181,8 +181,7 @@ mod tests {
     use std::fs;
     fn project_with_build(build: &str) -> String {
         let mut configuration: serde_json::Value = serde_json::from_str(build).unwrap();
-        configuration["shellApi"] =
-            serde_json::json!({"namespace":"example", "definitions":["shell_api.d.ts"]});
+        configuration["mojomSources"] = serde_json::json!(["shell_api.mojom"]);
         format!(
             r#"{{
                           "app": {{

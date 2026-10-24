@@ -36,11 +36,9 @@ impl ModuleSource {
 
 /// Reads the application scheme, which native validates against window URLs.
 pub(crate) fn app_scheme(configuration: &[u8]) -> Option<String> {
-    serde_json::from_slice::<serde_json::Value>(configuration)
-        .ok()?
-        .pointer("/app/shellApi/namespace")?
-        .as_str()
-        .map(str::to_owned)
+    let manifest = serde_json::from_slice::<serde_json::Value>(configuration).ok()?;
+    let entry = manifest.pointer("/app/windows/0/url")?.as_str()?;
+    Some(url::Url::parse(entry).ok()?.scheme().to_owned())
 }
 
 /// Builds the canonical entry URL, or accepts an explicit HTTPS/file entry.
@@ -108,6 +106,12 @@ pub(crate) fn validate_url(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn scheme_comes_from_entry_window_without_shell_api_namespace() {
+        let config = br#"{"app":{"windows":[{"url":"assetscheme://main/index.html"}],"shellApi":{"commandIds":{"other.module.Commands.Run":"0000000000000001"}}}}"#;
+        assert_eq!(super::app_scheme(config).as_deref(), Some("assetscheme"));
+        assert_eq!(super::app_scheme(br#"{"app":{"windows":[]}}"#), None);
+    }
     use super::*;
 
     #[test]

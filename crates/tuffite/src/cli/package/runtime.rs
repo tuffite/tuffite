@@ -2,7 +2,7 @@
 use super::super::filesystem::portable_path;
 use super::paths::validate_package_name;
 use super::resources::copy_regular_file;
-use super::{FRAMEWORK_SHELL_API_FILE, MANIFEST_FILE, RENDERER_RUNTIME_FILE};
+use super::{FRAMEWORK_SDK_FILE, MANIFEST_FILE};
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs;
@@ -37,14 +37,10 @@ pub(super) fn copy_framework_runtime(
     )?;
     // `python3 x.py verify` owns full Framework artifact hashing. Packaging validates
     // manifest sizes and then hashes the final package once.
-    let mut renderer_runtime = false;
-    let mut framework_shell_api = false;
+    let mut framework_sdk = false;
     for (source, relative) in framework.runtime_files(false)? {
-        let destination = if relative == Path::new(RENDERER_RUNTIME_FILE) {
-            renderer_runtime = true;
-            package_dir.join(asset_root).join(&relative)
-        } else if relative == Path::new(FRAMEWORK_SHELL_API_FILE) {
-            framework_shell_api = true;
+        let destination = if relative == Path::new(FRAMEWORK_SDK_FILE) {
+            framework_sdk = true;
             package_dir.join(asset_root).join(&relative)
         } else {
             package_dir.join(&relative)
@@ -76,7 +72,7 @@ pub(super) fn copy_framework_runtime(
             }
         }
     }
-    if !renderer_runtime || !framework_shell_api {
+    if !framework_sdk {
         return Err("Framework Distribution is missing its version-matched Web runtime".to_owned());
     }
     Ok(RuntimeMetadata {

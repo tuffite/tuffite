@@ -13,6 +13,17 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
+/// Dispatches one typed Mojom command inside a Utility, preserving its envelope.
+/// Native routing and origin/service/endpoint authorization happen before delivery.
+pub fn dispatch_typed(
+    request: &UtilityRequest,
+    handler: impl FnOnce(crate::Command<'_>) -> CommandResult,
+) -> Vec<u8> {
+    crate::protocol::dispatch_with(request.payload(), |id, fingerprint, payload| {
+        handler(crate::Command::new(id, fingerprint, payload))
+    })
+}
+
 /// Immutable service startup data owned by the Utility child process.
 #[derive(Clone)]
 pub struct UtilityContext {
@@ -302,6 +313,7 @@ pub struct UtilityServiceRegistration {
     name: &'static str,
     factory: UtilityFactory,
     v8: Option<V8Factory>,
+    interfaces: &'static [&'static str],
 }
 
 impl UtilityServiceRegistration {
@@ -312,6 +324,7 @@ impl UtilityServiceRegistration {
             name,
             factory: create_utility::<S>,
             v8: None,
+            interfaces: &[],
         }
     }
 
@@ -322,7 +335,26 @@ impl UtilityServiceRegistration {
             name,
             factory: native_utility,
             v8: Some(create_v8::<S>),
+            interfaces: &[],
         }
+    }
+
+    /// Registers multiple `ShellAPI` interfaces on one utility instance and process.
+    #[must_use]
+    pub const fn typed<S: Utility>(
+        name: &'static str,
+        interfaces: &'static [&'static str],
+    ) -> Self {
+        Self {
+            interfaces,
+            ..Self::new::<S>(name)
+        }
+    }
+
+    /// Returns the canonical interfaces owned by this utility.
+    #[must_use]
+    pub const fn interfaces(&self) -> &'static [&'static str] {
+        self.interfaces
     }
 
     /// Returns the native runtime discriminator advertised through the ABI.
@@ -508,15 +540,10 @@ pub const fn validate_utility_names(values: &[UtilityServiceRegistration]) {
             !name.is_empty() && name.len() <= 128,
             "invalid utility name"
         );
-        let mut k = 0;
-        while k < name.len() {
-            let b = name[k];
-            assert!(
-                b.is_ascii_alphabetic() || b == b'_' || b == b'$' || (k > 0 && b.is_ascii_digit()),
-                "invalid utility name"
-            );
-            k += 1;
-        }
+        assert!(
+            is_valid_service_name(values[i].name()),
+            "invalid utility name"
+        );
         let mut j = 0;
         while j < i {
             let other = values[j].name().as_bytes();
@@ -531,6 +558,34 @@ pub const fn validate_utility_names(values: &[UtilityServiceRegistration]) {
         }
         i += 1;
     }
+}
+
+pub(crate) const fn is_valid_service_name(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    if bytes.is_empty() || bytes.len() > 128 {
+        return false;
+    }
+    let mut start = true;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if !start && (b == b'.' || (b == b':' && i + 1 < bytes.len() && bytes[i + 1] == b':')) {
+            if b == b':' {
+                i += 1;
+            }
+            start = true;
+        } else if b.is_ascii_alphabetic()
+            || b == b'_'
+            || b == b'$'
+            || (!start && b.is_ascii_digit())
+        {
+            start = false;
+        } else {
+            return false;
+        }
+        i += 1;
+    }
+    !start
 }
 
 impl std::fmt::Debug for V8Providers {

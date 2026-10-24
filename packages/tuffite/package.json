@@ -9,11 +9,6 @@
       "import": "./generated/index.js",
       "default": "./generated/index.js"
     },
-    "./runtime": {
-      "types": "./runtime.d.ts",
-      "import": "./runtime.js",
-      "default": "./runtime.js"
-    },
     "./explorer": {
       "types": "./explorer.d.ts",
       "import": "./explorer.js",
@@ -26,8 +21,6 @@
     }
   },
   "files": [
-    "runtime.js",
-    "runtime.d.ts",
     "explorer.js",
     "explorer.d.ts",
     "vite.js",
@@ -36,6 +29,6 @@
     "generated/*.d.ts",
     "README.md"
   ],
-  "sideEffects": ["./generated/index.js"],
+  "sideEffects": false,
   "license": "MIT OR Apache-2.0"
 }

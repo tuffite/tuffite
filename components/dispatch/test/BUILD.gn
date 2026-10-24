@@ -1,15 +1,24 @@
+import("//mojo/public/tools/bindings/mojom.gni")
 import("//testing/test.gni")
+
+mojom("mojom_codec_fixture") {
+  sources = [ "//tuffite/playground/mojom_data.mojom" ]
+}
 test("dispatch_unittests") {
   sources = [
     "../browser/request_registry.cc",
     "../browser/request_registry.h",
     "../browser/rpc_handler.h",
     "codec_unittest.cc",
+    "mojom_codec_unittest.cc",
     "request_registry_unittest.cc",
   ]
   deps = [
+    ":mojom_codec_fixture",
+    "//tuffite/framework/shell_api:protocol_wire",
     "//base",
     "//base/test:test_support",
+    "//mojo/core/embedder",
     "//testing/gtest",
     "//testing/gtest:gtest_main",
     "//tuffite/components/dispatch/common:implementation",

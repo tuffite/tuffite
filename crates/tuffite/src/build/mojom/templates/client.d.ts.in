@@ -1,0 +1,3 @@
+import type { MojomTransport } from 'tuffite';
+export interface $Client { $Properties: unknown; }
+export declare function $Factory(transport?: MojomTransport): $Client;

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 pub mod framework;
-mod typescript;
+mod mojom;
 
 const DOMAIN: &[u8] = b"tuffite.command.v1\0";
 
@@ -208,17 +208,9 @@ struct AppConfig {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct BuildConfig {
-    #[serde(rename = "shellApi")]
-    shell_api: ShellApi,
-}
-
-#[derive(Deserialize)]
-struct ShellApi {
-    namespace: String,
-    definitions: Vec<PathBuf>,
-    #[serde(default)]
-    facade: Facade,
+    mojom_sources: Vec<PathBuf>,
 }
 
 fn command_id(name: &str) -> u64 {
@@ -231,73 +223,99 @@ fn command_id(name: &str) -> u64 {
     u64::from_le_bytes(bytes)
 }
 
+fn render_mojom_error(error: &tuffite_mojom::Error) -> String {
+    let mut output = String::new();
+    miette::GraphicalReportHandler::new()
+        .with_theme(miette::GraphicalTheme::unicode_nocolor())
+        .with_width(100)
+        .render_report(&mut output, error)
+        .expect("writing a diagnostic to String cannot fail");
+    output
+}
+
 fn read_shell_api_sources(
     manifest_path: &Path,
     definitions: &[PathBuf],
 ) -> Result<Vec<(PathBuf, String)>, String> {
     if definitions.is_empty() {
-        return Err("build.shellApi.definitions must not be empty".to_owned());
+        return Err("build.mojomSources must not be empty".into());
     }
-    let root = manifest_path.parent().unwrap_or_else(|| Path::new("."));
-    definitions
-        .iter()
-        .map(|declaration| {
-            if !declaration
-                .file_name()
-                .and_then(|value| value.to_str())
-                .is_some_and(|value| value.ends_with(".d.ts"))
-            {
-                return Err(format!(
-                    "ShellAPI declaration must use the .d.ts extension: {}",
-                    declaration.display()
-                ));
-            }
-            let path = root.join(declaration);
-            let source = fs::read_to_string(&path)
-                .map_err(|error| format!("unable to read {}: {error}", path.display()))?;
-            Ok((declaration.clone(), source))
-        })
-        .collect()
+    tuffite_mojom::read_sources(
+        manifest_path.parent().unwrap_or_else(|| Path::new(".")),
+        definitions,
+    )
+    .map_err(|error| render_mojom_error(&error))
 }
 
 fn generate_bindings(
     manifest_path: &Path,
     facade_override: Option<Facade>,
-    cpp_include_root: &str,
 ) -> Result<(GeneratedBindings, Vec<PathBuf>), String> {
     let serialized = fs::read(manifest_path)
         .map_err(|error| format!("unable to read {}: {error}", manifest_path.display()))?;
     let manifest: Manifest = serde_json::from_slice(&serialized)
         .map_err(|error| format!("invalid {}: {error}", manifest_path.display()))?;
-    let shell_api = &manifest.build.shell_api;
-    let facade = facade_override.unwrap_or(shell_api.facade);
-    if manifest.app.identifier.is_empty()
-        || !is_identifier(&shell_api.namespace)
-        || (shell_api.namespace == "tuffite" && facade != Facade::Framework)
-    {
-        return Err("app.identifier or shellApi.namespace is invalid".into());
+    let definitions = &manifest.build.mojom_sources;
+    let facade = facade_override.unwrap_or_default();
+    if manifest.app.identifier.is_empty() {
+        return Err("app.identifier is invalid".into());
     }
-    let sources = read_shell_api_sources(manifest_path, &shell_api.definitions)?;
+    let sources = if facade == Facade::Framework {
+        let parent = manifest_path.parent().unwrap_or_else(|| Path::new("."));
+        let first = definitions.first().ok_or("Framework contracts are empty")?;
+        let first = parent
+            .join(first)
+            .canonicalize()
+            .map_err(|e| e.to_string())?;
+        let source_root = first.parent().ok_or("missing Framework source directory")?;
+        let definitions = definitions
+            .iter()
+            .map(|name| {
+                let path = parent
+                    .join(name)
+                    .canonicalize()
+                    .map_err(|e| e.to_string())?;
+                if path.parent() != Some(source_root) {
+                    return Err("Framework contracts must share a source directory".to_owned());
+                }
+                Ok(PathBuf::from(path.file_name().ok_or("missing filename")?))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        // Framework contracts use Chromium source-root-relative imports, as
+        // required by its native Mojom parser. Application imports remain
+        // confined to their manifest directory.
+        let import_root = source_root
+            .ancestors()
+            .nth(3)
+            .ok_or("missing Chromium source root")?;
+        let definitions = definitions
+            .into_iter()
+            .map(|name| {
+                source_root
+                    .join(name)
+                    .strip_prefix(import_root)
+                    .map(Path::to_path_buf)
+                    .map_err(|e| e.to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        tuffite_mojom::read_sources(import_root, &definitions)
+            .map_err(|error| render_mojom_error(&error))?
+            .into_iter()
+            .map(|(path, source)| (import_root.join(path), source))
+            .collect()
+    } else {
+        read_shell_api_sources(manifest_path, definitions)?
+    };
     let root = manifest_path.parent().unwrap_or_else(|| Path::new("."));
     let inputs = sources
         .iter()
         .map(|(path, _)| root.join(path))
         .collect::<Vec<_>>();
-    if cpp_include_root.is_empty()
-        || cpp_include_root.starts_with('/')
-        || cpp_include_root.contains("..")
-        || cpp_include_root.contains('\\')
-    {
-        return Err("C++ include root must be a safe source-relative path".to_owned());
-    }
-    let bindings = typescript::generate_with_cpp_include_root(
-        &sources,
-        &shell_api.namespace,
-        &manifest.app.identifier,
-        &shell_api.namespace,
-        facade,
-        cpp_include_root,
-    )?;
+    let bindings = if facade == Facade::Framework {
+        mojom::generate_framework(&sources)?
+    } else {
+        mojom::generate(&sources, &manifest.app.identifier)?
+    };
     Ok((bindings, inputs))
 }
 
@@ -307,52 +325,55 @@ fn generate_bindings(
 pub(crate) fn security_command_ids(
     manifest_path: &Path,
 ) -> Result<BTreeMap<String, String>, String> {
-    let (bindings, _) = generate_bindings(manifest_path, None, "tuffite/framework/shell_api")?;
+    let (bindings, _) = generate_bindings(manifest_path, None)?;
     let mut ids = bindings.command_ids;
     let sources = vec![
         (
-            PathBuf::from("common.d.ts"),
-            include_str!("../../../framework/shell_api/common.d.ts").to_owned(),
+            PathBuf::from("common.mojom"),
+            include_str!("../../../framework/shell_api/common.mojom").to_owned(),
         ),
         (
-            PathBuf::from("dialog.d.ts"),
-            include_str!("../../../framework/shell_api/dialog.d.ts").to_owned(),
+            PathBuf::from("dialog.mojom"),
+            include_str!("../../../framework/shell_api/dialog.mojom").to_owned(),
         ),
         (
-            PathBuf::from("path.d.ts"),
-            include_str!("../../../framework/shell_api/path.d.ts").to_owned(),
+            PathBuf::from("path.mojom"),
+            include_str!("../../../framework/shell_api/path.mojom").to_owned(),
         ),
         (
-            PathBuf::from("fs.d.ts"),
-            include_str!("../../../framework/shell_api/fs.d.ts").to_owned(),
+            PathBuf::from("fs.mojom"),
+            include_str!("../../../framework/shell_api/fs.mojom").to_owned(),
         ),
         (
-            PathBuf::from("storage.d.ts"),
-            include_str!("../../../framework/shell_api/storage.d.ts").to_owned(),
+            PathBuf::from("storage.mojom"),
+            include_str!("../../../framework/shell_api/storage.mojom").to_owned(),
         ),
         (
-            PathBuf::from("log.d.ts"),
-            include_str!("../../../framework/shell_api/log.d.ts").to_owned(),
+            PathBuf::from("log.mojom"),
+            include_str!("../../../framework/shell_api/log.mojom").to_owned(),
         ),
         (
-            PathBuf::from("network.d.ts"),
-            include_str!("../../../framework/shell_api/network.d.ts").to_owned(),
+            PathBuf::from("network.mojom"),
+            include_str!("../../../framework/shell_api/network.mojom").to_owned(),
         ),
         (
-            PathBuf::from("utility.d.ts"),
-            include_str!("../../../framework/shell_api/utility.d.ts").to_owned(),
+            PathBuf::from("utility.mojom"),
+            include_str!("../../../framework/shell_api/utility.mojom").to_owned(),
         ),
         (
-            PathBuf::from("remoting.d.ts"),
-            include_str!("../../../framework/shell_api/remoting.d.ts").to_owned(),
+            PathBuf::from("remoting.mojom"),
+            include_str!("../../../framework/shell_api/remoting.mojom").to_owned(),
         ),
         (
-            PathBuf::from("window.d.ts"),
-            include_str!("../../../framework/shell_api/window.d.ts").to_owned(),
+            PathBuf::from("window.mojom"),
+            include_str!("../../../framework/shell_api/window.mojom").to_owned(),
         ),
     ];
-    for command in typescript::command_paths(&sources, "tuffite")? {
-        ids.entry(command)
+    for method in tuffite_mojom::compile(&sources)
+        .map_err(|error| render_mojom_error(&error))?
+        .methods
+    {
+        ids.entry(format!("tuffite.{}.{}", method.interface, method.name))
             .or_insert_with(|| "0000000000000000".to_owned());
     }
     let value: serde_json::Value =
@@ -403,6 +424,9 @@ pub(crate) fn compile_security_entry(
     entry: &serde_json::Value,
     ids: &BTreeMap<String, String>,
 ) -> Result<Vec<serde_json::Value>, String> {
+    if entry.get("service").is_some() {
+        return Err("service grants are no longer supported; use module.Interface.method".into());
+    }
     let pattern = entry
         .as_str()
         .or_else(|| entry.get("method").and_then(serde_json::Value::as_str))
@@ -416,43 +440,27 @@ pub(crate) fn compile_security_entry(
             "ShellAPI method pattern matches no registered method: {pattern}"
         ));
     }
-    let registry: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../framework/shell_api/scope_registry.json"
-    ))
-    .map_err(|e| e.to_string())?;
-    if (entry.get("allow").is_some() || entry.get("deny").is_some())
-        && !methods.iter().any(|method| registry.get(*method).is_some())
-    {
-        return Err(format!("{pattern} does not support scopes"));
-    }
     let mut compiled = Vec::new();
     for method in methods {
-        let skip_scopes = pattern.ends_with(".*") && registry.get(method).is_none();
+        let mut scope_kinds = std::collections::BTreeSet::new();
         for field in ["allow", "deny"] {
-            if skip_scopes {
-                continue;
-            }
             let Some(values) = entry.get(field) else {
                 continue;
             };
-            let descriptor = registry
-                .get(method)
-                .ok_or_else(|| format!("{method} does not support scopes"))?;
             for value in values.as_array().ok_or("scope must be an array")? {
-                validate_security_scope(method, descriptor, value)?;
+                validate_security_scope(method, value)?;
+                scope_kinds.insert(value.as_object().unwrap().keys().next().unwrap());
             }
         }
 
+        if scope_kinds.len() > 1 {
+            return Err("a grant cannot mix scope kinds".into());
+        }
         let mut grant = entry.clone();
         if grant.is_string() {
             grant = serde_json::Value::String(method.clone());
         } else {
             grant["method"] = serde_json::Value::String(method.clone());
-            if skip_scopes {
-                let fields = grant.as_object_mut().expect("validated grant object");
-                fields.remove("allow");
-                fields.remove("deny");
-            }
         }
         compiled.push(grant);
     }
@@ -460,20 +468,20 @@ pub(crate) fn compile_security_entry(
 }
 
 #[cfg(feature = "cli")]
-fn validate_security_scope(
-    method: &str,
-    descriptor: &serde_json::Value,
-    value: &serde_json::Value,
-) -> Result<(), String> {
-    let kind = descriptor["kind"].as_str().unwrap();
+fn validate_security_scope(method: &str, value: &serde_json::Value) -> Result<(), String> {
     let object = value
         .as_object()
-        .ok_or_else(|| format!("{method}: expected {kind} scope object"))?;
+        .ok_or_else(|| format!("{method}: expected scope object"))?;
+    let kind = object
+        .keys()
+        .next()
+        .map(String::as_str)
+        .ok_or("empty scope object")?;
     let key = match kind {
         "path" => "path",
         "url" => "url",
         "window" => "window",
-        _ => unreachable!(),
+        _ => return Err(format!("{method}: unknown scope kind {kind}")),
     };
     if object.len() != 1 {
         return Err(format!("{method}: scope must contain only {key}"));
@@ -485,11 +493,6 @@ fn validate_security_scope(
     match kind {
         "path" => {
             let base = text.split('/').next().unwrap();
-            if descriptor["write"] == true && base == "resource" {
-                return Err(format!(
-                    "{method}: resource is read-only; use data, cache or temp for write scopes (split read and write grants when using a wildcard method)"
-                ));
-            }
             if !matches!(base, "resource" | "data" | "cache" | "temp" | "*")
                 || text.contains(['\\', ':', '?', '\0'])
                 || text.split('/').any(|p| p == ".." || p == ".")
@@ -548,12 +551,49 @@ fn is_identifier(value: &str) -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn mojom_generation_errors_show_named_source_and_help() {
+        let source = "module demo;\nstruct Data { string value }";
+        let error = tuffite_mojom::compile(&[("broken.mojom".into(), source.into())]).unwrap_err();
+        let rendered = render_mojom_error(&error);
+        for expected in ["broken.mojom", "expected \";\"", "string value", "help:"] {
+            assert!(rendered.contains(expected), "{rendered}");
+        }
+        assert!(
+            !rendered.contains('\u{1b}'),
+            "build output should not contain ANSI escapes"
+        );
+    }
+
+    #[test]
+    fn application_config_cannot_select_reserved_framework_codegen() {
+        let root =
+            std::env::temp_dir().join(format!("tuffite-reserved-module-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("api.mojom"),
+            "module tuffite; interface App { Run() => (); };",
+        )
+        .unwrap();
+        let manifest = root.join("tuffite.json");
+        fs::write(&manifest, r#"{"app":{"identifier":"example"},"build":{"mojomSources":["api.mojom"],"shellApi":{"facade":"framework"}}}"#).unwrap();
+        let error = shell_api::Generator::new()
+            .manifest(&manifest)
+            .generate()
+            .unwrap_err();
+        assert!(error.contains("reserved Mojom module"), "{error}");
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[cfg(feature = "cli")]
     #[test]
     fn framework_registry_includes_remoting_methods() {
         let manifest =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/tuffite/tuffite.json");
-        let ids = security_command_ids(&manifest).unwrap();
+        let ids = generate_bindings(&manifest, Some(Facade::Framework))
+            .unwrap()
+            .0
+            .command_ids;
         for method in [
             "capabilities",
             "start",
@@ -564,56 +604,60 @@ mod tests {
             "stats",
             "capture",
         ] {
-            assert!(ids.contains_key(&format!("tuffite.remoting.{method}")));
+            assert!(ids.contains_key(&format!(
+                "tuffite.Remoting.{}{}",
+                method[..1].to_uppercase(),
+                &method[1..]
+            )));
         }
-        assert!(validate_security_entry(&serde_json::json!("tuffite.remoting.*"), &ids).is_ok());
+        assert!(validate_security_entry(&serde_json::json!("tuffite.Remoting.*"), &ids).is_ok());
     }
 
     #[cfg(feature = "cli")]
     #[test]
-    fn namespace_group_scopes_compile_only_for_resource_methods() {
+    fn namespace_group_scopes_are_preserved_for_api_validation() {
         let ids = [
-            "tuffite.window.current",
-            "tuffite.window.focus",
-            "tuffite.path.directories",
+            "tuffite.Window.Current",
+            "tuffite.Window.Focus",
+            "tuffite.Path.Directories",
         ]
         .into_iter()
         .map(|method| (method.to_owned(), "0".to_owned()))
         .collect();
         let grants = compile_security_entry(
             &serde_json::json!({
-                "method": "tuffite.window.*", "allow": [{"window": "*"}]
+                "method": "tuffite.Window.*", "allow": [{"window": "*"}]
             }),
             &ids,
         )
         .unwrap();
         let current = grants
             .iter()
-            .find(|grant| grant["method"] == "tuffite.window.current")
+            .find(|grant| grant["method"] == "tuffite.Window.Current")
             .unwrap();
-        assert!(current.get("allow").is_none());
+        assert_eq!(current["allow"], serde_json::json!([{"window":"*"}]));
         let focus = grants
             .iter()
-            .find(|grant| grant["method"] == "tuffite.window.focus")
+            .find(|grant| grant["method"] == "tuffite.Window.Focus")
             .unwrap();
         assert_eq!(focus["allow"], serde_json::json!([{"window": "*"}]));
         assert!(
             compile_security_entry(
                 &serde_json::json!({
-                    "method": "tuffite.window.*", "allow": [{"path": "data/**"}]
+                    "method": "tuffite.Window.*", "allow": [{"path": "data/**"}]
                 }),
                 &ids
             )
-            .is_err()
+            .is_ok()
         );
         assert!(
             compile_security_entry(
                 &serde_json::json!({
-                    "method": "tuffite.path.*", "allow": [{"path": "data/**"}]
+                    "method": "tuffite.Path.*", "allow": [{"path": "data/**"}]
                 }),
                 &ids
             )
-            .is_err()
+            .is_ok()
         );
     }
 
@@ -621,39 +665,39 @@ mod tests {
     #[test]
     fn shell_api_patterns_and_scopes_are_module_validated() {
         let ids: BTreeMap<String, String> = [
-            "tuffite.path.directories",
-            "tuffite.fs.readFile",
-            "tuffite.fs.writeFile",
-            "tuffite.window.focus",
+            "tuffite.Path.Directories",
+            "tuffite.Fs.ReadFile",
+            "tuffite.Fs.WriteFile",
+            "tuffite.Window.Focus",
         ]
         .into_iter()
         .map(|name| (name.into(), "0".into()))
         .collect();
         assert!(validate_security_entry(&serde_json::json!("*"), &ids).is_ok());
-        assert!(!method_matches("tuffite.*.readFile", "tuffite.fs.readFile"));
+        assert!(!method_matches("tuffite.*.readFile", "tuffite.Fs.ReadFile"));
         assert!(
             validate_security_entry(
                 &serde_json::json!({"method":"*","allow":[{"path":"data/**"}]}),
                 &ids
             )
-            .is_err()
+            .is_ok()
         );
-        assert!(validate_security_entry(&serde_json::json!("tuffite.path.*"), &ids).is_ok());
+        assert!(validate_security_entry(&serde_json::json!("tuffite.Path.*"), &ids).is_ok());
         assert!(validate_security_entry(&serde_json::json!("tuffite.unknown.*"), &ids).is_err());
-        assert!(validate_security_entry(&serde_json::json!({"method":"tuffite.fs.readFile","allow":[{"path":"resource/**"}]}), &ids).is_ok());
+        assert!(validate_security_entry(&serde_json::json!({"method":"tuffite.Fs.ReadFile","allow":[{"path":"resource/**"}]}), &ids).is_ok());
         assert!(
             validate_security_entry(
-                &serde_json::json!({"method":"tuffite.fs.*","allow":[{"path":"resource/**"}]}),
+                &serde_json::json!({"method":"tuffite.Fs.*","allow":[{"path":"resource/**"}]}),
                 &ids
             )
-            .is_err()
+            .is_ok()
         );
         assert!(
             validate_security_entry(
-                &serde_json::json!({"method":"tuffite.path.*","allow":[]}),
+                &serde_json::json!({"method":"tuffite.Path.*","allow":[]}),
                 &ids
             )
-            .is_err()
+            .is_ok()
         );
         for value in [
             serde_json::json!(true),
@@ -662,7 +706,7 @@ mod tests {
         ] {
             assert!(
                 validate_security_entry(
-                    &serde_json::json!({"method":"tuffite.fs.readFile","allow":[value]}),
+                    &serde_json::json!({"method":"tuffite.Fs.ReadFile","allow":[value]}),
                     &ids
                 )
                 .is_err()
@@ -670,11 +714,75 @@ mod tests {
         }
         assert!(
             validate_security_entry(
-                &serde_json::json!({"method":"tuffite.window.focus","allow":[{"window":"*"}]}),
+                &serde_json::json!({"method":"tuffite.Window.Focus","allow":[{"window":"*"}]}),
                 &ids
             )
             .is_ok()
         );
+    }
+
+    #[cfg(feature = "cli")]
+    #[test]
+    fn mojom_interface_permissions_use_canonical_names() {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../playground");
+        let root = std::env::temp_dir().join(format!(
+            "tuffite-typed-route-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        for name in ["shell_api.mojom", "mojom_data.mojom"] {
+            fs::copy(source.join(name), root.join(name)).unwrap();
+        }
+        let base: serde_json::Value =
+            serde_json::from_slice(&fs::read(source.join("tuffite.json")).unwrap()).unwrap();
+        let manifest = root.join("tuffite.json");
+        fs::write(&manifest, serde_json::to_vec(&base).unwrap()).unwrap();
+        assert!(security_command_ids(&manifest).is_ok());
+        for good in [
+            serde_json::json!("playground.Echo.RoundTrip"),
+            serde_json::json!("playground.Echo.*"),
+            serde_json::json!({"method":"playground.Aux.RoundTrip"}),
+        ] {
+            let mut config = base.clone();
+            config["app"]["security"]["capabilities"][0]["shellApi"] = serde_json::json!([good]);
+            fs::write(&manifest, serde_json::to_vec(&config).unwrap()).unwrap();
+            assert!(security_command_ids(&manifest).is_ok());
+        }
+        for bad in [
+            serde_json::json!("playground.echo.roundTrip"),
+            serde_json::json!("playground.Echo.Missing"),
+            serde_json::json!({"method":"playground.Echo.RoundTrip","service":"legacy"}),
+        ] {
+            let mut config = base.clone();
+            config["app"]["security"]["capabilities"][0]["shellApi"] = serde_json::json!([bad]);
+            fs::write(&manifest, serde_json::to_vec(&config).unwrap()).unwrap();
+            assert!(security_command_ids(&manifest).is_err());
+        }
+        assert_eq!(root.parent(), Some(std::env::temp_dir().as_path()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(feature = "cli")]
+    #[test]
+    fn mojom_permissions_resolve_idl_endpoints_without_application_globals() {
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../playground/tuffite.json");
+        let ids = security_command_ids(&manifest).unwrap();
+        let endpoint = "playground.Commands.EchoMojom";
+        assert!(ids.contains_key(endpoint));
+        assert_eq!(
+            compile_security_entry(&serde_json::json!(endpoint), &ids).unwrap(),
+            vec![serde_json::json!(endpoint)]
+        );
+        assert!(
+            compile_security_entry(&serde_json::json!("playground.Commands.Missing"), &ids)
+                .is_err()
+        );
+        let scoped = serde_json::json!({"method":endpoint,"allow":[{"path":"data/**"}]});
+        assert_eq!(compile_security_entry(&scoped, &ids).unwrap(), vec![scoped]);
     }
 
     #[test]
@@ -740,26 +848,23 @@ mod tests {
     "identifier": "com.example.reserved"
   },
   "build": {
-    "shellApi": {
-      "namespace": "tuffite",
-      "definitions": [
-        "shell_api.d.ts"
+    "mojomSources": [
+        "shell_api.mojom"
       ]
-    }
   }
 }"#,
         )
         .unwrap();
         fs::write(
-            root.join("shell_api.d.ts"),
-            "export declare namespace tuffite { export function ping(): Promise<string>; }",
+            root.join("shell_api.mojom"),
+            "module tuffite; interface Commands { Ping() => (string result); };",
         )
         .unwrap();
         let error = shell_api::Generator::new()
             .manifest(&manifest)
             .generate()
             .unwrap_err();
-        assert!(error.contains("shellApi.namespace is invalid"));
+        assert!(error.contains("reserved Mojom module"));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -775,7 +880,7 @@ mod tests {
         }
         fs::create_dir_all(&root).unwrap();
         let manifest = root.join("tuffite.json");
-        let definition = root.join("shell_api.d.ts");
+        let definition = root.join("shell_api.mojom");
         fs::write(
             &manifest,
             r#"{
@@ -783,19 +888,16 @@ mod tests {
     "identifier": "com.example.builder"
   },
   "build": {
-    "shellApi": {
-      "namespace": "api",
-      "definitions": [
-        "shell_api.d.ts"
+    "mojomSources": [
+        "shell_api.mojom"
       ]
-    }
   }
 }"#,
         )
         .unwrap();
         fs::write(
             &definition,
-            "export declare namespace api { export function ping(): Promise<string>; }",
+            "module api; interface Commands { Ping() => (string result); };",
         )
         .unwrap();
         let javascript = root.join("generated/index.js");
@@ -807,11 +909,6 @@ mod tests {
             .generate_for_build()
             .unwrap();
         assert!(write_generation.rerun_paths.contains(&javascript));
-        assert!(
-            write_generation
-                .rerun_paths
-                .contains(&generated.join("shell_api.js"))
-        );
         let build_generation = shell_api::Generator::new()
             .manifest(&manifest)
             .rust(&generated, OutputMode::Verify)
@@ -821,33 +918,17 @@ mod tests {
         assert!(build_generation.rerun_paths.contains(&manifest));
         assert!(build_generation.rerun_paths.contains(&definition));
         assert!(build_generation.rerun_paths.contains(&javascript));
-        assert!(
-            build_generation
-                .rerun_paths
-                .contains(&generated.join("shell_api.js"))
-        );
-        assert!(
-            build_generation
-                .rerun_paths
-                .contains(&generated.join(".tuffite-javascript-outputs.json"))
-        );
         assert!(generated.join("bindings.rs").is_file());
-        assert!(generated.join("shell_api.rs").is_file());
-        assert!(generated.join("shell_api.js").is_file());
-        assert!(generated.join("shell_api.d.ts").is_file());
-        let stale = generated.join("removed.js");
-        fs::write(&stale, "// Generated from removed.d.ts. Do not edit.\n").unwrap();
-        fs::write(
-            generated.join(".tuffite-javascript-outputs.json"),
-            "[\"removed.js\", \"shell_api.js\"]\n",
-        )
-        .unwrap();
-        shell_api::Generator::new()
-            .manifest(&manifest)
-            .javascript(&generated, OutputMode::Write)
-            .generate()
-            .unwrap();
-        assert!(!stale.exists());
+        assert!(generated.join("mojom.rs").is_file());
+        assert!(generated.join("index.d.ts").is_file());
+        for name in [
+            "mojom.js",
+            "mojom.d.ts",
+            ".tuffite-javascript-outputs.json",
+            ".tuffite-declaration-outputs.json",
+        ] {
+            assert!(!generated.join(name).exists(), "{name}");
+        }
         fs::write(&javascript, "stale").unwrap();
         let error = shell_api::Generator::new()
             .manifest(&manifest)
@@ -877,25 +958,22 @@ mod tests {
     "identifier": "com.example.multiple"
   },
   "build": {
-    "shellApi": {
-      "namespace": "api",
-      "definitions": [
-        "alpha.d.ts",
-        "beta.d.ts"
+    "mojomSources": [
+        "alpha.mojom",
+        "beta.mojom"
       ]
-    }
   }
 }"#,
         )
         .unwrap();
         fs::write(
-            root.join("alpha.d.ts"),
-            "export declare namespace api { export namespace alpha { export function ping(): Promise<string>; } }",
+            root.join("alpha.mojom"),
+            "module api; interface Alpha { Ping() => (string result); };",
         )
         .unwrap();
         fs::write(
-            root.join("beta.d.ts"),
-            "export declare namespace api { export namespace beta { export function pong(): Promise<number>; } }",
+            root.join("beta.mojom"),
+            "module api; interface Beta { Pong() => (double result); };",
         )
         .unwrap();
         let generated = shell_api::Generator::new()
@@ -906,7 +984,7 @@ mod tests {
         assert!(generated.rust.contains("pub mod beta"));
         assert!(generated.javascript.contains("alpha.ping"));
         assert!(generated.javascript.contains("beta.pong"));
-        assert!(generated.declarations.contains(" & "));
+        assert!(generated.declarations.contains("ApiApi"));
         fs::remove_dir_all(root).unwrap();
     }
 }

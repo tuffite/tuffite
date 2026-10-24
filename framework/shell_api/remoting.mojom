@@ -1,0 +1,96 @@
+// Shell API contract. JS/TS, Rust and C++ adapters are generated.
+module tuffite;
+
+import "tuffite/framework/shell_api/common.mojom";
+
+struct RemotingCapabilities {
+  bool available;
+  string protocol;
+  array<string> videoCodecs;
+  bool input;
+  bool clipboard;
+  bool reconnect;
+  bool snapshot;
+};
+
+struct RemotingIceServer {
+  array<string> urls;
+  string? username;
+  string? credential;
+};
+
+struct RemotingStartOptions {
+  string authKey;
+  array<RemotingIceServer> iceServers;
+  double? maxBitrateKbps;
+  double? targetFramerate;
+  int64? screenId;
+};
+
+struct RemotingSession {
+  int64 id;
+  string state;
+};
+
+struct RemotingSessionDescription {
+  string type;
+  string sdp;
+};
+
+struct RemotingIceCandidate {
+  string mid;
+  double mLineIndex;
+  string candidate;
+};
+
+struct RemotingSignal {
+  int64 sequence;
+  RemotingSessionDescription? description;
+  array<RemotingIceCandidate> candidates;
+};
+
+struct RemotingInputEvent {
+  string kind;
+  bool? pressed;
+  double? usbKeycode;
+  string? text;
+  double? x;
+  double? y;
+  string? button;
+  bool? buttonDown;
+  double? wheelDeltaX;
+  double? wheelDeltaY;
+  double? wheelTicksX;
+  double? wheelTicksY;
+  string? clipboardMimeType;
+  array<uint8>? clipboardData;
+};
+
+struct RemotingStats {
+  string state;
+  string route;
+  string transport;
+  double latencyMs;
+  double jitterMs;
+  double availableBandwidthKbps;
+  double packetLossPercent;
+};
+
+struct RemotingSnapshot {
+  double width;
+  double height;
+  string mimeType;
+  array<uint8> data;
+};
+
+interface Remoting {
+  Capabilities@0() => (RemotingCapabilities result);
+  Start@1(RemotingStartOptions options) => (RemotingSession result);
+  ProcessSignal@2(int64 id, RemotingSignal signal) => ();
+  TakeSignals@3(int64 id, int64? afterSequence) => (array<RemotingSignal> result);
+  SendInput@4(int64 id, RemotingInputEvent event) => ();
+  Stop@5(int64 id) => ();
+  Stats@6(int64 id) => (RemotingStats result);
+  Capture@7(int64? screenId) => (RemotingSnapshot result);
+  InjectInput@8(RemotingInputEvent event) => ();
+};

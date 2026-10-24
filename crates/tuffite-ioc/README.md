@@ -35,6 +35,8 @@ assert_eq!(*child.get::<Service<u32>>()?, 42);
 ```
 
 - `register(factory)` binds construction; duplicate local identities return errors.
+- `register_eager(factory)` declares a startup root beside its domain provider.
+- `initialize()` resolves local eager roots after freezing, with dependencies first.
 - `inject(Arc<T>)` binds an existing instance with the `Service<T>` identity.
 - `freeze()` freezes the same registry in place; later registration returns an error.
 - `get<Key>` constructs and caches successful instances in the owning registry.
@@ -60,7 +62,10 @@ construct a parent service once. Factories must resolve dependencies through
 `FactoryContext::depends_on`, not reenter a registry through captured handles.
 Cached ownership releases in reverse construction order, with child ownership
 released before its retained parent. External Arcs retain their own lifetimes.
-Start, stop, and task joining remain explicit application responsibilities.
+Resource owners start in their constructors and stop/join in `Drop`. Dropping the
+registry also unwinds partially initialized scopes; no application shutdown list is
+needed. External Arcs can extend resource lifetimes beyond the registry. Fallible
+business operations that require caller-visible errors remain explicit methods.
 
 The CLI uses Clap Options as each subcommand context. Concrete services such as
 `BuildService` and `DevService` register their constructors through the `factory`

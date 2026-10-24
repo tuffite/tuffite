@@ -72,7 +72,7 @@
           "type": "object",
           "propertyNames": {
             "maxLength": 128,
-            "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"
+            "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*((\\.|::)[A-Za-z_$][A-Za-z0-9_$]*)*$"
           },
           "additionalProperties": {
             "type": "object",
@@ -219,32 +219,12 @@
         "profile": {
           "type": "string"
         },
-        "shellApi": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "namespace",
-            "definitions"
-          ],
-          "properties": {
-            "namespace": {
-              "type": "string",
-              "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"
-            },
-            "definitions": {
-              "$ref": "#/$defs/stringArray"
-            },
-            "facade": {
-              "enum": [
-                "application",
-                "framework"
-              ]
-            }
-          }
+        "mojomSources": {
+          "$ref": "#/$defs/stringArray"
         }
       },
       "required": [
-        "shellApi"
+        "mojomSources"
       ]
     },
     "bundle": {

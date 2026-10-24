@@ -1,0 +1,16 @@
+[package]
+name = "tuffite-mojom"
+description = "Source-distributed Mojom data-profile parser, validator and wire layout compiler"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde_json = "1.0"
+miette.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

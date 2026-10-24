@@ -6,6 +6,12 @@ import("//tuffite/tuffite_in_chromium.gni")
 assert(tuffite_in_chromium)
 
 import("//testing/test.gni")
+import("//tuffite/build/shell_api_protocol.gni")
+
+shell_api_protocol("dispatch_fixture") {
+  testonly = true
+  definitions = [ "//tuffite/framework/test/dispatch_fixture.mojom" ]
+}
 
 executable("remoting_pointer_geometry_unittests") {
   testonly = true
@@ -46,6 +52,7 @@ test("abi_host_bridge_unittests") {
     "utility_test_main.cc",
   ]
   deps = [
+    ":dispatch_fixture",
     "//base",
     "//base/test:test_support",
     "//mojo/core/embedder",

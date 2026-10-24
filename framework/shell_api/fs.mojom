@@ -1,0 +1,12 @@
+// Shell API contract. JS/TS, Rust and C++ adapters are generated.
+module tuffite;
+
+import "tuffite/framework/shell_api/common.mojom";
+
+interface Fs {
+  ReadFile@0(BaseDirectory base, string path) => (array<uint8> result);
+  WriteFile@1(BaseDirectory base, string path, array<uint8> contents) => ();
+  Exists@2(BaseDirectory base, string path) => (bool result);
+  CreateDir@3(BaseDirectory base, string path) => ();
+  RemoveFile@4(BaseDirectory base, string path) => ();
+};

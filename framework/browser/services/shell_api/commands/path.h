@@ -4,16 +4,19 @@
 #ifndef TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_PATH_H_
 #define TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_PATH_H_
 
-#include "tuffite/framework/shell_api/path.h"
+#include "tuffite/framework/shell_api/path.mojom.h"
 
 namespace tuffite::shell_api::path {
 
-void Directories(const ::tuffite::dispatch::Context& context,
-                 generated::path::DirectoriesRequest&& request,
-                 generated::path::DirectoriesCallback&& callback);
-void Resolve(const ::tuffite::dispatch::Context& context,
-             generated::path::ResolveRequest&& request,
-             generated::path::ResolveCallback&& callback);
+class PathImpl final : public generated::Path {
+ public:
+  void Directories(const dispatch::Context& context,
+                   generated::Path::DirectoriesRequestPtr request,
+                   generated::Path::DirectoriesCallback callback) override;
+  void Resolve(const dispatch::Context& context,
+               generated::Path::ResolveRequestPtr request,
+               generated::Path::ResolveCallback callback) override;
+};
 
 }  // namespace tuffite::shell_api::path
 

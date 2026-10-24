@@ -35,6 +35,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        mojomSmoke: fileURLToPath(new URL("./mojom-smoke.html", import.meta.url)),
         capabilities: fileURLToPath(new URL("./capabilities.html", import.meta.url)),
         compatibility: fileURLToPath(new URL("./compatibility.html", import.meta.url)),
         compatibilitySample: fileURLToPath(new URL("./compatibility-sample.html", import.meta.url)),

@@ -16,8 +16,6 @@ pub struct Options {
 enum Command {
     /// Generate or verify SDK JavaScript bindings at an explicit destination.
     GenerateJs(GenerateOptions),
-    /// Generate the C++ builtin protocol consumed by Chromium GN.
-    GenerateCpp(CppOptions),
     /// Generate checked-in Rust bindings for the SDK native Shell API client.
     GenerateRust(GenerateOptions),
     /// Verify a local Distribution and its runtime hashes.
@@ -41,12 +39,6 @@ impl GenerateOptions {
     }
 }
 #[derive(Args, Debug, Clone)]
-struct CppOptions {
-    manifest: PathBuf,
-    #[arg(long)]
-    output: PathBuf,
-}
-#[derive(Args, Debug, Clone)]
 struct VerifyOptions {
     distribution: PathBuf,
 }
@@ -59,7 +51,6 @@ pub(super) fn run<P: Send + Sync + 'static>(
     scope.freeze();
     match scope.context().command.clone() {
         Command::GenerateJs(options) => service(&scope, options, GenerateJsService::new)?.run(),
-        Command::GenerateCpp(options) => service(&scope, options, GenerateCppService::new)?.run(),
         Command::GenerateRust(options) => service(&scope, options, GenerateRustService::new)?.run(),
         Command::Verify(options) => service(&scope, options, VerifyService::new)?.run(),
     }
@@ -75,6 +66,7 @@ impl GenerateJsService {
 
     fn run(&self) -> anyhow::Result<()> {
         Generator::new()
+            .framework()
             .manifest(&self.0.manifest)
             .javascript(&self.0.output, self.0.mode())
             .generate()
@@ -92,23 +84,9 @@ impl GenerateRustService {
 
     fn run(&self) -> anyhow::Result<()> {
         Generator::new()
+            .framework()
             .manifest(&self.0.manifest)
             .rust_file(&self.0.output, self.0.mode())
-            .generate()
-            .map(|_| ())
-            .map_err(anyhow::Error::msg)
-    }
-}
-struct GenerateCppService(Arc<CppOptions>);
-impl GenerateCppService {
-    fn new(build: &mut FactoryContext<'_, CppOptions>) -> Result<Arc<Self>, String> {
-        Ok(Arc::new(Self(build.depends_on::<Service<CppOptions>>()?)))
-    }
-
-    fn run(&self) -> anyhow::Result<()> {
-        Generator::new()
-            .manifest(&self.0.manifest)
-            .cpp(&self.0.output, OutputMode::Write)
             .generate()
             .map(|_| ())
             .map_err(anyhow::Error::msg)
