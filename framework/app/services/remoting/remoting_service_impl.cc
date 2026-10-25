@@ -20,6 +20,7 @@
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/logging.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted_delete_on_sequence.h"
 #include "base/memory/weak_ptr.h"
@@ -56,6 +57,7 @@
 #include "remoting/protocol/webrtc_connection_to_client.h"
 #include "remoting/protocol/webrtc_video_encoder_factory.h"
 #include "remoting/signaling/jingle_data_structures.h"
+#include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/webrtc/api/candidate.h"
 #include "third_party/webrtc/modules/desktop_capture/desktop_capture_options.h"
 #include "third_party/webrtc/modules/desktop_capture/desktop_capture_types.h"
@@ -216,15 +218,28 @@ class OneShotDesktopCapture final
 
   void OnCaptureResult(webrtc::DesktopCapturer::Result result,
                        std::unique_ptr<webrtc::DesktopFrame> frame) override {
+    VLOG(1) << "One-shot desktop capture completed: "
+            << static_cast<int>(result);
     api::Status status = api::Status::kUnavailable;
     api::Snapshot snapshot;
     if (result == webrtc::DesktopCapturer::Result::SUCCESS && frame &&
         frame->data() && frame->size().width() > 0 &&
         frame->size().height() > 0) {
-      auto encoded = gfx::PNGCodec::Encode(
-          frame->data(), gfx::PNGCodec::FORMAT_BGRA,
-          gfx::Size(frame->size().width(), frame->size().height()),
-          frame->stride(), true, {});
+      // Interactive screenshots need bounded latency, not archival compression.
+      // Reuse Chromium's low-compression lossless encoder without copying or
+      // downscaling the desktop pixels. Medium compression can exceed the SDK's
+      // RPC deadline on a high-resolution desktop.
+      SkBitmap bitmap;
+      const bool installed = bitmap.installPixels(
+        SkImageInfo::Make(frame->size().width(), frame->size().height(),
+          kBGRA_8888_SkColorType, kOpaque_SkAlphaType),
+        frame->data(), frame->stride());
+      auto encoded = installed
+        ? gfx::PNGCodec::FastEncodeBGRASkBitmap(bitmap, true)
+        : std::nullopt;
+      VLOG(1) << "One-shot PNG encoding completed: " << frame->size().width()
+        << "x" << frame->size().height()
+        << ", bytes=" << (encoded ? encoded->size() : 0);
       if (encoded) {
         status = api::Status::kOk;
         snapshot.width = static_cast<uint32_t>(frame->size().width());
@@ -259,8 +274,10 @@ class OneShotDesktopCapture final
 
   void StartOnCaptureSequence(std::optional<int64_t> screen_id) {
     keep_alive_ = this;
+    VLOG(1) << "Creating one-shot desktop capturer";
     capturer_ = webrtc::DesktopCapturer::CreateScreenCapturer(
         webrtc::DesktopCaptureOptions::CreateDefault());
+    VLOG(1) << "One-shot desktop capturer created";
     const webrtc::ScreenId source =
         screen_id.value_or(static_cast<int64_t>(webrtc::kFullDesktopScreenId));
     if (!capturer_ || !capturer_->SelectSource(source)) {
@@ -268,8 +285,16 @@ class OneShotDesktopCapture final
                       nullptr);
       return;
     }
+    VLOG(1) << "Starting one-shot desktop capturer";
     capturer_->Start(this);
+    // Start may synchronously report a permanent error. Do not request another
+    // frame after that callback has consumed the one-shot reply.
+    if (!callback_) {
+      return;
+    }
+    VLOG(1) << "Requesting one-shot desktop frame";
     capturer_->CaptureFrame();
+    VLOG(1) << "One-shot desktop frame request returned";
   }
 
   void Finish() { capturer_.reset(); }

@@ -59,6 +59,49 @@ pub trait Value: Sized {
     const REFERENCE: bool = false;
     fn put(&self, w: &mut Encoder, at: usize, bit: u8) -> Result<(), CodecError>;
     fn get(r: &mut Decoder<'_>, at: usize, bit: u8) -> Result<Self, CodecError>;
+
+    fn put_array(w: &mut Encoder, base: usize, values: &[Self]) -> Result<(), CodecError> {
+        for (index, value) in values.iter().enumerate() {
+            let at = base
+                + if Self::BOOLEAN {
+                    index / 8
+                } else {
+                    index * Self::WIDTH
+                };
+            value.put(
+                w,
+                at,
+                if Self::BOOLEAN {
+                    u8::try_from(index % 8).map_err(|_| CodecError)?
+                } else {
+                    0
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    fn get_array(r: &mut Decoder<'_>, base: usize, length: usize) -> Result<Vec<Self>, CodecError> {
+        (0..length)
+            .map(|index| {
+                let at = base
+                    + if Self::BOOLEAN {
+                        index / 8
+                    } else {
+                        index * Self::WIDTH
+                    };
+                Self::get(
+                    r,
+                    at,
+                    if Self::BOOLEAN {
+                        u8::try_from(index % 8).map_err(|_| CodecError)?
+                    } else {
+                        0
+                    },
+                )
+            })
+            .collect()
+    }
 }
 macro_rules! values { ($($ty:ty),*) => {$(
     impl Value for $ty {
@@ -67,7 +110,31 @@ macro_rules! values { ($($ty:ty),*) => {$(
         fn get(r: &mut Decoder<'_>, at: usize, _: u8) -> Result<Self, CodecError> { r.scalar(at) }
     }
 )*}; }
-values!(u8, i8, u16, i16, u32, i32, u64, i64, f32, f64);
+values!(i8, u16, i16, u32, i32, u64, i64, f32, f64);
+// Desktop snapshots are byte arrays. Preserve the same Mojom framing and
+// validation, then copy their contiguous payload once instead of dispatching
+// and checking each byte separately (particularly costly in debug hosts).
+impl Value for u8 {
+    const WIDTH: usize = 1;
+    fn put(&self, w: &mut Encoder, at: usize, _: u8) -> Result<(), CodecError> {
+        w.scalar(at, self)
+    }
+    fn get(r: &mut Decoder<'_>, at: usize, _: u8) -> Result<Self, CodecError> {
+        r.scalar(at)
+    }
+    fn put_array(w: &mut Encoder, base: usize, values: &[Self]) -> Result<(), CodecError> {
+        let end = base.checked_add(values.len()).ok_or(CodecError)?;
+        w.bytes
+            .get_mut(base..end)
+            .ok_or(CodecError)?
+            .copy_from_slice(values);
+        Ok(())
+    }
+    fn get_array(r: &mut Decoder<'_>, base: usize, length: usize) -> Result<Vec<Self>, CodecError> {
+        let end = base.checked_add(length).ok_or(CodecError)?;
+        Ok(r.bytes.get(base..end).ok_or(CodecError)?.to_vec())
+    }
+}
 impl Value for bool {
     const WIDTH: usize = 1;
     const BOOLEAN: bool = true;
@@ -198,24 +265,7 @@ impl Encoder {
             target + 4,
             &u32::try_from(values.len()).map_err(|_| CodecError)?,
         )?;
-        for (index, value) in values.iter().enumerate() {
-            let at = target
-                + 8
-                + if T::BOOLEAN {
-                    index / 8
-                } else {
-                    index * T::WIDTH
-                };
-            value.put(
-                self,
-                at,
-                if T::BOOLEAN {
-                    u8::try_from(index % 8).map_err(|_| CodecError)?
-                } else {
-                    0
-                },
-            )?;
-        }
+        T::put_array(self, target + 8, values)?;
         Ok(())
     }
 
@@ -306,26 +356,7 @@ impl Decoder<'_> {
             return Err(CodecError);
         }
         self.claim(target, size)?;
-        (0..length)
-            .map(|index| {
-                let at = target
-                    + 8
-                    + if T::BOOLEAN {
-                        index / 8
-                    } else {
-                        index * T::WIDTH
-                    };
-                T::get(
-                    self,
-                    at,
-                    if T::BOOLEAN {
-                        u8::try_from(index % 8).map_err(|_| CodecError)?
-                    } else {
-                        0
-                    },
-                )
-            })
-            .collect()
+        T::get_array(self, target + 8, length)
     }
 
     pub fn structure<T: Struct>(&mut self, offset: usize) -> Result<T, CodecError> {
@@ -333,5 +364,80 @@ impl Decoder<'_> {
         self.claim(target, T::SIZE)?;
         self.header(target, T::SIZE)?;
         T::read(self, target)
+    }
+}
+
+#[cfg(test)]
+mod byte_array_tests {
+    use super::*;
+    use std::time::Instant;
+
+    struct Payload(Vec<u8>);
+    impl Struct for Payload {
+        const SIZE: usize = 16;
+        fn write(&self, w: &mut Encoder, base: usize) -> Result<(), CodecError> {
+            self.0.put(w, base + 8, 0)
+        }
+        fn read(r: &mut Decoder<'_>, base: usize) -> Result<Self, CodecError> {
+            Vec::<u8>::get(r, base + 8, 0).map(Self)
+        }
+    }
+    #[test]
+    fn byte_array_preserves_mojom_wire_and_validation() {
+        let golden = vec![
+            16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 4, 0, 0, 0, 0, 1, 128,
+            255, 0, 0, 0, 0,
+        ];
+        assert_eq!(
+            Payload(vec![0, 1, 128, 255]).encode_mojom().unwrap(),
+            golden
+        );
+        assert_eq!(Payload::decode_mojom(&golden).unwrap().0, [0, 1, 128, 255]);
+        for length in 0..golden.len() {
+            assert!(Payload::decode_mojom(&golden[..length]).is_err());
+        }
+        let mut malformed = golden.clone();
+        malformed[20] = 5; // Count no longer matches the array's byte size.
+        assert!(Payload::decode_mojom(&malformed).is_err());
+        let mut trailing = golden;
+        trailing.push(0);
+        assert!(Payload::decode_mojom(&trailing).is_err());
+        assert!(
+            Payload::decode_mojom(&Payload(vec![]).encode_mojom().unwrap())
+                .unwrap()
+                .0
+                .is_empty()
+        );
+    }
+    #[test]
+    fn desktop_sized_bytes_match_scalar_array_path() {
+        struct ScalarByte(u8);
+        impl Value for ScalarByte {
+            const WIDTH: usize = 1;
+            fn put(&self, w: &mut Encoder, at: usize, bit: u8) -> Result<(), CodecError> {
+                self.0.put(w, at, bit)
+            }
+            fn get(r: &mut Decoder<'_>, at: usize, bit: u8) -> Result<Self, CodecError> {
+                u8::get(r, at, bit).map(Self)
+            }
+        }
+        let data = vec![137; 8 * 1024 * 1024];
+        let start = Instant::now();
+        let encoded = Payload(data.clone()).encode_mojom().unwrap();
+        let round_trip = Payload::decode_mojom(&encoded).unwrap();
+        let bulk = start.elapsed();
+        assert_eq!(round_trip.0, data);
+        let mut decoder = Decoder {
+            bytes: &encoded,
+            claimed: 16,
+        };
+        let start = Instant::now();
+        let scalar = decoder.array::<ScalarByte>(8).unwrap();
+        let scalar_duration = start.elapsed();
+        assert_eq!(scalar.len(), data.len());
+        assert!(scalar.iter().zip(data).all(|(a, b)| a.0 == b));
+        eprintln!(
+            "8 MiB Mojom bytes: bulk encode+decode={bulk:?}, scalar decode={scalar_duration:?}"
+        );
     }
 }
