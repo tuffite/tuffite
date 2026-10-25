@@ -264,7 +264,7 @@ TEST_F(OriginCapabilityTest, IsolatedPackagesAreImmutableAndOriginScoped) {
   origins.Append("originlab://main");
   definition.Set("origins", std::move(origins));
   base::DictValue worlds;
-  worlds.Set("weather", std::move(definition));
+  worlds.Set("io.example.visual-blocks", std::move(definition));
   parsed->GetDict().FindDict("app")->Set("isolatedWorlds", std::move(worlds));
   ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
                               *base::WriteJson(*parsed)));
@@ -275,14 +275,14 @@ TEST_F(OriginCapabilityTest, IsolatedPackagesAreImmutableAndOriginScoped) {
   for (const auto& [name, snapshot] : manifest->IsolatedWorldDefinitions()) {
     registry.AddBundled(name, snapshot);
   }
-  EXPECT_EQ(registry.Source("weather", Origin("originlab://main")),
+  EXPECT_EQ(registry.Source("io.example.visual-blocks", Origin("originlab://main")),
             "globalThis.fixture = 1;");
-  EXPECT_FALSE(registry.Source("weather", Origin("originlab://public")));
+  EXPECT_FALSE(registry.Source("io.example.visual-blocks", Origin("originlab://public")));
   EXPECT_FALSE(registry.Source("unknown", Origin("originlab://main")));
   parsed->GetDict()
       .FindDict("app")
       ->FindDict("isolatedWorlds")
-      ->FindDict("weather")
+      ->FindDict("io.example.visual-blocks")
       ->Set("entry", "../card.js");
   ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
                               *base::WriteJson(*parsed)));
@@ -799,7 +799,7 @@ TEST(IsolatedRegistryTest, ValidationQuotaAndBundledProtection) {
       "source":"dynamic","origins":["*"]})");
   EXPECT_FALSE(registry.Apply(request));
   request.Set("origins", base::ListValue().Append("https://main.example"));
-  request.Set("source", std::string(256 * 1024 + 1, 'a'));
+  request.Set("source", std::string(8 * 1024 * 1024 + 1, 'a'));
   EXPECT_FALSE(registry.Apply(request));
   request.Set("source", "valid");
   request.Set("name", "../escape");
@@ -829,7 +829,7 @@ TEST(IsolatedRegistryTest, AggregateLimitPreservesPreviousGeneration) {
       base::JSON_PARSE_RFC);
   auto generation = registry.Apply(request);
   ASSERT_TRUE(generation);
-  request.Set("source", std::string(256 * 1024, 'a'));
+  request.Set("source", std::string(8 * 1024 * 1024, 'a'));
   for (int i = 0; i < 3; ++i) {
     request.Set("name", "large" + std::to_string(i));
     ASSERT_TRUE(registry.Apply(request));
@@ -839,7 +839,7 @@ TEST(IsolatedRegistryTest, AggregateLimitPreservesPreviousGeneration) {
   request.Set("name", "card");
   request.Set("op", "replace");
   request.Set("generation", *generation);
-  request.Set("source", std::string(256 * 1024 + 1, 'b'));
+  request.Set("source", std::string(8 * 1024 * 1024 + 1, 'b'));
   EXPECT_FALSE(registry.Apply(request));
   EXPECT_EQ(registry.Source("card",
                             url::Origin::Create(GURL("https://main.example"))),

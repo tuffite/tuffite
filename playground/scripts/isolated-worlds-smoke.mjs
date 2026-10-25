@@ -19,23 +19,23 @@ await new Promise((resolve, reject) => {
   socket.addEventListener('error', reject, {once:true});
 });
 let nextId = 0;
-function send(method, params) {
+function send(method, params, connection = socket) {
   const id = ++nextId;
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
-      socket.removeEventListener('message', receive);
+      connection.removeEventListener('message', receive);
       reject(new Error(`CDP ${method} timed out`));
     }, 10000);
     function receive(event) {
       const message = JSON.parse(event.data);
       if (message.id !== id) return;
       clearTimeout(timeout);
-      socket.removeEventListener('message', receive);
+      connection.removeEventListener('message', receive);
       if (message.error) reject(new Error(JSON.stringify(message.error)));
       else resolve(message.result);
     }
-    socket.addEventListener('message', receive);
-    socket.send(JSON.stringify({id, method, params}));
+    connection.addEventListener('message', receive);
+    connection.send(JSON.stringify({id, method, params}));
   });
 }
 async function evaluate(fn) {
@@ -134,6 +134,54 @@ try {
   });
   assert.deepEqual(disposal,{denied:true,mountDenied:true,remaining:0});
   assert.deepEqual(await evaluate(() => globalThis.__isolatedWaits), {started:2,aborted:2});
+  // Application routes also run in Explorer WebContents (for example thread
+  // pages). Exercise the real browser-owned role and committed-origin checks.
+  for (const origin of ['main', 'public']) {
+    const url = `playground://${origin}/ui/dist/isolated.html?explorer-isolated-smoke`;
+    await evaluate(() => {
+      const explorer = document.createElement('explorer');
+      explorer.id = 'isolated-explorer-smoke';
+      explorer.navigation = 'allow';
+      explorer.style.cssText = 'display:block;width:500px;height:300px';
+      document.body.append(explorer);
+    });
+    await send('Runtime.evaluate', {expression: `document.querySelector('#isolated-explorer-smoke').src = ${JSON.stringify(url)}`});
+    let guest;
+    const guestDeadline = Date.now() + 15000;
+    while (Date.now() < guestDeadline) {
+      const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+      guest = targets.find(item => item.type === 'webview' && item.url === url);
+      if (guest?.webSocketDebuggerUrl) break;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    assert.ok(guest?.webSocketDebuggerUrl, `Explorer ${origin} target`);
+    const guestSocket = new WebSocket(guest.webSocketDebuggerUrl);
+    try {
+      await new Promise((resolve, reject) => {
+        guestSocket.addEventListener('open', resolve, {once:true});
+        guestSocket.addEventListener('error', reject, {once:true});
+      });
+      let guestState;
+      const stateDeadline = Date.now() + 15000;
+      while (Date.now() < stateDeadline) {
+        const result = await send('Runtime.evaluate', {
+          expression:'globalThis.__isolatedSmoke', returnByValue:true,
+        }, guestSocket);
+        guestState = result.result.value;
+        if (guestState) break;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      if (origin === 'main') {
+        assert.equal(guestState?.error, undefined, JSON.stringify(guestState));
+        assert.equal(guestState?.mounted, true, 'authorized Explorer can mount isolated UI');
+      } else {
+        assert.match(guestState?.error ?? '', /unavailable or denied/, 'other Explorer origins remain denied');
+      }
+    } finally {
+      guestSocket.close();
+      await evaluate(() => document.querySelector('#isolated-explorer-smoke').remove());
+    }
+  }
   await send('Page.navigate', {url:'playground://public/ui/dist/isolated.html'});
   let deniedState;
   const deniedDeadline = Date.now() + 10000;
@@ -143,5 +191,5 @@ try {
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   assert.match(deniedState?.error ?? '', /unavailable or denied/);
-  console.log(JSON.stringify({isolated_worlds:true,dynamic_registration:true,removed_registration_denied:true,scoped_components:true,property_setters:true,callbacks:true,request_reply:true,disposal:true}));
+  console.log(JSON.stringify({isolated_worlds:true,dynamic_registration:true,removed_registration_denied:true,scoped_components:true,property_setters:true,callbacks:true,request_reply:true,disposal:true,explorer_authorized:true,explorer_origin_denied:true}));
 } finally { socket.close(); }

@@ -155,14 +155,12 @@ fn check_app(value: &Value) -> Result<(), String> {
             return Err("app.isolatedWorlds: at most 32 worlds".to_owned());
         }
         for (name, value) in worlds {
-            if name.len() > 128
-                || !name.replace("::", ".").split('.').all(|part| {
-                    let mut bytes = part.bytes();
-                    bytes
-                        .next()
-                        .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_' || b == b'$')
-                        && bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$')
-                })
+            if name.is_empty()
+                || name.len() > 128
+                || !name.as_bytes()[0].is_ascii_alphabetic()
+                || !name
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
             {
                 return Err("app.isolatedWorlds: invalid name".to_owned());
             }
@@ -689,6 +687,14 @@ mod tests {
             serde_json::from_str(include_str!("../../../../playground/tuffite.json")).unwrap();
         let mut app = fixture["app"].clone();
         assert!(check_app(&app).is_ok());
+        for name in ["io.example.visual-blocks", "extension_a", "world"] {
+            app["isolatedWorlds"] = serde_json::json!({name: {"entry":"card.js","origins":["playground://main"]}});
+            assert!(check_app(&app).is_ok(), "{name}");
+        }
+        for name in ["", "9bad", "app::World", "_bad", "bad/name"] {
+            app["isolatedWorlds"] = serde_json::json!({name: {"entry":"card.js","origins":["playground://main"]}});
+            assert!(check_app(&app).is_err(), "{name}");
+        }
         for definition in [
             serde_json::json!({"entry":"../escape.js","origins":["playground://main"]}),
             serde_json::json!({"entry":"card.js","origins":[]}),

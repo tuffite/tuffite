@@ -85,7 +85,8 @@ It is referenced through the receiver registered by `ContentBrowserClient`, so
 there is no direct browser C++ call to its `Load` override.
 
 `IsolatedHost` owns document-scoped Mojo lifetime. The profile service checks the
-actual frame's App/main-frame role and committed origin before returning source.
+actual primary main frame, browser-owned App or Explorer policy, and committed
+origin before returning source. Subframes and unclassified surfaces are denied.
 
 ## Bundled registration shorthand
 
@@ -107,10 +108,11 @@ Its snapshots enter the same browser registry and reserve their names:
 
 Entries are relative to the packaged `assets/` directory; the application CLI
 copies them from the same relative project path. Native startup rejects parent
-traversal, symlinks, invalid origins, non-UTF-8 sources, entries above 256 KiB,
-and aggregate sources above 1 MiB (at most 32 definitions). The browser snapshots
-sources at startup. Only authorized App main-frame documents can load them;
-Explorer documents cannot, even with the same origin. Development aliases follow
+traversal, symlinks, invalid origins, non-UTF-8 sources, entries above 8 MiB,
+and aggregate sources above 32 MiB (at most 32 definitions). The browser snapshots
+sources at startup. Authorized App and browser-created Explorer primary main
+documents can load them, subject to each world's origin grants. Other origins,
+subframes, and unclassified surfaces remain denied. Development aliases follow
 the packaged entry origin's grants. Renderer JavaScript cannot register a package or supply
 an arbitrary entry URL/source through this API.
 

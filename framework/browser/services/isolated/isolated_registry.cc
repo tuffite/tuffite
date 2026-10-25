@@ -40,12 +40,7 @@ std::optional<std::string> IsolatedRegistry::Apply(
     const base::DictValue& request) {
   const auto* op = request.FindString("op");
   const auto* name = request.FindString("name");
-  if (!op || !name || name->empty() || name->size() > 128 ||
-      !base::IsAsciiAlpha((*name)[0]) ||
-      !std::ranges::all_of(*name, [](char ch) {
-        return base::IsAsciiAlphaNumeric(ch) || ch == '_' || ch == '-' ||
-               ch == '.';
-      })) {
+  if (!op || !name || !isolated::IsValidWorldName(*name)) {
     return std::nullopt;
   }
   auto found = entries_.find(*name);

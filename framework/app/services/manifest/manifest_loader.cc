@@ -281,7 +281,7 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
     }
     size_t total_source_bytes = 0;
     for (const auto [name, definition] : *worlds) {
-      if (!IsUtilityName(name) || !definition.is_dict()) {
+      if (!isolated::IsValidWorldName(name) || !definition.is_dict()) {
         return fail("invalid isolated world definition");
       }
       const auto& config = definition.GetDict();
@@ -304,13 +304,13 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
       const auto path =
           manifest->assets_.root.Append(base::FilePath::FromUTF8Unsafe(*entry));
       if (!access::HasNoSymlinkComponents(manifest->assets_.root, path) ||
-          !base::ReadFileToStringWithMaxSize(path, &world.source, 256 * 1024) ||
+          !base::ReadFileToStringWithMaxSize(path, &world.source, 8 * 1024 * 1024) ||
           world.source.empty() || !base::IsStringUTF8(world.source)) {
         return fail("unable to read isolated world entry: " + *entry);
       }
       total_source_bytes += world.source.size();
-      if (total_source_bytes > 1024 * 1024) {
-        return fail("isolated world entries exceed 1 MiB");
+      if (total_source_bytes > 32 * 1024 * 1024) {
+        return fail("isolated world entries exceed 32 MiB");
       }
       manifest->isolated_worlds_.emplace(name, std::move(world));
     }

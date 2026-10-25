@@ -27,8 +27,16 @@ std::optional<std::string> IsolatedServiceImpl::SourceForFrame(
     content::RenderFrameHost& frame,
     const std::string& name) const {
   auto* contents = content::WebContents::FromRenderFrameHost(&frame);
-  if (frame.GetParent() ||
-      WebContentsRoleData::GetRole(contents) != WebContentsRole::kApp) {
+  const auto role = WebContentsRoleData::GetRole(contents);
+  // Internal application routes can live in Explorer WebContents. The
+  // browser-owned policy establishes the surface; the registration's origin
+  // grants still authorize the committed document on every load.
+  const bool allowed_surface =
+      role == WebContentsRole::kApp ||
+      (role == WebContentsRole::kExplorer &&
+       WebContentsRoleData::GetExplorerPolicy(contents));
+  if (!contents || contents->GetPrimaryMainFrame() != &frame ||
+      !allowed_surface) {
     return std::nullopt;
   }
   return Source(name, frame.GetLastCommittedOrigin());
