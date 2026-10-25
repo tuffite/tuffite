@@ -1,0 +1,44 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+import("//tuffite/tuffite_in_chromium.gni")
+assert(tuffite_in_chromium)
+source_set("registry") {
+  sources = [
+    "isolated_registry.cc",
+    "isolated_registry.h",
+  ]
+  public_deps = [
+    "//base",
+    "//tuffite/components/isolated/common:configuration",
+    "//url",
+  ]
+  deps = [ "//tuffite/framework/common:access" ]
+}
+source_set("isolated") {
+  public = [
+    "isolated_abi.h",
+    "isolated_service.h",
+    "isolated_service_factory.h",
+  ]
+  sources = public + [
+              "isolated_abi.cc",
+              "isolated_service_factory.cc",
+              "isolated_service_impl.cc",
+              "isolated_service_impl.h",
+            ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/content",
+    "//components/keyed_service/core",
+    "//content/public/browser",
+    "//tuffite/components/isolated/browser",
+    "//tuffite/framework/public:abi",
+    "//url",
+  ]
+  deps = [
+    ":registry",
+    "//tuffite/framework/app:host_headers",
+    "//tuffite/framework/app/services/manifest",
+    "//tuffite/framework/browser:support",
+  ]
+}

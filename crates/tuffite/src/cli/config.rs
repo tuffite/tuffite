@@ -122,6 +122,7 @@ fn check_app(value: &Value) -> Result<(), String> {
             "assets",
             "network",
             "utilities",
+            "isolatedWorlds",
             "security",
         ],
     )?;
@@ -145,6 +146,40 @@ fn check_app(value: &Value) -> Result<(), String> {
                 && serde_json::to_vec(config).map_err(|e| e.to_string())?.len() > 64 * 1024
             {
                 return Err(format!("{path}.configuration: exceeds 64 KiB"));
+            }
+        }
+    }
+    if let Some(worlds) = app.get("isolatedWorlds") {
+        let worlds = object(worlds, "app.isolatedWorlds")?;
+        if worlds.len() > 32 {
+            return Err("app.isolatedWorlds: at most 32 worlds".to_owned());
+        }
+        for (name, value) in worlds {
+            if name.len() > 128
+                || !name.replace("::", ".").split('.').all(|part| {
+                    let mut bytes = part.bytes();
+                    bytes
+                        .next()
+                        .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_' || b == b'$')
+                        && bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$')
+                })
+            {
+                return Err("app.isolatedWorlds: invalid name".to_owned());
+            }
+            let path = format!("app.isolatedWorlds.{name}");
+            let value = object(value, &path)?;
+            known_fields(value, &path, &["entry", "origins"])?;
+            let entry = nonempty_string(value.get("entry"), &format!("{path}.entry"))?;
+            super::filesystem::safe_relative_path(entry, &format!("{path}.entry"))?;
+            let origins = array(
+                required(value, "origins", &path)?,
+                &format!("{path}.origins"),
+            )?;
+            if origins.is_empty() || origins.len() > 32 {
+                return Err(format!("{path}.origins: expected 1..=32 origins"));
+            }
+            for origin in origins {
+                check_origin_pattern(nonempty_string(Some(origin), &path)?, &path, false)?;
             }
         }
     }
@@ -647,6 +682,22 @@ fn strings(value: &Value, path: &str, empty_allowed: bool) -> Result<(), String>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn isolated_world_packages_require_scoped_origins_and_safe_entries() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../../../playground/tuffite.json")).unwrap();
+        let mut app = fixture["app"].clone();
+        assert!(check_app(&app).is_ok());
+        for definition in [
+            serde_json::json!({"entry":"../escape.js","origins":["playground://main"]}),
+            serde_json::json!({"entry":"card.js","origins":[]}),
+            serde_json::json!({"entry":"card.js","origins":["playground://main"],"source":"no"}),
+        ] {
+            app["isolatedWorlds"] = serde_json::json!({"weather": definition});
+            assert!(check_app(&app).is_err());
+        }
+    }
 
     #[test]
     fn utility_startup_configuration_accepts_rust_owner_paths() {

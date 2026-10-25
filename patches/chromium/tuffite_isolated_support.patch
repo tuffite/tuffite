@@ -1,0 +1,135 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Garey Chan <garey.chan@outlook.com>
+Date: Sun, 25 Oct 2026 19:29:30 +0800
+Subject: Tuffite: add isolated-world Web Components support
+
+
+diff --git a/third_party/blink/renderer/bindings/core/v8/script_custom_element_definition_builder.cc b/third_party/blink/renderer/bindings/core/v8/script_custom_element_definition_builder.cc
+index e7778470dd89df0fe682e33fbd9a1e5dcafe0d25..484ed8b588e65096670deda3b245d1092476711b 100644
+--- a/third_party/blink/renderer/bindings/core/v8/script_custom_element_definition_builder.cc
++++ b/third_party/blink/renderer/bindings/core/v8/script_custom_element_definition_builder.cc
+@@ -22,6 +22,13 @@
+ #include "third_party/blink/renderer/platform/bindings/dom_wrapper_world.h"
+ #include "third_party/blink/renderer/platform/bindings/exception_state.h"
+ 
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++#include "tuffite/components/isolated/renderer/blink/isolated_bridge.h"
++#endif
++// TUFFITE_END
++
+ namespace blink {
+ 
+ ScriptCustomElementDefinitionBuilder::ScriptCustomElementDefinitionBuilder(
+@@ -36,7 +43,21 @@ ScriptCustomElementDefinitionBuilder::ScriptCustomElementDefinitionBuilder(
+ }
+ 
+ bool ScriptCustomElementDefinitionBuilder::CheckConstructorIntrinsics() {
++  // TUFFITE_BEGIN
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  if ((!GetScriptState()->World().IsMainWorld() &&
++       !IsTuffiteIsolatedWorld(GetScriptState())) ||
++      data_.registry_->GetWorldId() != GetScriptState()->World().GetWorldId() ||
++      ScriptState::ForRelevantRealm(Isolate(), Constructor()->CallbackObject())
++              ->World()
++              .GetWorldId() != GetScriptState()->World().GetWorldId()) {
++    exception_state_.ThrowTypeError("Cross-world custom element definition");
++    return false;
++  }
++#else
+   DCHECK(GetScriptState()->World().IsMainWorld());
++#endif
++  // TUFFITE_END
+ 
+   if (!Constructor()->IsConstructor()) {
+     exception_state_.ThrowTypeError(
+diff --git a/third_party/blink/renderer/bindings/core/v8/v8_html_constructor.cc b/third_party/blink/renderer/bindings/core/v8/v8_html_constructor.cc
+index bc0326b378b08b8aa010695aa2a444a9767995fb..38621c36c483a920fef67490839a0a387ba103ea 100644
+--- a/third_party/blink/renderer/bindings/core/v8/v8_html_constructor.cc
++++ b/third_party/blink/renderer/bindings/core/v8/v8_html_constructor.cc
+@@ -19,6 +19,13 @@
+ #include "third_party/blink/renderer/platform/bindings/v8_throw_exception.h"
+ #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
+ 
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++#include "tuffite/components/isolated/renderer/blink/isolated_bridge.h"
++#endif
++// TUFFITE_END
++
+ namespace blink {
+ 
+ // https://html.spec.whatwg.org/C/#html-element-constructors
+@@ -38,7 +45,13 @@ void V8HTMLConstructor::HtmlConstructor(
+     return;
+   }
+ 
+-  if (!script_state->World().IsMainWorld()) {
++  if (!script_state->World().IsMainWorld()
++// TUFFITE_BEGIN
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++      && !IsTuffiteIsolatedWorld(script_state)
++#endif
++      // TUFFITE_END
++  ) {
+     V8ThrowException::ThrowTypeError(isolate, "Illegal constructor");
+     return;
+   }
+@@ -66,10 +79,26 @@ void V8HTMLConstructor::HtmlConstructor(
+   if (construction_stack && construction_stack->size()) {
+     definition = construction_stack->back().definition;
+   }
+-  if (!definition) {
++  if (!definition
++// TUFFITE_BEGIN
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++      && script_state->World().IsMainWorld()
++#endif
++      // TUFFITE_END
++  ) {
+     definition =
+         window->customElements()->DefinitionForConstructor(constructor);
+   }
++  // TUFFITE_BEGIN
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  if (definition && definition->GetRegistry().GetWorldId() !=
++                        script_state->World().GetWorldId()) {
++    V8ThrowException::ThrowTypeError(isolate,
++                                     "Cross-world component construction");
++    return;
++  }
++#endif
++  // TUFFITE_END
+   if (!definition) {
+     V8ThrowException::ThrowTypeError(isolate, "Illegal constructor");
+     return;
+diff --git a/third_party/blink/renderer/core/BUILD.gn b/third_party/blink/renderer/core/BUILD.gn
+index 198be71c7c70744bda4d25553a75f43e9b99eae5..1d557dfb6c86b8b97aaa3618ad424aaa248d370f 100644
+--- a/third_party/blink/renderer/core/BUILD.gn
++++ b/third_party/blink/renderer/core/BUILD.gn
+@@ -96,6 +96,7 @@ import("//third_party/protobuf/proto_library.gni")
+ 
+ # TUFFITE_BEGIN
+ import("//tuffite/components/explorer/renderer/blink/tuffite_in_chromium.gni")
++import("//tuffite/components/isolated/renderer/blink/tuffite_in_chromium.gni")
+ # TUFFITE_END
+ 
+ if (is_ios) {
+@@ -271,6 +272,7 @@ component("core") {
+ 
+   if (tuffite_in_chromium) {
+     sources += tuffite_explorer_sources
++    sources += tuffite_isolated_sources
+   }
+ 
+   sources += blink_core_sources_bindings
+@@ -459,6 +461,7 @@ component("core") {
+ 
+   if (tuffite_in_chromium) {
+     deps += tuffite_explorer_deps
++    deps += tuffite_isolated_deps
+   }
+ 
+   if (is_mac) {

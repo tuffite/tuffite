@@ -78,6 +78,7 @@ source_set("app") {
     "//tuffite/framework/app/services/remoting",
     "//tuffite/framework/app/services/utility",
     "//tuffite/framework/browser",
+    "//tuffite/framework/browser/services/isolated",
     "//tuffite/framework/browser/services/shell_api/commands",
     "//tuffite/framework/common:switches",
     "//tuffite/framework/common/utility:mojom",

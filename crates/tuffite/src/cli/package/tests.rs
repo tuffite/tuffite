@@ -296,6 +296,24 @@ fn assets_include_only_explicit_sources_without_implicit_routes() {
 }
 
 #[test]
+fn isolated_entries_are_packaged_without_public_asset_routes() {
+    let project =
+        std::env::temp_dir().join(format!("tuffite-isolated-assets-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&project);
+    fs::create_dir_all(project.join("worlds")).unwrap();
+    fs::write(project.join("worlds/card.js"), "fixture").unwrap();
+    let mut manifest = serde_json::json!({"app": {
+        "identifier": "com.example.demo",
+        "isolatedWorlds": {"card": {"entry":"worlds/card.js","origins":["demo://main"]}}
+    }});
+    let app: PackageApp = serde_json::from_value(manifest["app"].clone()).unwrap();
+    let resources = configure_assets(&project, &app, &[], &mut manifest).unwrap();
+    assert_eq!(resources, ["worlds/card.js"]);
+    assert!(manifest["app"].get("assets").is_none());
+    fs::remove_dir_all(project).unwrap();
+}
+
+#[test]
 fn package_manifest_records_development_capability() {
     let manifest = PackageManifest {
         schema_version: 2,

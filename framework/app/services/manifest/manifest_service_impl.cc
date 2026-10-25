@@ -258,6 +258,11 @@ std::string ManifestServiceImpl::SerializeShellApiOrigins() const {
   return serialized;
 }
 
+const std::map<std::string, isolated::WorldDefinition>&
+ManifestServiceImpl::IsolatedWorldDefinitions() const {
+  return data().isolated_worlds_;
+}
+
 std::string ManifestServiceImpl::SerializeExplorerOrigins() const {
   std::string serialized;
   for (const std::string& origin : data().explorer_origin_patterns_) {

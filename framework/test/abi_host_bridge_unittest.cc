@@ -10,6 +10,7 @@
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
 #include "base/functional/bind.h"
+#include "base/json/json_reader.h"
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/task/single_thread_task_runner.h"
@@ -25,6 +26,8 @@
 #include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/browser/services/context_menu/context_menu_service.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service.h"
+#include "tuffite/framework/browser/services/isolated/isolated_abi.h"
+#include "tuffite/framework/browser/services/isolated/isolated_service_impl.h"
 #include "tuffite/framework/browser/services/shell_api/commands/builtin.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service_factory.h"
@@ -508,6 +511,14 @@ TEST(AbiHostBridgeTest, CapabilityTablesAreStableAndUnknownIdsAreUnsupported) {
                                                  TUFFITE_CAPABILITY_BROWSER);
   ASSERT_NE(header, nullptr);
   EXPECT_EQ(header->struct_size, sizeof(tuffite_browser_host));
+  const auto* isolated_header = callbacks.query_extension(
+      callbacks.user_data, TUFFITE_CAPABILITY_ISOLATED);
+  ASSERT_NE(isolated_header, nullptr);
+  EXPECT_EQ(isolated_header->struct_size, sizeof(tuffite_isolated));
+  const auto* isolated =
+      reinterpret_cast<const tuffite_isolated*>(isolated_header);
+  EXPECT_NE(isolated->apply, nullptr);
+  EXPECT_EQ(isolated->user_data, callbacks.user_data);
   const auto* interfaces = callbacks.query_extension(
       callbacks.user_data, TUFFITE_CAPABILITY_UTILITY_INTERFACES);
   ASSERT_NE(interfaces, nullptr);
@@ -528,6 +539,51 @@ TEST(AbiHostBridgeTest, CapabilityTablesAreStableAndUnknownIdsAreUnsupported) {
             sizeof(tuffite_utility_session_client));
   EXPECT_EQ(SessionClient().user_data, callbacks.user_data);
 }
+TEST(AbiHostBridgeTest,
+     IsolatedCapabilityRejectsUnboundContextAndCancelsQueuedCallsOnce) {
+  base::test::SingleThreadTaskEnvironment environment;
+  auto application = FakeApplication();
+  auto bridge = AbiHostBridge::Create(&application);
+  ASSERT_TRUE(bridge);
+  bridge->BindBrowserTaskRunner();
+  auto table = MakeIsolatedAbi(*bridge);
+  struct Result {
+    int calls = 0;
+    tuffite_status_t status = TUFFITE_STATUS_OK;
+  } result;
+  auto reply = [](void* data, tuffite_status_t status,
+                  uint64_t generation) -> tuffite_status_t {
+    auto* completion = static_cast<Result*>(data);
+    ++completion->calls;
+    completion->status = status;
+    EXPECT_EQ(generation, 0u);
+    return TUFFITE_STATUS_OK;
+  };
+  const uint8_t request[] = {'{', '}'};
+  EXPECT_EQ(
+      table.apply(table.user_data, {.data = request, .len = sizeof(request)},
+                  &result, reply),
+      TUFFITE_STATUS_OK);
+  EXPECT_EQ(result.calls, 0);
+  environment.RunUntilIdle();
+  EXPECT_EQ(result.calls, 1);
+  EXPECT_EQ(result.status, TUFFITE_STATUS_INVALID_STATE);
+  result.calls = 0;
+  EXPECT_EQ(
+      table.apply(table.user_data, {.data = request, .len = sizeof(request)},
+                  &result, reply),
+      TUFFITE_STATUS_OK);
+  bridge->BeginShutdown();
+  EXPECT_EQ(result.calls, 1);
+  environment.RunUntilIdle();
+  EXPECT_EQ(result.calls, 1);
+  EXPECT_EQ(
+      table.apply(table.user_data, {.data = request, .len = sizeof(request)},
+                  &result, reply),
+      TUFFITE_STATUS_INVALID_STATE);
+  EXPECT_EQ(result.calls, 1);
+}
+
 TEST(AbiHostBridgeTest, RejectsMalformedServiceSessionPrefix) {
   auto application = FakeApplication();
   auto session = *application.utility.session;
@@ -663,6 +719,26 @@ TEST(ApplicationServiceTest, IsolatesServicesAcrossApplications) {
       application_b.context()->GetService<ManifestService>(false);
   ASSERT_NE(manifest_a, nullptr);
   ASSERT_NE(manifest_b, nullptr);
+  {
+    IsolatedServiceImpl first(*manifest_a);
+    IsolatedServiceImpl second(*manifest_a);
+    auto registry_request = *base::JSONReader::ReadDict(
+        R"({"op":"register","name":"dynamic","source":"snapshot","origins":["https://example.com"]})",
+        base::JSON_PARSE_RFC);
+    const auto registry_origin =
+        url::Origin::Create(GURL("https://example.com"));
+    ASSERT_TRUE(first.Apply(registry_request));
+    EXPECT_EQ(first.Source("dynamic", registry_origin), "snapshot");
+    EXPECT_FALSE(second.Source("dynamic", registry_origin));
+    auto client = first.GetWeakPtr();
+    ASSERT_TRUE(client);
+    first.Shutdown();
+    EXPECT_FALSE(client);
+    EXPECT_FALSE(first.Source("dynamic", registry_origin));
+    EXPECT_FALSE(first.Apply(registry_request));
+    EXPECT_TRUE(second.Apply(registry_request));
+    first.Shutdown();
+  }
   EXPECT_EQ(manifest_a->app_info().identifier, "com.tuffite.servicetest");
   EXPECT_EQ(manifest_a->startup_windows().front().url,
             GURL("servicetest://main/index.html"));

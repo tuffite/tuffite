@@ -13,6 +13,7 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+futures-channel = "0.3"
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter"] }
 tuffite = { path = "../crates/tuffite", default-features = false }

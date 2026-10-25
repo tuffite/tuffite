@@ -6,6 +6,7 @@
 
 #include "base/files/file_path.h"
 #include "base/memory/raw_ref.h"
+#include "base/memory/weak_ptr.h"
 #include "content/public/browser/browser_context.h"
 
 namespace content {
@@ -28,6 +29,9 @@ class BrowserContext final : public content::BrowserContext {
   static BrowserContext& GetFrom(content::RenderFrameHost&);
 
   ManifestService& manifest_service() const;
+  base::WeakPtr<BrowserContext> GetWeakPtr() {
+    return weak_factory_.GetWeakPtr();
+  }
   ApplicationContext& application_context() const { return *application_; }
 
   BrowserContext(const BrowserContext&) = delete;
@@ -61,6 +65,7 @@ class BrowserContext final : public content::BrowserContext {
   const raw_ref<ApplicationContext> application_;
   const base::FilePath path_;
   std::unique_ptr<ExplorerRouter> explorer_router_;
+  base::WeakPtrFactory<BrowserContext> weak_factory_{this};
 };
 
 }  // namespace tuffite

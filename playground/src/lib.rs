@@ -11,6 +11,7 @@ use tuffite::{
 };
 
 mod echo_utility;
+mod isolated;
 mod typed_utility;
 mod v8_utility;
 
@@ -19,6 +20,7 @@ mod shell_api {
 }
 
 struct PlaygroundBrowser {
+    isolated: tuffite::isolated::Host,
     events: EventEmitter,
     executor: ChromiumExecutor,
     utility_sessions: UtilitySessionHost,
@@ -35,6 +37,7 @@ impl Browser for PlaygroundBrowser {
         }));
         init_tracing();
         Ok(Self {
+            isolated: context.isolated(),
             events: context.events(),
             executor: context.executor(),
             utility_sessions: context.utility_sessions(),
@@ -45,6 +48,7 @@ impl Browser for PlaygroundBrowser {
     }
 
     async fn initialize(&mut self) -> ApplicationResult<()> {
+        isolated::register(&self.isolated).await?;
         tracing::info!("playground browser services ready");
         Ok(())
     }

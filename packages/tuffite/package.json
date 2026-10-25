@@ -18,6 +18,11 @@
       "types": "./vite.d.ts",
       "import": "./vite.js",
       "default": "./vite.js"
+    },
+    "./isolated": {
+      "types": "./isolated.d.ts",
+      "import": "./isolated.js",
+      "default": "./isolated.js"
     }
   },
   "files": [
@@ -27,7 +32,9 @@
     "vite.d.ts",
     "generated/*.js",
     "generated/*.d.ts",
-    "README.md"
+    "README.md",
+    "isolated.js",
+    "isolated.d.ts"
   ],
   "sideEffects": false,
   "license": "MIT OR Apache-2.0"

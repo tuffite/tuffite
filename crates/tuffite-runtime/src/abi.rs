@@ -124,6 +124,7 @@ unsafe fn discover_capabilities(
     (
         tuffite_abi::UtilitySessionClient,
         Option<tuffite_abi::ShellApi>,
+        Option<tuffite_abi::Isolated>,
     ),
     Status,
 > {
@@ -133,8 +134,16 @@ unsafe fn discover_capabilities(
     }
     let mut session = tuffite_abi::UtilitySessionClient::default();
     let mut shell_api = None;
+    let mut isolated = None;
     if let Some(query) = host.query_extension {
         // SAFETY: Host supplies a valid thread-safe query and lifetime contract.
+        let isolated_table =
+            unsafe { query(host.user_data, tuffite_abi::Capability::Isolated as u32) };
+        if !isolated_table.is_null() {
+            // SAFETY: Optional independently headed table obeys the query contract.
+            isolated = Some(unsafe { read_capability(isolated_table) }?);
+        }
+        // SAFETY: Browser table follows the same provider contract.
         let table = unsafe { query(host.user_data, tuffite_abi::Capability::Browser as u32) };
         if !table.is_null() {
             // SAFETY: Query guarantees a readable independently headed prefix.
@@ -161,7 +170,7 @@ unsafe fn discover_capabilities(
             }
         }
     }
-    Ok((session, shell_api))
+    Ok((session, shell_api, isolated))
 }
 
 fn abandon_browser(providers: &crate::utility::V8Providers, executor: &ChromiumExecutor) {
@@ -262,10 +271,7 @@ pub unsafe extern "C" fn start_browser<B: Browser>(
         {
             return Status::IncompatibleAbi;
         }
-        if host.header.reserved != 0 {
-            return Status::InvalidArgument;
-        }
-        if host.post_event.is_none() || host.post_task.is_none() {
+        if host.header.reserved != 0 || host.post_event.is_none() || host.post_task.is_none() {
             return Status::InvalidArgument;
         }
         // SAFETY: Forwarded from this function's pointer contract.
@@ -274,7 +280,7 @@ pub unsafe extern "C" fn start_browser<B: Browser>(
             Err(status) => return status,
         };
         // SAFETY: Host and its capability tables satisfy the startup contract.
-        let (session, shell_api) = match unsafe { discover_capabilities(&host) } {
+        let (session, shell_api, isolated) = match unsafe { discover_capabilities(&host) } {
             Ok(capabilities) => capabilities,
             Err(status) => return status,
         };
@@ -287,6 +293,7 @@ pub unsafe extern "C" fn start_browser<B: Browser>(
             callbacks,
             session,
             shell_api,
+            isolated,
         );
         let executor = context.executor();
         let providers = context.providers();
@@ -1104,7 +1111,7 @@ mod tests {
             if id == tuffite_abi::Capability::Browser as u32 {
                 ptr::from_ref(&tables.browser.header)
             } else {
-                panic!("runtime must only query Browser capabilities")
+                ptr::null()
             }
         }
         unsafe extern "C" fn unsupported(_: *mut c_void, _: u32) -> *const tuffite_abi::Header {
@@ -1112,12 +1119,12 @@ mod tests {
         }
         let mut host = host();
         // SAFETY: No capability callback; no provider memory is accessed.
-        let (client, shell_api) = unsafe { discover_capabilities(&host) }.unwrap();
+        let (client, shell_api, _) = unsafe { discover_capabilities(&host) }.unwrap();
         assert!(client.create.is_none());
         assert!(shell_api.is_none());
         host.query_extension = Some(unsupported);
         // SAFETY: Query returns null without accessing caller memory.
-        let (client, shell_api) = unsafe { discover_capabilities(&host) }.unwrap();
+        let (client, shell_api, _) = unsafe { discover_capabilities(&host) }.unwrap();
         assert!(client.send.is_none());
         assert!(shell_api.is_none());
         let mut client_context = 0_u8;
@@ -1147,7 +1154,7 @@ mod tests {
         host.user_data = ptr::from_mut(&mut tables).cast();
         host.query_extension = Some(query);
         // SAFETY: Provider, nested table and both contexts remain alive.
-        let (snapshot, shell_api) = unsafe { discover_capabilities(&host) }.unwrap();
+        let (snapshot, shell_api, _) = unsafe { discover_capabilities(&host) }.unwrap();
         assert_eq!(snapshot.user_data, client.user_data);
         assert_eq!(shell_api.unwrap().user_data, tables.shell_api.user_data);
         tables.browser.header.version.major = tuffite_abi::Version::BASELINE.major.wrapping_add(1);
@@ -1167,7 +1174,7 @@ mod tests {
         tables.browser.shell_api = ptr::null();
         tables.browser.utility = ptr::null();
         // SAFETY: Both independently optional child tables are absent.
-        let (snapshot, shell_api) = unsafe { discover_capabilities(&host) }.unwrap();
+        let (snapshot, shell_api, _) = unsafe { discover_capabilities(&host) }.unwrap();
         assert!(snapshot.create.is_none());
         assert!(shell_api.is_none());
         tables.browser.shell_api = ptr::from_ref(&tables.shell_api);
@@ -1187,6 +1194,42 @@ mod tests {
         assert!(matches!(
             unsafe { discover_capabilities(&host) },
             Err(Status::IncompatibleAbi)
+        ));
+    }
+
+    #[test]
+    fn isolated_capability_is_independent_optional_and_size_checked() {
+        unsafe extern "C" fn query(context: *mut c_void, id: u32) -> *const tuffite_abi::Header {
+            if id == tuffite_abi::Capability::Isolated as u32 {
+                context.cast()
+            } else {
+                ptr::null()
+            }
+        }
+        let mut table = tuffite_abi::Isolated {
+            header: tuffite_abi::Header::for_type::<tuffite_abi::Isolated>(),
+            user_data: ptr::null_mut(),
+            apply: None,
+        };
+        let mut host = host();
+        host.user_data = ptr::from_mut(&mut table).cast();
+        host.query_extension = Some(query);
+        // SAFETY: Provider table is readable and remains alive for all queries.
+        let (_, shell_api, isolated) = unsafe { discover_capabilities(&host) }.unwrap();
+        assert!(shell_api.is_none());
+        assert!(isolated.is_some());
+        table.header.struct_size = mem::size_of::<tuffite_abi::Header>();
+        // SAFETY: A readable table deliberately advertises a short prefix.
+        assert!(matches!(
+            unsafe { discover_capabilities(&host) },
+            Err(Status::IncompatibleAbi)
+        ));
+        table.header = tuffite_abi::Header::for_type::<tuffite_abi::Isolated>();
+        table.header.reserved = 1;
+        // SAFETY: A readable table deliberately advertises invalid reserved bits.
+        assert!(matches!(
+            unsafe { discover_capabilities(&host) },
+            Err(Status::InvalidArgument)
         ));
     }
 

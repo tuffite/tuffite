@@ -20,6 +20,7 @@
 #include "tuffite/framework/browser/services/download/download_service_factory.h"
 #include "tuffite/framework/browser/services/explorer/explorer_service_factory.h"
 #include "tuffite/framework/browser/services/file_chooser/file_chooser_service_factory.h"
+#include "tuffite/framework/browser/services/isolated/isolated_service_factory.h"
 #include "tuffite/framework/browser/services/javascript_dialog/javascript_dialog_service_factory.h"
 #include "tuffite/framework/browser/services/network_context/network_context_service_factory.h"
 #include "tuffite/framework/browser/services/permission/permission_service.h"
@@ -53,6 +54,7 @@ BrowserContext::BrowserContext(base::FilePath path,
   window::WindowServiceFactory::Get();
   DownloadServiceFactory::Get();
   DevToolsServiceFactory::Get();
+  IsolatedServiceFactory::Get();
   ContextMenuServiceFactory::Get();
   WebAuthenticationServiceFactory::Get();
   FileChooserServiceFactory::Get();
@@ -81,6 +83,7 @@ ManifestService& BrowserContext::manifest_service() const {
 }
 
 BrowserContext::~BrowserContext() {
+  weak_factory_.InvalidateWeakPtrs();
   NotifyWillBeDestroyed();
   if (auto* windows =
           window::WindowServiceFactory::GetForBrowserContext(this, false)) {

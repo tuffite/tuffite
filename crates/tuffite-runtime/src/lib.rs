@@ -9,6 +9,7 @@ pub mod codec;
 mod dispatch;
 mod executor;
 mod handle;
+pub mod isolated;
 mod javascript_extension;
 mod lifecycle;
 pub use lifecycle::{ShutdownContext, ShutdownReason, StopSignal};

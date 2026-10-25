@@ -1,0 +1,15 @@
+source_set("renderer") {
+  sources = [
+    "isolated_bindings.cc",
+    "isolated_bindings.h",
+  ]
+  deps = [
+    "//base",
+    "//content/public/renderer",
+    "//mojo/public/cpp/bindings",
+    "//third_party/blink/public:blink",
+    "//tuffite/components/isolated/common:mojom",
+    "//tuffite/components/isolated/renderer/blink:bridge",
+    "//v8",
+  ]
+}

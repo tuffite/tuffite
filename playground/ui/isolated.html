@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Isolated Web Components lab</title>
+<style>body{font:16px system-ui;max-width:900px;margin:40px auto;padding:16px;color-scheme:light dark}#cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}button{margin:8px;padding:8px}pre{white-space:pre-wrap}</style>
+<h1>Isolated Web Components</h1>
+<p>Two worlds register the same component names. Each owns its registry and JavaScript state.</p>
+<div id="cards"><section id="first"></section><section id="second"></section></div>
+<button id="update">Update first card</button><button id="dispose">Dispose worlds</button>
+<pre id="result">Starting…</pre>
+<script type="module" src="./src/isolated.js"></script>
+</html>

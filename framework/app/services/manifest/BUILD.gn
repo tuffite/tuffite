@@ -22,6 +22,7 @@ source_set("manifest") {
   public_deps = [
     "//base",
     "//components/keyed_service/core",
+    "//tuffite/components/isolated/common:configuration",
     "//tuffite/framework/app/services:factory",
     "//tuffite/framework/app/services/asset:configuration",
     "//url",
@@ -34,12 +35,14 @@ source_set("manifest") {
 
 test("manifest_service_unittests") {
   testonly = true
+
   sources = [ "manifest_service_unittest.cc" ]
   deps = [
     ":manifest",
     "//base",
     "//testing/gtest",
     "//testing/gtest:gtest_main",
+    "//tuffite/framework/browser/services/isolated:registry",
     "//url",
   ]
 }

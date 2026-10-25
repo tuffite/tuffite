@@ -6,6 +6,7 @@
 #include "base/json/json_writer.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
+#include "tuffite/framework/browser/services/isolated/isolated_registry.h"
 #include "url/url_util.h"
 
 namespace tuffite {
@@ -250,6 +251,44 @@ class OriginCapabilityTest : public testing::Test {
   std::unique_ptr<ManifestService> manifest_;
   std::string error_;
 };
+TEST_F(OriginCapabilityTest, IsolatedPackagesAreImmutableAndOriginScoped) {
+  const auto assets = root_.GetPath().AppendASCII("assets");
+  ASSERT_TRUE(base::CreateDirectory(assets));
+  const auto source = assets.AppendASCII("card.js");
+  ASSERT_TRUE(base::WriteFile(source, "globalThis.fixture = 1;"));
+  auto parsed = base::JSONReader::Read(kManifest, base::JSON_PARSE_RFC);
+  ASSERT_TRUE(parsed);
+  base::DictValue definition;
+  definition.Set("entry", "card.js");
+  base::ListValue origins;
+  origins.Append("originlab://main");
+  definition.Set("origins", std::move(origins));
+  base::DictValue worlds;
+  worlds.Set("weather", std::move(definition));
+  parsed->GetDict().FindDict("app")->Set("isolatedWorlds", std::move(worlds));
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(*parsed)));
+  auto manifest = LoadManifest(root_.GetPath(), &error_);
+  ASSERT_TRUE(manifest) << error_;
+  ASSERT_TRUE(base::WriteFile(source, "changed"));
+  IsolatedRegistry registry;
+  for (const auto& [name, snapshot] : manifest->IsolatedWorldDefinitions()) {
+    registry.AddBundled(name, snapshot);
+  }
+  EXPECT_EQ(registry.Source("weather", Origin("originlab://main")),
+            "globalThis.fixture = 1;");
+  EXPECT_FALSE(registry.Source("weather", Origin("originlab://public")));
+  EXPECT_FALSE(registry.Source("unknown", Origin("originlab://main")));
+  parsed->GetDict()
+      .FindDict("app")
+      ->FindDict("isolatedWorlds")
+      ->FindDict("weather")
+      ->Set("entry", "../card.js");
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(*parsed)));
+  EXPECT_FALSE(LoadManifest(root_.GetPath(), &error_));
+}
+
 TEST_F(OriginCapabilityTest, ProductNameDefaultsToApplicationIdentity) {
   EXPECT_EQ(manifest_->app_info().product_name, "com.example.originlab");
 }
@@ -704,4 +743,108 @@ TEST_F(OriginCapabilityTest, HostRestrictionsDoNotIntroduceCapabilityGrants) {
 }
 
 }  // namespace
+}  // namespace tuffite
+
+namespace tuffite {
+namespace {
+base::DictValue RegistryRequest(const char* json) {
+  return *base::JSONReader::ReadDict(json, base::JSON_PARSE_RFC);
+}
+TEST(IsolatedRegistryTest, GenerationAndOriginAuthorization) {
+  IsolatedRegistry registry;
+  auto request = RegistryRequest(R"({"op":"register","name":"io.example.card",
+      "source":"original","origins":["https://main.example"]})");
+  auto first = registry.Apply(request);
+  ASSERT_TRUE(first);
+  EXPECT_FALSE(registry.Apply(request));
+  registry.SetDevelopmentAlias(
+      url::Origin::Create(GURL("https://main.example")),
+      url::Origin::Create(GURL("http://localhost:5173")));
+  EXPECT_EQ(registry.Source("io.example.card",
+                            url::Origin::Create(GURL("http://localhost:5173"))),
+            "original");
+  EXPECT_EQ(registry.Source("io.example.card",
+                            url::Origin::Create(GURL("https://main.example"))),
+            "original");
+  EXPECT_FALSE(registry.Source(
+      "io.example.card", url::Origin::Create(GURL("https://other.example"))));
+  request.Set("op", "replace");
+  request.Set("generation", *first);
+  request.Set("source", "replacement");
+  auto second = registry.Apply(request);
+  ASSERT_TRUE(second);
+  EXPECT_NE(first, second);
+  EXPECT_FALSE(registry.Apply(request));
+  auto remove =
+      RegistryRequest(R"({"op":"unregister","name":"io.example.card"})");
+  remove.Set("generation", *first);
+  EXPECT_FALSE(registry.Apply(remove));
+  EXPECT_EQ(registry.Source("io.example.card",
+                            url::Origin::Create(GURL("https://main.example"))),
+            "replacement");
+  remove.Set("generation", *second);
+  EXPECT_TRUE(registry.Apply(remove));
+  EXPECT_FALSE(registry.Source(
+      "io.example.card", url::Origin::Create(GURL("https://main.example"))));
+  EXPECT_FALSE(registry.Apply(remove));
+  request.Set("op", "register");
+  auto third = registry.Apply(request);
+  ASSERT_TRUE(third);
+  EXPECT_NE(second, third);
+}
+TEST(IsolatedRegistryTest, ValidationQuotaAndBundledProtection) {
+  IsolatedRegistry registry;
+  registry.AddBundled("bundled", {{"https://main.example"}, "bundled"});
+  auto request = RegistryRequest(R"({"op":"register","name":"dynamic",
+      "source":"dynamic","origins":["*"]})");
+  EXPECT_FALSE(registry.Apply(request));
+  request.Set("origins", base::ListValue().Append("https://main.example"));
+  request.Set("source", std::string(256 * 1024 + 1, 'a'));
+  EXPECT_FALSE(registry.Apply(request));
+  request.Set("source", "valid");
+  request.Set("name", "../escape");
+  EXPECT_FALSE(registry.Apply(request));
+  request.Set("name", "bundled");
+  request.Set("op", "replace");
+  request.Set("generation", "1");
+  EXPECT_FALSE(registry.Apply(request));
+  request.Set("op", "unregister");
+  EXPECT_FALSE(registry.Apply(request));
+  request.Set("op", "register");
+  for (int i = 0; i < 31; ++i) {
+    request.Set("name", "dynamic" + std::to_string(i));
+    ASSERT_TRUE(registry.Apply(request));
+  }
+  request.Set("name", "overflow");
+  EXPECT_FALSE(registry.Apply(request));
+}
+}  // namespace
+}  // namespace tuffite
+
+namespace tuffite {
+TEST(IsolatedRegistryTest, AggregateLimitPreservesPreviousGeneration) {
+  IsolatedRegistry registry;
+  auto request = *base::JSONReader::ReadDict(
+      R"({"op":"register","name":"card","source":"x","origins":["https://main.example"]})",
+      base::JSON_PARSE_RFC);
+  auto generation = registry.Apply(request);
+  ASSERT_TRUE(generation);
+  request.Set("source", std::string(256 * 1024, 'a'));
+  for (int i = 0; i < 3; ++i) {
+    request.Set("name", "large" + std::to_string(i));
+    ASSERT_TRUE(registry.Apply(request));
+  }
+  request.Set("name", "overflow");
+  EXPECT_FALSE(registry.Apply(request));
+  request.Set("name", "card");
+  request.Set("op", "replace");
+  request.Set("generation", *generation);
+  request.Set("source", std::string(256 * 1024 + 1, 'b'));
+  EXPECT_FALSE(registry.Apply(request));
+  EXPECT_EQ(registry.Source("card",
+                            url::Origin::Create(GURL("https://main.example"))),
+            "x");
+  request.Set("op", "unregister");
+  EXPECT_TRUE(registry.Apply(request));
+}
 }  // namespace tuffite

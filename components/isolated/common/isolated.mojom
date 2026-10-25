@@ -1,0 +1,9 @@
+// Copyright 2026 The Tuffite Authors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+module tuffite.mojom;
+
+// Document-scoped package lookup. The browser supplies immutable package code;
+// the renderer never chooses a path or a source URL.
+interface IsolatedHost {
+  Load(string name) => (string? source);
+};

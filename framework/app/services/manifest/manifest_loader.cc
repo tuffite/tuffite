@@ -216,8 +216,8 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
   }
 
   static constexpr std::string_view kAppKeys[] = {
-      "identifier", "security", "shellApi", "assets",
-      "windows",    "network",  "utilities"};
+      "identifier", "security", "shellApi",  "assets",
+      "windows",    "network",  "utilities", "isolatedWorlds"};
   for (const auto [key, value] : *app) {
     if (!std::ranges::contains(kAppKeys, key)) {
       return fail("unknown app field: " + std::string(key));
@@ -272,6 +272,47 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
         manifest->utility_configurations_.emplace(
             name, std::vector<uint8_t>(json->begin(), json->end()));
       }
+    }
+  }
+  if (const auto* value = app->Find("isolatedWorlds")) {
+    const auto* worlds = value->GetIfDict();
+    if (!worlds || worlds->size() > 32) {
+      return fail("app.isolatedWorlds must contain at most 32 definitions");
+    }
+    size_t total_source_bytes = 0;
+    for (const auto [name, definition] : *worlds) {
+      if (!IsUtilityName(name) || !definition.is_dict()) {
+        return fail("invalid isolated world definition");
+      }
+      const auto& config = definition.GetDict();
+      const auto* entry = config.FindString("entry");
+      const auto* origins = config.FindList("origins");
+      if (config.size() != 2 || !entry || !IsSafeRelativePath(*entry) ||
+          !origins || origins->empty() || origins->size() > 32) {
+        return fail(
+            "isolated worlds require a package-relative entry and origins");
+      }
+      IsolatedWorldDefinition world;
+      for (const auto& origin : *origins) {
+        std::string normalized;
+        if (!origin.is_string() ||
+            !access::NormalizeOrigin(origin.GetString(), &normalized)) {
+          return fail("invalid isolated world origin");
+        }
+        world.origins.push_back(std::move(normalized));
+      }
+      const auto path =
+          manifest->assets_.root.Append(base::FilePath::FromUTF8Unsafe(*entry));
+      if (!access::HasNoSymlinkComponents(manifest->assets_.root, path) ||
+          !base::ReadFileToStringWithMaxSize(path, &world.source, 256 * 1024) ||
+          world.source.empty() || !base::IsStringUTF8(world.source)) {
+        return fail("unable to read isolated world entry: " + *entry);
+      }
+      total_source_bytes += world.source.size();
+      if (total_source_bytes > 1024 * 1024) {
+        return fail("isolated world entries exceed 1 MiB");
+      }
+      manifest->isolated_worlds_.emplace(name, std::move(world));
     }
   }
   manifest->serialized_ = std::move(serialized);

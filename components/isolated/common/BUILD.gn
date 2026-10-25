@@ -1,0 +1,8 @@
+import("//mojo/public/tools/bindings/mojom.gni")
+mojom("mojom") {
+  sources = [ "isolated.mojom" ]
+}
+
+source_set("configuration") {
+  sources = [ "isolated_configuration.h" ]
+}

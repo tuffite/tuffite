@@ -424,6 +424,8 @@ pub enum Capability {
     Browser = 2,
     /// Framework supports interface-to-utility routing and blocks raw access to typed owners.
     UtilityInterfaces = 3,
+    /// Optional DOM isolated-world registry capability.
+    Isolated = 4,
 }
 
 /// Returns an immutable capability table's header, or null when unsupported.
@@ -452,6 +454,23 @@ pub struct ShellApi {
     pub user_data: *mut c_void,
     /// Optional generated binary request/reply entry.
     pub invoke: Option<ShellApiInvokeFn>,
+}
+
+/// Completion of an isolated registry operation. Status uses ABI Status values;
+/// generation is zero on unregister/failure. Callback bytes are never shared.
+pub type IsolatedReplyFn = unsafe extern "C" fn(*mut c_void, i32, u64) -> Status;
+/// Applies a bounded UTF-8 JSON registry operation. OK transfers reply ownership;
+/// rejection retains ownership without invoking reply. Accepted calls complete
+/// exactly once, including on shutdown. Input bytes are copied before return.
+pub type IsolatedApplyFn =
+    unsafe extern "C" fn(*mut c_void, ByteSlice, *mut c_void, Option<IsolatedReplyFn>) -> Status;
+/// Optional native DOM isolated-world registry, independently discovered/sized.
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct Isolated {
+    pub header: Header,
+    pub user_data: *mut c_void,
+    pub apply: Option<IsolatedApplyFn>,
 }
 
 /// Browser-process native capabilities, discovered through `Capability::Browser`.

@@ -48,6 +48,7 @@ test("utility_service_unittests") {
 
 test("abi_host_bridge_unittests") {
   sources = [
+    "//tuffite/framework/browser/services/isolated/isolated_service_impl.h",
     "abi_host_bridge_unittest.cc",
     "utility_test_main.cc",
   ]
@@ -62,6 +63,7 @@ test("abi_host_bridge_unittests") {
     "//tuffite/framework/app:host_headers",
     "//tuffite/framework/browser",
     "//tuffite/framework/browser:support",
+    "//tuffite/framework/browser/services/isolated:registry",
     "//tuffite/framework/browser/services/shell_api/commands",
     "//tuffite/framework/public:abi",
     "//url",
@@ -117,6 +119,7 @@ test("remoting_service_unittests") {
       "//remoting/host:platform_interfaces",
       "//remoting/protocol",
       "//remoting/signaling",
+      "//skia",
       "//third_party/webrtc_overrides:webrtc_component",
       "//ui/gfx/codec",
       "//ui/gfx/geometry",

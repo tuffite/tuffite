@@ -123,3 +123,11 @@ For application-only use with an explicitly selected prebuilt Framework,
 
 See [Framework development](../docs/development.md) for profiles, CI, packaging,
 patch workflows, and recoverable dependency rolls.
+
+## Isolated Web Components
+
+Rust Browser initialization dynamically registers the snapshots and exercises
+replacement and stale-generation rejection; no `app.isolatedWorlds` is required.
+Open `isolated.html` from the main lab to run two isolated worlds with the same
+component tags. See [DOM isolated worlds](../docs/isolated.md) for the contract
+and `--isolated-worlds` packaged smoke command.

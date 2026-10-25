@@ -12,6 +12,7 @@
 #include "third_party/blink/public/web/web_security_policy.h"
 #include "tuffite/components/dispatch/renderer/dispatch_bindings.h"
 #include "tuffite/components/explorer/renderer/explorer_surface_bindings.h"
+#include "tuffite/components/isolated/renderer/isolated_bindings.h"
 #include "tuffite/framework/common/switches.h"
 #include "tuffite/framework/renderer/legacy_navigation_timing.h"
 
@@ -36,6 +37,7 @@ void ContentRendererClient::RenderFrameCreated(content::RenderFrame* frame) {
     DispatchBindings::Create(frame);
   }
   ExplorerSurfaceBindings::Create(frame);
+  IsolatedBindings::Create(frame);
 }
 
 void ContentRendererClient::PrepareErrorPage(

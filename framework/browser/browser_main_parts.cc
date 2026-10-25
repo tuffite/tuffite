@@ -126,6 +126,7 @@ int BrowserMainParts::PreMainMessageLoopRun() {
       std::make_unique<BrowserContext>(std::move(profile), *application_);
   DevToolsServiceFactory::GetForBrowserContext(browser_context_.get())
       ->StartIfRequested(browser_context_.get());
+  bridge_->BindBrowserContext(browser_context_->GetWeakPtr());
   bridge_->BindBrowserTaskRunner();
   bridge_->InitializeBrowser(base::BindOnce(
       &BrowserMainParts::OnBrowserInitialized, weak_factory_.GetWeakPtr()));

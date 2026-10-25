@@ -30,6 +30,7 @@
 #include "tuffite/components/explorer/browser/explorer_host.h"
 #include "tuffite/components/explorer/browser/explorer_surface_host.h"
 #include "tuffite/components/explorer/common/explorer.mojom.h"
+#include "tuffite/components/isolated/browser/isolated_host.h"
 #include "tuffite/framework/app/abi_host_bridge.h"
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/services/asset/asset_service.h"
@@ -41,6 +42,7 @@
 #include "tuffite/framework/browser/services/devtools/devtools_service.h"
 #include "tuffite/framework/browser/services/explorer/explorer_service.h"
 #include "tuffite/framework/browser/services/explorer/explorer_service_factory.h"
+#include "tuffite/framework/browser/services/isolated/isolated_service_factory.h"
 #include "tuffite/framework/browser/services/network_context/network_context_service.h"
 #include "tuffite/framework/browser/services/network_context/network_context_service_factory.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service.h"
@@ -199,6 +201,14 @@ void ContentBrowserClient::RegisterBrowserInterfaceBindersForFrame(
          mojo::PendingReceiver<mojom::Dispatcher> receiver) {
         DispatchHost::Create(ShellApiServiceFactory::GetForBrowserContext(
                                  frame->GetBrowserContext()),
+                             frame, std::move(receiver));
+      }));
+  map->Add<mojom::IsolatedHost>(base::BindRepeating(
+      [](content::RenderFrameHost* frame,
+         mojo::PendingReceiver<mojom::IsolatedHost> receiver) {
+        IsolatedHost::Create(IsolatedServiceFactory::GetForBrowserContext(
+                                 frame->GetBrowserContext())
+                                 ->GetWeakPtr(),
                              frame, std::move(receiver));
       }));
   // Binder maps are created before the first document necessarily has a

@@ -10,6 +10,7 @@
 #include "base/files/file_path.h"
 #include "base/memory/weak_ptr.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "tuffite/components/isolated/common/isolated_configuration.h"
 #include "tuffite/framework/app/services/asset/asset_configuration.h"
 #include "tuffite/framework/app/services/manifest/app_config.h"
 #include "url/origin.h"
@@ -27,6 +28,8 @@ class ManifestService : public KeyedService {
       const = 0;
   virtual std::string SerializeShellApiOrigins() const = 0;
   virtual std::string SerializeExplorerOrigins() const = 0;
+  virtual const std::map<std::string, isolated::WorldDefinition>&
+  IsolatedWorldDefinitions() const = 0;
   virtual std::optional<base::FilePath> ResolveBaseDirectory(
       std::string_view base) const = 0;
   virtual std::optional<base::FilePath> ResolveFileSystemPath(

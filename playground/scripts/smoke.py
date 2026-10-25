@@ -289,6 +289,7 @@ def main() -> int:
                         help="Check official Turnstile always-pass and always-fail test callbacks; does not establish real acceptance.")
     parser.add_argument("--explorer-webauthn", action="store_true",
                         help="Run WebAuthn resident credential and cancellation smoke.")
+    parser.add_argument("--isolated-worlds", action="store_true", help="Run isolated-world Web Components smoke.")
     parser.add_argument("--explorer-reload", action="store_true", help="Run nested cross-site reload, messaging and Cookie isolation smoke.")
     parser.add_argument("--explorer-isolated", action="store_true",
                         help="Run isolated top navigation, OAuth callback and transfer policy smoke.")
@@ -349,7 +350,7 @@ def main() -> int:
         if public
         else Path(tempfile.gettempdir())
     )
-    if args.mojom or args.explorer_isolated or args.explorer_reload or args.explorer_ancestry or args.explorer_events or args.explorer_tabs or args.browser_compatibility or args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
+    if args.isolated_worlds or args.mojom or args.explorer_isolated or args.explorer_reload or args.explorer_ancestry or args.explorer_events or args.explorer_tabs or args.browser_compatibility or args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
         return run_explorer_demo(
             package,
             application,
@@ -357,6 +358,7 @@ def main() -> int:
             args.timeout,
             args.keep_files,
             args.cdp_port,
+            "isolated-worlds-smoke.mjs" if args.isolated_worlds else
             "mojom-smoke.mjs" if args.mojom else
             "explorer-isolated-smoke.mjs" if args.explorer_isolated else
             "explorer-reload-smoke.mjs" if args.explorer_reload else

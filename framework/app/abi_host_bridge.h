@@ -11,6 +11,7 @@
 #include <memory>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "base/containers/span.h"
@@ -29,6 +30,7 @@
 
 namespace tuffite {
 class ApplicationContext;
+class BrowserContext;
 namespace rpc {
 class Router;
 }
@@ -56,6 +58,17 @@ class AbiHostBridge : public HostDispatch {
 
   bool Start(std::string_view configuration);
   void BindBrowserTaskRunner();
+  void BindBrowserContext(base::WeakPtr<BrowserContext> context) {
+    browser_context_ = std::move(context);
+  }
+  // UI-sequence access only. Capabilities resolve their services through
+  // factories.
+  base::WeakPtr<BrowserContext> browser_context() const {
+    return browser_context_;
+  }
+  // Generic accepted-call ownership/shutdown cancellation for native
+  // capabilities.
+  tuffite_status_t PostHostCall(base::OnceClosure, base::OnceClosure rejected);
   // Asynchronous services-ready barrier before startup windows and dispatch.
   void InitializeBrowser(base::OnceCallback<void(bool)> callback);
   void BindApplicationContext(ApplicationContext* context) {
@@ -85,6 +98,8 @@ class AbiHostBridge : public HostDispatch {
   explicit AbiHostBridge(const tuffite_application& application);
   static const tuffite_abi_header* QueryExtension(void* user_data,
                                                   uint32_t capability);
+  base::WeakPtr<BrowserContext> browser_context_;
+  tuffite_isolated isolated_{};
   tuffite_utility_session_client utility_session_{};
   tuffite_utility utility_{};
   tuffite_shell_api shell_api_{};
@@ -176,7 +191,6 @@ class AbiHostBridge : public HostDispatch {
   uint64_t next_shell_api_id_ = 1;
   void BroadcastApplicationEvent(std::string name,
                                  std::vector<uint8_t> payload);
-  tuffite_status_t PostHostCall(base::OnceClosure, base::OnceClosure rejected);
   void RunHostCall(uint64_t, base::OnceClosure);
 
   tuffite_application_start_fn runtime_start_ = nullptr;

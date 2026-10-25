@@ -1,0 +1,14 @@
+source_set("bridge") {
+  sources = [ "isolated_bridge.h" ]
+  public_deps = [ "//v8" ]
+}
+action("scripts") {
+  script = "embed.py"
+  sources = [
+    "host.js",
+    "world.js",
+  ]
+  outputs = [ "$target_gen_dir/isolated_scripts.h" ]
+  args = rebase_path(sources, root_build_dir) +
+         rebase_path(outputs, root_build_dir)
+}

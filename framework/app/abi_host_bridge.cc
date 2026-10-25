@@ -24,6 +24,7 @@
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/utility/host_runtime.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
+#include "tuffite/framework/browser/services/isolated/isolated_abi.h"
 #include "tuffite/framework/browser/services/shell_api/commands/builtin.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service_factory.h"
 
@@ -208,6 +209,7 @@ AbiHostBridge::AbiHostBridge(const tuffite_application& application)
       .header = tuffite_abi_header_for_size(sizeof(tuffite_shell_api)),
       .user_data = this,
       .invoke = &AbiHostBridge::InvokeShellApi};
+  isolated_ = MakeIsolatedAbi(*this);
   browser_host_ = {
       .header = tuffite_abi_header_for_size(sizeof(tuffite_browser_host)),
       .shell_api = &shell_api_,
@@ -223,6 +225,8 @@ const tuffite_abi_header* AbiHostBridge::QueryExtension(void* user_data,
     return nullptr;
   }
   switch (capability) {
+    case TUFFITE_CAPABILITY_ISOLATED:
+      return &bridge->isolated_.header;
     case TUFFITE_CAPABILITY_BROWSER:
       return &bridge->browser_host_.header;
     case TUFFITE_CAPABILITY_UTILITY_INTERFACES: {

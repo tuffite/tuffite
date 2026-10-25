@@ -51,6 +51,7 @@ pub struct BrowserContext {
     utility_sessions: UtilitySessionHost,
     javascript_extensions: JavaScriptExtensionHost,
     shell_api: ShellApiHost,
+    isolated: crate::isolated::Host,
     state: SharedState,
     providers: Arc<crate::utility::V8Providers>,
     stop: StopSignal,
@@ -69,6 +70,7 @@ impl BrowserContext {
         callbacks: NativeHost,
         session: tuffite_abi::UtilitySessionClient,
         shell_api: Option<tuffite_abi::ShellApi>,
+        isolated: Option<tuffite_abi::Isolated>,
     ) -> Self {
         let executor = ChromiumExecutor::new(callbacks);
         let utility_sessions = UtilitySessionHost::new(session);
@@ -91,6 +93,7 @@ impl BrowserContext {
             utility_sessions,
             javascript_extensions,
             shell_api,
+            isolated: crate::isolated::Host::new(isolated),
         }
     }
 
@@ -153,6 +156,12 @@ impl BrowserContext {
     #[deprecated(note = "declare a named V8 utility and use utilities().create_v8(name, ...)")]
     pub fn javascript_extensions(&self) -> JavaScriptExtensionHost {
         self.javascript_extensions.clone()
+    }
+
+    /// Returns the native registry for dynamically installed DOM UI scripts.
+    #[must_use]
+    pub fn isolated(&self) -> crate::isolated::Host {
+        self.isolated.clone()
     }
 
     /// Returns the trusted Host API backed by Chromium Remote Desktop.

@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "tuffite/components/isolated/common/isolated_configuration.h"
 #include "tuffite/framework/app/services/asset/asset_configuration.h"
 #include "tuffite/framework/app/services/manifest/app_config.h"
 
@@ -33,7 +34,11 @@ struct OriginCapability {
 
 // Native configuration data. Only the loader and assembler obtain mutable
 // ownership.
+using IsolatedWorldDefinition = isolated::WorldDefinition;
+
 struct ManifestData {
+  std::map<std::string, IsolatedWorldDefinition> isolated_worlds_;
+
   base::FilePath package_root_;
   std::string application_id_;
   std::string product_name_;

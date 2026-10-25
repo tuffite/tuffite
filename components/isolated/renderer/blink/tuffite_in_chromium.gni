@@ -1,0 +1,7 @@
+import("//tuffite/tuffite_in_chromium.gni")
+tuffite_isolated_sources = [
+  "//tuffite/components/isolated/renderer/blink/isolated_bridge.cc",
+  "//tuffite/components/isolated/renderer/blink/isolated_bridge.h",
+]
+tuffite_isolated_deps =
+    [ "//tuffite/components/isolated/renderer/blink:scripts" ]

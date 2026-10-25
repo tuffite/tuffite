@@ -200,6 +200,7 @@ typedef struct tuffite_utility_session_client {
 #define TUFFITE_CAPABILITY_UTILITY ((uint32_t)1)
 #define TUFFITE_CAPABILITY_BROWSER ((uint32_t)2)
 #define TUFFITE_CAPABILITY_UTILITY_INTERFACES ((uint32_t)3)
+#define TUFFITE_CAPABILITY_ISOLATED ((uint32_t)4)
 typedef const tuffite_abi_header* (
     *tuffite_query_extension_fn)(void* user_data, uint32_t capability);
 typedef struct tuffite_utility {
@@ -211,6 +212,25 @@ typedef struct tuffite_shell_api {
   TUFFITE_FFI_RAW_PTR_EXCLUSION void* user_data;
   tuffite_shell_api_invoke_fn invoke;
 } tuffite_shell_api;
+
+// Optional DOM isolated-world registry capability. Request is a UTF-8 JSON
+// registry operation, copied before returning. OK transfers reply ownership;
+// any other return retains ownership and must not invoke reply. An accepted
+// operation replies exactly once (including during shutdown). Status uses the
+// TUFFITE_STATUS_* ABI values; generation is zero for unregister/failure.
+typedef tuffite_status_t (*tuffite_isolated_reply_fn)(void* reply_data,
+                                                      tuffite_status_t status,
+                                                      uint64_t generation);
+typedef tuffite_status_t (*tuffite_isolated_apply_fn)(
+    void* host_data,
+    tuffite_byte_slice_t request,
+    void* reply_data,
+    tuffite_isolated_reply_fn reply);
+typedef struct tuffite_isolated {
+  tuffite_abi_header header;
+  TUFFITE_FFI_RAW_PTR_EXCLUSION void* user_data;
+  tuffite_isolated_apply_fn apply;
+} tuffite_isolated;
 
 // ABI 0.1.0: browser-owned host capabilities. Child pointers are independently
 // sized/versioned tables, borrowed until browser stop completes.

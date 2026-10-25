@@ -15,6 +15,13 @@ pub(super) struct PackageApp {
     pub(super) identifier: String,
     #[serde(default)]
     assets: Vec<AssetRoute>,
+    #[serde(default)]
+    isolated_worlds: std::collections::BTreeMap<String, IsolatedWorld>,
+}
+
+#[derive(Debug, Deserialize)]
+struct IsolatedWorld {
+    entry: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,6 +52,14 @@ pub(super) fn configure_assets(
         }
         let source = portable_relative_path(&relative)?;
         if !resources.iter().any(|entry| entry == &source) {
+            resources.push(source);
+        }
+    }
+    for world in app.isolated_worlds.values() {
+        let relative = safe_relative_path(&world.entry, "app.isolatedWorlds entry")?;
+        canonical_file(&project_dir.join(&relative))?;
+        let source = portable_relative_path(&relative)?;
+        if !resources.contains(&source) {
             resources.push(source);
         }
     }

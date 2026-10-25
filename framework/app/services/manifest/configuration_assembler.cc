@@ -57,6 +57,13 @@ bool ApplyDevelopmentUrl(ManifestData& data,
       }
     }
   }
+  for (auto& [name, world] : data.isolated_worlds_) {
+    if (std::ranges::any_of(world.origins, [&](const auto& pattern) {
+          return access::MatchesOrigin(packaged_origin, pattern);
+        })) {
+      world.origins.push_back(origin);
+    }
+  }
   return true;
 }
 

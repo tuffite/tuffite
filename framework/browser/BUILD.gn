@@ -40,6 +40,7 @@ source_set("browser") {
     "services/download",
     "services/explorer",
     "services/file_chooser",
+    "services/isolated",
     "services/javascript_dialog",
     "services/network_context",
     "services/permission",

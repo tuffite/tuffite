@@ -27,6 +27,8 @@ class ManifestServiceImpl final : public ManifestService {
       const override;
   std::string SerializeShellApiOrigins() const override;
   std::string SerializeExplorerOrigins() const override;
+  const std::map<std::string, isolated::WorldDefinition>&
+  IsolatedWorldDefinitions() const override;
   std::optional<base::FilePath> ResolveBaseDirectory(
       std::string_view base) const override;
   std::optional<base::FilePath> ResolveFileSystemPath(

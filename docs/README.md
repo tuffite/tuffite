@@ -94,3 +94,5 @@ should focus on these decisions first:
 
 See [Implementation plan](implementation-plan.md#10-review-checklist) for the full
 review checklist and unresolved policy choices.
+
+- [DOM isolated worlds](isolated.md): scoped Web Components, host handles, and instance communication.
