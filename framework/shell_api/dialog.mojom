@@ -16,4 +16,6 @@ struct OpenDirectoryDialogOptions {
 interface Dialog {
   OpenFile@0(OpenFileDialogOptions? options) => (string? result);
   OpenDirectory@1(OpenDirectoryDialogOptions? options) => (string? result);
+  // Writes only to the path explicitly selected in the native save dialog.
+  SaveFile@2(OpenFileDialogOptions? options, array<uint8> contents) => (string? result);
 };

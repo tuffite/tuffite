@@ -13,6 +13,9 @@ class DialogImpl final : public generated::Dialog {
   void OpenFile(const dispatch::Context& context,
                 generated::Dialog::OpenFileRequestPtr request,
                 generated::Dialog::OpenFileCallback callback) override;
+  void SaveFile(const dispatch::Context& context,
+                generated::Dialog::SaveFileRequestPtr request,
+                generated::Dialog::SaveFileCallback callback) override;
   void OpenDirectory(
       const dispatch::Context& context,
       generated::Dialog::OpenDirectoryRequestPtr request,

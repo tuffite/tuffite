@@ -11,11 +11,13 @@
 #include <vector>
 
 #include "base/check.h"
+#include "base/containers/span.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/memory/ref_counted.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/thread_pool.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
@@ -130,25 +132,25 @@ class PendingDialog final : public ui::SelectFileDialog::Listener,
   std::unique_ptr<ui::SelectFileDialog::FileTypeInfo> file_types_;
 };
 
-bool IsAuthorized(content::RenderFrameHost& frame, bool file) {
+bool IsAuthorized(content::RenderFrameHost& frame, std::string_view command) {
   const ManifestService* manifest = ManifestFor(frame);
   content::WebContents* web_contents =
       content::WebContents::FromRenderFrameHost(&frame);
   return manifest && web_contents &&
          WebContentsRoleData::GetRole(web_contents) == WebContentsRole::kApp &&
          &frame == web_contents->GetPrimaryMainFrame() &&
-         manifest->IsShellApiCommandAllowed(
-             frame.GetLastCommittedOrigin(),
-             file ? "tuffite.Dialog.OpenFile" : "tuffite.Dialog.OpenDirectory");
+         manifest->IsShellApiCommandAllowed(frame.GetLastCommittedOrigin(),
+                                            command);
 }
 
 void Show(content::RenderFrameHost& frame,
-          bool file,
+          ui::SelectFileDialog::Type type,
+          std::string_view command,
           std::string title,
           std::string default_path,
           std::optional<std::vector<std::vector<std::string>>> extensions,
           SelectionCallback callback) {
-  if (!IsAuthorized(frame, file)) {
+  if (!IsAuthorized(frame, command)) {
     rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
@@ -160,6 +162,7 @@ void Show(content::RenderFrameHost& frame,
     rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
+  const bool file = type != ui::SelectFileDialog::SELECT_EXISTING_FOLDER;
   auto file_types = file ? MakeFileTypes(extensions) : nullptr;
   if (file && extensions && !file_types) {
     rpc::Reject(callback, rpc::Status::kInvalidArgument);
@@ -170,14 +173,16 @@ void Show(content::RenderFrameHost& frame,
   }
 
   content::WebContents* web_contents =
-    content::WebContents::FromRenderFrameHost(&frame);
+      content::WebContents::FromRenderFrameHost(&frame);
   auto pending = base::MakeRefCounted<PendingDialog>(std::move(callback));
-  pending->Show(file ? ui::SelectFileDialog::SELECT_OPEN_FILE
-    : ui::SelectFileDialog::SELECT_EXISTING_FOLDER,
-    base::UTF8ToUTF16(title),
-    default_path.empty() ? base::GetHomeDir()
-    : base::FilePath::FromUTF8Unsafe(default_path),
-    std::move(file_types), web_contents->GetTopLevelNativeWindow());
+  auto selected_path = default_path.empty()
+                           ? base::GetHomeDir()
+                           : base::FilePath::FromUTF8Unsafe(default_path);
+  if (!selected_path.IsAbsolute()) {
+    selected_path = base::GetHomeDir().Append(selected_path);
+  }
+  pending->Show(type, base::UTF8ToUTF16(title), std::move(selected_path),
+                std::move(file_types), web_contents->GetTopLevelNativeWindow());
 }
 
 }  // namespace
@@ -195,9 +200,62 @@ void DialogImpl::OpenFile(const dispatch::Context& context,
   }
   auto options = request->options ? std::move(request->options)
                                   : OpenFileDialogOptions::New();
-  Show(context.frame(), true, options->title.value_or(""),
+  Show(context.frame(), ui::SelectFileDialog::SELECT_OPEN_FILE,
+       "tuffite.Dialog.OpenFile", options->title.value_or(""),
        options->default_path.value_or(""), std::move(options->extensions),
        std::move(callback));
+}
+
+void DialogImpl::SaveFile(const dispatch::Context& context,
+                          generated::Dialog::SaveFileRequestPtr request,
+                          generated::Dialog::SaveFileCallback callback) {
+  if (!context.sender()) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
+    return;
+  }
+  if (!IsUnscopedAllowed(context, generated::Dialog::kSaveFile)) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
+    return;
+  }
+  if (request->contents.size() > 64 * 1024 * 1024) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
+    return;
+  }
+  auto options = request->options ? std::move(request->options)
+                                  : OpenFileDialogOptions::New();
+  Show(
+      context.frame(), ui::SelectFileDialog::SELECT_SAVEAS_FILE,
+      "tuffite.Dialog.SaveFile", options->title.value_or(""),
+      options->default_path.value_or(""), std::move(options->extensions),
+      base::BindOnce(
+          [](std::vector<uint8_t> contents,
+             generated::Dialog::SaveFileCallback callback, rpc::Status status,
+             std::optional<std::string> path) {
+            if (status != rpc::Status::kOk || !path) {
+              std::move(callback).Run(status, std::move(path));
+              return;
+            }
+            auto destination = base::FilePath::FromUTF8Unsafe(*path);
+            base::ThreadPool::PostTaskAndReplyWithResult(
+                FROM_HERE, {base::MayBlock()},
+                base::BindOnce(
+                    [](base::FilePath destination, std::vector<uint8_t> bytes) {
+                      return base::WriteFile(destination, base::span(bytes));
+                    },
+                    std::move(destination), std::move(contents)),
+                base::BindOnce(
+                    [](generated::Dialog::SaveFileCallback callback,
+                       std::optional<std::string> path, bool written) {
+                      if (!written) {
+                        rpc::Reject(callback, rpc::Status::kUnavailable);
+                        return;
+                      }
+                      std::move(callback).Run(rpc::Status::kOk,
+                                              std::move(path));
+                    },
+                    std::move(callback), std::move(path)));
+          },
+          std::move(request->contents), std::move(callback)));
 }
 
 void DialogImpl::OpenDirectory(const dispatch::Context& context,
@@ -213,8 +271,9 @@ void DialogImpl::OpenDirectory(const dispatch::Context& context,
   }
   auto options = request->options ? std::move(request->options)
                                   : OpenDirectoryDialogOptions::New();
-  Show(context.frame(), false, options->title.value_or(""), "", std::nullopt,
-       std::move(callback));
+  Show(context.frame(), ui::SelectFileDialog::SELECT_EXISTING_FOLDER,
+       "tuffite.Dialog.OpenDirectory", options->title.value_or(""), "",
+       std::nullopt, std::move(callback));
 }
 
 }  // namespace tuffite::shell_api::dialog

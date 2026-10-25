@@ -44,3 +44,17 @@ for (const [status, code] of [[1, 'invalid_argument'], [2, 'access_denied'],
   await assert.rejects(api.window.current(), (error) => error.code === code && error.cause === failure);
 }
 console.log('Framework Mojom: dispatch error codes preserve the native status domain');
+
+// Save dialogs carry raw bytes and return null on cancellation, never a write path.
+const saveRequest = {
+  options: {title:'保存代码', defaultPath:'code.xml', extensions:[['xml']]},
+  contents: new TextEncoder().encode('<node>中文</node>\n'),
+};
+assert.deepEqual(decodeMojom(mojomTypes.DialogSaveFileRequest,
+  encodeMojom(mojomTypes.DialogSaveFileRequest,saveRequest)),saveRequest);
+for (const result of [null,'/tmp/代码.xml']) {
+  assert.deepEqual(decodeMojom(mojomTypes.DialogSaveFileResponse,
+    encodeMojom(mojomTypes.DialogSaveFileResponse,{result})),{result});
+}
+assert.equal(typeof api.dialog.saveFile,'function');
+console.log('Framework Mojom: SaveFile preserves UTF-8 bytes, options and cancellation');

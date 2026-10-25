@@ -371,6 +371,59 @@ export const mojomTypes = {
     ]],
     'size': 16
   },
+  'DialogSaveFileRequest': {
+    'fields': [[
+      'options',
+      8,
+      0,
+      { 'nullable': {
+        'fields': [
+          [
+            'title',
+            8,
+            0,
+            { 'nullable': 'string' }
+          ],
+          [
+            'defaultPath',
+            16,
+            0,
+            { 'nullable': 'string' }
+          ],
+          [
+            'extensions',
+            24,
+            0,
+            { 'nullable': {
+              'array': {
+                'array': 'string',
+                'boolean': false,
+                'width': 8
+              },
+              'boolean': false,
+              'width': 8
+            } }
+          ]
+        ],
+        'size': 32
+      } }
+    ], [
+      'contents',
+      16,
+      0,
+      'bytes'
+    ]],
+    'size': 24
+  },
+  'DialogSaveFileResponse': {
+    'fields': [[
+      'result',
+      8,
+      0,
+      { 'nullable': 'string' }
+    ]],
+    'size': 16
+  },
   'FsCreateDirRequest': {
     'fields': [[
       'base',
@@ -3617,6 +3670,65 @@ export const mojomMethods = [
       'size': 16
     },
     'tuffite.Dialog.OpenDirectory'
+  ],
+  [
+    'dialog.saveFile',
+    '0',
+    '0',
+    {
+      'fields': [[
+        'options',
+        8,
+        0,
+        { 'nullable': {
+          'fields': [
+            [
+              'title',
+              8,
+              0,
+              { 'nullable': 'string' }
+            ],
+            [
+              'defaultPath',
+              16,
+              0,
+              { 'nullable': 'string' }
+            ],
+            [
+              'extensions',
+              24,
+              0,
+              { 'nullable': {
+                'array': {
+                  'array': 'string',
+                  'boolean': false,
+                  'width': 8
+                },
+                'boolean': false,
+                'width': 8
+              } }
+            ]
+          ],
+          'size': 32
+        } }
+      ], [
+        'contents',
+        16,
+        0,
+        'bytes'
+      ]],
+      'size': 24
+    },
+    {
+      'fields': [[
+        'result',
+        8,
+        0,
+        { 'nullable': 'string' }
+      ]],
+      'size': 16
+    },
+    'tuffite.Dialog.SaveFile'
   ],
   [
     'path.directories',

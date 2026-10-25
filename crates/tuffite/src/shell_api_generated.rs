@@ -271,6 +271,121 @@ impl ::tuffite::__private::mojom::Struct for DialogOpenFileResponse {
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct DialogSaveFileRequest {
+    pub r#options: Option<OpenFileDialogOptions>,
+    pub r#contents: Vec<u8>,
+}
+impl ::tuffite::__private::mojom::Value for DialogSaveFileRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for DialogSaveFileRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#options, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#contents, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#options: <Option<
+                OpenFileDialogOptions,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#contents: <Vec<
+                u8,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct DialogSaveFileResponse {
+    pub r#result: Option<String>,
+}
+impl ::tuffite::__private::mojom::Value for DialogSaveFileResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for DialogSaveFileResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <Option<
+                String,
+            > as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct FsCreateDirRequest {
     pub r#base: BaseDirectory,
     pub r#path: String,
@@ -6277,6 +6392,22 @@ pub mod dialog {
             bytes: &[u8],
         ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
             let response = <super::DialogOpenDirectoryResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type SaveFile = super::DialogSaveFileRequest;
+    impl ::tuffite::ShellApiRequest for super::DialogSaveFileRequest {
+        type Response = Option<String>;
+        const CHANNEL: &'static str = "tuffite.Dialog.SaveFile";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::DialogSaveFileResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
                 bytes,
             )?;
             Ok(response.result)

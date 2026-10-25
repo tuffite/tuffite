@@ -103,6 +103,13 @@ export interface DialogOpenFileRequest {
 export interface DialogOpenFileResponse {
   'result'?: string | null;
 }
+export interface DialogSaveFileRequest {
+  'options'?: OpenFileDialogOptions | null;
+  'contents': Uint8Array;
+}
+export interface DialogSaveFileResponse {
+  'result'?: string | null;
+}
 export interface FsCreateDirRequest {
   'base': BaseDirectory;
   'path': string;
@@ -456,6 +463,7 @@ export declare function createTuffiteApi(transport?: MojomTransport): TuffiteApi
 export declare const dialog: {
   readonly 'openFile': (arg0?: OpenFileDialogOptions | null) => Promise<string | null>;
   readonly 'openDirectory': (arg0?: OpenDirectoryDialogOptions | null) => Promise<string | null>;
+  readonly 'saveFile': (arg0: OpenFileDialogOptions | null, arg1: Uint8Array) => Promise<string | null>;
 };
 export declare const fs: {
   readonly 'readFile': (arg0: BaseDirectory, arg1: string) => Promise<Uint8Array>;

@@ -16,6 +16,13 @@ integration surface. `BaseDirectory` is a generated numeric enum; strings such
 as `"data"` are rejected by the codec. Filesystem permission scopes still use
 root labels such as `data/**`.
 
+`dialog.saveFile(options, contents)` opens the native Save As dialog and writes
+its `Uint8Array` contents only after the user selects a destination. It returns
+the selected path, or `null` when cancelled. Relative suggested filenames are
+resolved under the user's home directory. The command requires the
+`tuffite.Dialog.SaveFile` grant and an application's primary frame; choosing a
+path in this dialog authorizes that write without a separate filesystem scope.
+
 ## Generation
 
 The source-distributed Rust frontend parses contracts, imports, enums, nullable
