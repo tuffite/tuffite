@@ -20,6 +20,7 @@
 #include "third_party/blink/public/platform/scheduler/web_agent_group_scheduler.h"
 #include "third_party/blink/public/web/web_document.h"
 #include "third_party/blink/public/web/web_local_frame.h"
+#include "tuffite/components/dispatch/common/status.h"
 #include "tuffite/components/dispatch/common/switches.h"
 #include "url/gurl.h"
 #include "url/origin.h"
@@ -314,28 +315,12 @@ void DispatchBindings::OnDispatched(uint64_t request_id,
     resolver->Resolve(context, ToUint8Array(isolate, response)).ToChecked();
   } else {
     const std::string detail(response.begin(), response.end());
-    const std::string message = detail.empty()
-                                    ? "ShellAPI transport unavailable (" +
-                                          base::NumberToString(status) + ")"
-                                    : detail;
-    const char* code = "internal";
-    switch (status) {
-      case 1:
-        code = "invalid_argument";
-        break;
-      case 2:
-        code = "incompatible_abi";
-        break;
-      case 3:
-        code = "invalid_handle";
-        break;
-      case 4:
-        code = "unavailable";
-        break;
-      case 5:
-        code = "resource_exhausted";
-        break;
-    }
+    const auto dispatch_status = static_cast<rpc::Status>(status);
+    const std::string message =
+        detail.empty() ? std::string(rpc::ErrorMessage(dispatch_status)) +
+                             " (" + base::NumberToString(status) + ")"
+                       : detail;
+    const char* code = rpc::ErrorCode(dispatch_status);
     v8::Local<v8::Value> exception = v8::Exception::Error(
         v8::String::NewFromUtf8(isolate, message.c_str()).ToLocalChecked());
     v8::Local<v8::Object> error = exception.As<v8::Object>();

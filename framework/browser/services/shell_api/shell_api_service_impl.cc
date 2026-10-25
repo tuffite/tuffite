@@ -84,11 +84,20 @@ void ShellApiServiceImpl::DispatchRequest(
       !manifest.IsShellApiCommandAllowed(frame.GetLastCommittedOrigin(),
                                          channel) ||
       (application_command &&
-       (!manifest.IsShellApiScopeAllowed(frame.GetLastCommittedOrigin(),
-                                         channel, "", "") ||
-        !request ||
-        !manifest.IsApplicationCommandRequest(channel, request->command_id)))) {
+       !manifest.IsShellApiScopeAllowed(frame.GetLastCommittedOrigin(), channel,
+                                        "", ""))) {
     std::move(reply).Run(static_cast<int32_t>(rpc::Status::kAccessDenied), {});
+    return;
+  }
+  if (application_command && (!request || !manifest.IsApplicationCommandRequest(
+                                              channel, request->command_id))) {
+    const std::string detail =
+        "ShellAPI binding mismatch for " + channel +
+        ": frontend command IDs do not match the running application. "
+        "Build native and frontend resources for the same application channel "
+        "(Debug or Release).";
+    std::move(reply).Run(static_cast<int32_t>(rpc::Status::kAccessDenied),
+                         std::vector<uint8_t>(detail.begin(), detail.end()));
     return;
   }
   if (payload.size() > 16 * 1024 * 1024) {

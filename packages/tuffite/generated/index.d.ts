@@ -414,6 +414,13 @@ export interface WindowSetBoundsRequest {
 export interface WindowSetBoundsResponse {
   'result': WindowInfo;
 }
+export interface WindowSetConstraintsRequest {
+  'constraints': WindowSizeConstraints;
+  'id'?: bigint | null;
+}
+export interface WindowSetConstraintsResponse {
+  'result': WindowInfo;
+}
 export interface WindowSetFullscreenRequest {
   'fullscreen': boolean;
   'id'?: bigint | null;
@@ -427,6 +434,12 @@ export interface WindowSetTitleRequest {
 }
 export interface WindowSetTitleResponse {
   'result': WindowInfo;
+}
+export interface WindowSizeConstraints {
+  'minWidth': number;
+  'minHeight': number;
+  'maxWidth'?: number | null;
+  'maxHeight'?: number | null;
 }
 export interface TuffiteApi {
   readonly 'dialog': typeof dialog;
@@ -499,4 +512,5 @@ export declare const window: {
   readonly 'setTitle': (arg0: string, arg1?: bigint | null) => Promise<WindowInfo>;
   readonly 'getBounds': (arg0?: bigint | null) => Promise<WindowBounds>;
   readonly 'setBounds': (arg0: WindowBounds, arg1?: bigint | null) => Promise<WindowInfo>;
+  readonly 'setConstraints': (arg0: WindowSizeConstraints, arg1?: bigint | null) => Promise<WindowInfo>;
 };

@@ -742,6 +742,22 @@ TEST(ApplicationServiceTest, IsolatesServicesAcrossApplications) {
   EXPECT_TRUE(fixture.dispatch.Run(native, "RoundTrip", kEmptyMojomRequest,
                                    &fixture_reply));
 
+  // A null top-level Mojo request is not a valid RPC call, even though the
+  // generic Mojo deserializer accepts it. Never pass it to a handler.
+  for (const char* method : {"Empty", "RoundTrip"}) {
+    bool rejected = false;
+    fixture_reply = base::BindOnce(
+        [](bool* rejected, int32_t status, const std::vector<uint8_t>& bytes) {
+          EXPECT_EQ(status,
+                    static_cast<int32_t>(rpc::Status::kInvalidArgument));
+          EXPECT_TRUE(bytes.empty());
+          *rejected = true;
+        },
+        &rejected);
+    EXPECT_TRUE(fixture.dispatch.Run(native, method, {}, &fixture_reply));
+    EXPECT_TRUE(rejected);
+  }
+
   // Both route ownership and pending reply ownership must keep the service
   // alive, including after a router is torn down during an asynchronous call.
   shell_api::generated::Path::DirectoriesCallback pending;

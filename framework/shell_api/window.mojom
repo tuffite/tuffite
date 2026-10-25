@@ -30,6 +30,13 @@ struct WindowOptions {
   bool? focused;
 };
 
+struct WindowSizeConstraints {
+  double minWidth;
+  double minHeight;
+  double? maxWidth;
+  double? maxHeight;
+};
+
 interface Window {
   Current@0() => (WindowInfo result);
   List@1() => (array<WindowInfo> result);
@@ -43,4 +50,5 @@ interface Window {
   SetTitle@9(string title, int64? id) => (WindowInfo result);
   GetBounds@10(int64? id) => (WindowBounds result);
   SetBounds@11(WindowBounds bounds, int64? id) => (WindowInfo result);
+  SetConstraints@12(WindowSizeConstraints constraints, int64? id) => (WindowInfo result);
 };

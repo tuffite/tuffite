@@ -12,6 +12,7 @@
 
 #include "base/check.h"
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/memory/ref_counted.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -169,13 +170,14 @@ void Show(content::RenderFrameHost& frame,
   }
 
   content::WebContents* web_contents =
-      content::WebContents::FromRenderFrameHost(&frame);
+    content::WebContents::FromRenderFrameHost(&frame);
   auto pending = base::MakeRefCounted<PendingDialog>(std::move(callback));
   pending->Show(file ? ui::SelectFileDialog::SELECT_OPEN_FILE
-                     : ui::SelectFileDialog::SELECT_EXISTING_FOLDER,
-                base::UTF8ToUTF16(title),
-                base::FilePath::FromUTF8Unsafe(default_path),
-                std::move(file_types), web_contents->GetTopLevelNativeWindow());
+    : ui::SelectFileDialog::SELECT_EXISTING_FOLDER,
+    base::UTF8ToUTF16(title),
+    default_path.empty() ? base::GetHomeDir()
+    : base::FilePath::FromUTF8Unsafe(default_path),
+    std::move(file_types), web_contents->GetTopLevelNativeWindow());
 }
 
 }  // namespace

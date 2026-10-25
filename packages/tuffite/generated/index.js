@@ -231,11 +231,11 @@ export class TuffiteError extends Error {
 }
 const transportCodes = Object.freeze({
   1: 'invalid_argument',
-  2: 'incompatible_abi',
-  3: 'invalid_handle',
-  4: 'unavailable',
-  5: 'resource_exhausted',
-  6: 'internal'
+  2: 'access_denied',
+  3: 'unavailable',
+  4: 'cancelled',
+  5: 'timed_out',
+  6: 'resource_exhausted'
 });
 const commandCodes = Object.freeze({
   1: 'invalid_request',
@@ -3139,6 +3139,146 @@ export const mojomTypes = {
     ]],
     'size': 16
   },
+  'WindowSetConstraintsRequest': {
+    'fields': [[
+      'constraints',
+      8,
+      0,
+      {
+        'fields': [
+          [
+            'minWidth',
+            8,
+            0,
+            'f64'
+          ],
+          [
+            'minHeight',
+            16,
+            0,
+            'f64'
+          ],
+          [
+            'maxWidth',
+            32,
+            0,
+            { 'nullable': 'f64' },
+            [24, 0]
+          ],
+          [
+            'maxHeight',
+            40,
+            0,
+            { 'nullable': 'f64' },
+            [24, 1]
+          ]
+        ],
+        'size': 48
+      }
+    ], [
+      'id',
+      24,
+      0,
+      { 'nullable': 'i64' },
+      [16, 0]
+    ]],
+    'size': 32
+  },
+  'WindowSetConstraintsResponse': {
+    'fields': [[
+      'result',
+      8,
+      0,
+      {
+        'fields': [
+          [
+            'id',
+            8,
+            0,
+            'i64'
+          ],
+          [
+            'label',
+            16,
+            0,
+            'string'
+          ],
+          [
+            'title',
+            24,
+            0,
+            'string'
+          ],
+          [
+            'url',
+            32,
+            0,
+            'string'
+          ],
+          [
+            'bounds',
+            40,
+            0,
+            {
+              'fields': [
+                [
+                  'x',
+                  8,
+                  0,
+                  'f64'
+                ],
+                [
+                  'y',
+                  16,
+                  0,
+                  'f64'
+                ],
+                [
+                  'width',
+                  24,
+                  0,
+                  'f64'
+                ],
+                [
+                  'height',
+                  32,
+                  0,
+                  'f64'
+                ]
+              ],
+              'size': 40
+            }
+          ],
+          [
+            'focused',
+            48,
+            0,
+            'bool'
+          ],
+          [
+            'minimized',
+            48,
+            1,
+            'bool'
+          ],
+          [
+            'maximized',
+            48,
+            2,
+            'bool'
+          ],
+          [
+            'fullscreen',
+            48,
+            3,
+            'bool'
+          ]
+        ],
+        'size': 56
+      }
+    ]],
+    'size': 16
+  },
   'WindowSetFullscreenRequest': {
     'fields': [[
       'fullscreen',
@@ -3358,6 +3498,37 @@ export const mojomTypes = {
       }
     ]],
     'size': 16
+  },
+  'WindowSizeConstraints': {
+    'fields': [
+      [
+        'minWidth',
+        8,
+        0,
+        'f64'
+      ],
+      [
+        'minHeight',
+        16,
+        0,
+        'f64'
+      ],
+      [
+        'maxWidth',
+        32,
+        0,
+        { 'nullable': 'f64' },
+        [24, 0]
+      ],
+      [
+        'maxHeight',
+        40,
+        0,
+        { 'nullable': 'f64' },
+        [24, 1]
+      ]
+    ],
+    'size': 48
   }
 };
 export const mojomMethods = [
@@ -5978,6 +6149,152 @@ export const mojomMethods = [
       'size': 16
     },
     'tuffite.Window.SetBounds'
+  ],
+  [
+    'window.setConstraints',
+    '0',
+    '0',
+    {
+      'fields': [[
+        'constraints',
+        8,
+        0,
+        {
+          'fields': [
+            [
+              'minWidth',
+              8,
+              0,
+              'f64'
+            ],
+            [
+              'minHeight',
+              16,
+              0,
+              'f64'
+            ],
+            [
+              'maxWidth',
+              32,
+              0,
+              { 'nullable': 'f64' },
+              [24, 0]
+            ],
+            [
+              'maxHeight',
+              40,
+              0,
+              { 'nullable': 'f64' },
+              [24, 1]
+            ]
+          ],
+          'size': 48
+        }
+      ], [
+        'id',
+        24,
+        0,
+        { 'nullable': 'i64' },
+        [16, 0]
+      ]],
+      'size': 32
+    },
+    {
+      'fields': [[
+        'result',
+        8,
+        0,
+        {
+          'fields': [
+            [
+              'id',
+              8,
+              0,
+              'i64'
+            ],
+            [
+              'label',
+              16,
+              0,
+              'string'
+            ],
+            [
+              'title',
+              24,
+              0,
+              'string'
+            ],
+            [
+              'url',
+              32,
+              0,
+              'string'
+            ],
+            [
+              'bounds',
+              40,
+              0,
+              {
+                'fields': [
+                  [
+                    'x',
+                    8,
+                    0,
+                    'f64'
+                  ],
+                  [
+                    'y',
+                    16,
+                    0,
+                    'f64'
+                  ],
+                  [
+                    'width',
+                    24,
+                    0,
+                    'f64'
+                  ],
+                  [
+                    'height',
+                    32,
+                    0,
+                    'f64'
+                  ]
+                ],
+                'size': 40
+              }
+            ],
+            [
+              'focused',
+              48,
+              0,
+              'bool'
+            ],
+            [
+              'minimized',
+              48,
+              1,
+              'bool'
+            ],
+            [
+              'maximized',
+              48,
+              2,
+              'bool'
+            ],
+            [
+              'fullscreen',
+              48,
+              3,
+              'bool'
+            ]
+          ],
+          'size': 56
+        }
+      ]],
+      'size': 16
+    },
+    'tuffite.Window.SetConstraints'
   ]
 ];
 export const BaseDirectory = Object.freeze({

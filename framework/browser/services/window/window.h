@@ -74,6 +74,7 @@ class Window final : public views::WidgetDelegate,
   }
   gfx::Size minimum_size() const { return minimum_size_; }
   gfx::Size maximum_size() const { return maximum_size_; }
+  void SetConstraints(const window::Constraints& constraints);
   bool IsPointWithinDraggableRegion(const gfx::Point& point) const;
   void Close();
   // Synchronous final teardown, used by the owning WindowService.

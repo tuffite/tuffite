@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "tuffite/framework/browser/services/shell_api/commands/window.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <optional>
@@ -339,5 +340,43 @@ void WindowImpl::SetBounds(const dispatch::Context& context,
     const bool succeeded = call->service->SetBounds(call->target, *bounds);
     ReplyInfo(*call, std::move(callback), succeeded);
   }
+}
+void WindowImpl::SetConstraints(
+    const dispatch::Context& context,
+    generated::Window::SetConstraintsRequestPtr request,
+    generated::Window::SetConstraintsCallback callback) {
+  auto call = Authorize(context, generated::Window::kSetConstraints,
+                        request->id, callback);
+  if (!call) {
+    return;
+  }
+  const auto& input = *request->constraints;
+  int min_width, min_height, max_width, max_height;
+  if (!ToCoordinate(input.min_width, &min_width) ||
+      !ToCoordinate(input.min_height, &min_height) ||
+      !ToCoordinate(
+          input.max_width.value_or(call->target->maximum_size().width()),
+          &max_width) ||
+      !ToCoordinate(
+          input.max_height.value_or(call->target->maximum_size().height()),
+          &max_height) ||
+      min_width < 1 || min_height < 1 || max_width < min_width ||
+      max_height < min_height || max_width > 16384 || max_height > 16384) {
+    rpc::Reject(callback, rpc::Status::kInvalidArgument);
+    return;
+  }
+  call->target->SetConstraints(
+      {gfx::Size(min_width, min_height), gfx::Size(max_width, max_height)});
+  auto info = call->service->GetInfo(call->target);
+  if (!info) {
+    rpc::Reject(callback, rpc::Status::kUnavailable);
+    return;
+  }
+  auto bounds = info->state.bounds;
+  bounds.set_width(std::clamp(bounds.width(), min_width, max_width));
+  bounds.set_height(std::clamp(bounds.height(), min_height, max_height));
+  ReplyInfo(*call, std::move(callback),
+            bounds == info->state.bounds ||
+                call->service->SetBounds(call->target, bounds));
 }
 }  // namespace tuffite::shell_api::window

@@ -4,11 +4,103 @@
 #include "tuffite/framework/browser/services/window/platform.h"
 
 #import <Cocoa/Cocoa.h>
+#import <objc/runtime.h>
 
 #include "base/strings/sys_string_conversions.h"
 #include "content/public/browser/web_contents.h"
 #include "tuffite/framework/browser/services/window/window.h"
 #include "ui/gfx/mac/coordinate_conversion.h"
+
+// AppKit relays out the standard buttons when the window resizes or leaves
+// fullscreen. Observe those frames so its native 32-point titlebar cannot
+// overwrite the application's 36-point alignment after initial configuration.
+// Defer until AppKit finishes positioning all three buttons in the current
+// turn.
+@interface TuffiteTitlebarLayout : NSObject {
+  __weak NSWindow* _window;
+  BOOL _updating;
+  BOOL _scheduled;
+}
+- (instancetype)initWithWindow:(NSWindow*)window;
+- (void)update:(NSNotification*)notification;
+@end
+
+@implementation TuffiteTitlebarLayout
+- (instancetype)initWithWindow:(NSWindow*)window {
+  if ((self = [super init])) {
+    _window = window;
+    NSNotificationCenter* center = NSNotificationCenter.defaultCenter;
+    NSView* controls =
+        [window standardWindowButton:NSWindowCloseButton].superview;
+    for (NSView* view in @[
+           controls, [window standardWindowButton:NSWindowCloseButton],
+           [window standardWindowButton:NSWindowMiniaturizeButton],
+           [window standardWindowButton:NSWindowZoomButton]
+         ]) {
+      view.postsFrameChangedNotifications = YES;
+      [center addObserver:self
+                 selector:@selector(update:)
+                     name:NSViewFrameDidChangeNotification
+                   object:view];
+    }
+    [center addObserver:self
+               selector:@selector(update:)
+                   name:NSWindowDidExitFullScreenNotification
+                 object:window];
+  }
+  return self;
+}
+
+- (void)update:(NSNotification*)notification {
+  if (notification) {
+    if (_updating || _scheduled) {
+      return;
+    }
+    _scheduled = YES;
+    __weak TuffiteTitlebarLayout* weak_self = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      TuffiteTitlebarLayout* strong_self = weak_self;
+      if (strong_self) {
+        strong_self->_scheduled = NO;
+        [strong_self update:nil];
+      }
+    });
+    return;
+  }
+  NSWindow* window = _window;
+  if (_updating || !window ||
+      (window.styleMask & NSWindowStyleMaskFullScreen)) {
+    return;
+  }
+  _updating = YES;
+  NSView* controls =
+      [window standardWindowButton:NSWindowCloseButton].superview;
+  NSRect frame = controls.frame;
+  frame.origin.y += frame.size.height - 36.0;
+  frame.size.height = 36.0;
+  if (!NSEqualRects(frame, controls.frame)) {
+    controls.frame = frame;
+  }
+  for (NSNumber* type in @[
+         @(NSWindowCloseButton), @(NSWindowMiniaturizeButton),
+         @(NSWindowZoomButton)
+       ]) {
+    NSButton* button =
+        [window standardWindowButton:static_cast<NSWindowButton>(
+                                         type.unsignedIntegerValue)];
+    NSRect button_frame = button.frame;
+    button_frame.origin.y = (36.0 - button_frame.size.height) / 2.0;
+    if (!NSEqualRects(button_frame, button.frame)) {
+      button.frame = button_frame;
+    }
+  }
+  _updating = NO;
+}
+
+- (void)dealloc {
+  [NSNotificationCenter.defaultCenter removeObserver:self];
+}
+@end
 
 namespace tuffite::window {
 namespace {
@@ -121,6 +213,14 @@ void ConfigureCustomTitlebar(Window* window) {
   NSButton* minimize = [native standardWindowButton:NSWindowMiniaturizeButton];
   NSButton* zoom = [native standardWindowButton:NSWindowZoomButton];
   close.superview.hidden = NO;
+  static char layout_key;
+  TuffiteTitlebarLayout* layout = objc_getAssociatedObject(native, &layout_key);
+  if (!layout) {
+    layout = [[TuffiteTitlebarLayout alloc] initWithWindow:native];
+    objc_setAssociatedObject(native, &layout_key, layout,
+                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  }
+  [layout update:nil];
   for (NSButton* button in @[ close, minimize, zoom ]) {
     button.hidden = NO;
     button.alphaValue = 1.0;

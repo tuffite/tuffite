@@ -84,7 +84,9 @@ struct Method {
       return true;
     }
     RequestPtr request;
-    if (!Request::Deserialize(input, &request)) {
+    // Mojo accepts an empty top-level message as a null struct. RPC method
+    // requests are mandatory, including methods with no arguments.
+    if (!Request::Deserialize(input, &request) || !request) {
       std::move(*reply).Run(static_cast<int32_t>(Status::kInvalidArgument), {});
       return true;
     }

@@ -5802,6 +5802,130 @@ impl ::tuffite::__private::mojom::Struct for WindowSetBoundsResponse {
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowSetConstraintsRequest {
+    pub r#constraints: WindowSizeConstraints,
+    pub r#id: Option<i64>,
+}
+impl ::tuffite::__private::mojom::Value for WindowSetConstraintsRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowSetConstraintsRequest {
+    const SIZE: usize = 32;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#constraints, w, base + 8, 0)?;
+        w.boolean(base + 16, 0, self.r#id.is_some())?;
+        if let Some(value) = &self.r#id {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 24, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#constraints: <WindowSizeConstraints as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#id: if r.boolean(base + 16, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 24, 0)?)
+            } else {
+                None
+            },
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowSetConstraintsResponse {
+    pub r#result: WindowInfo,
+}
+impl ::tuffite::__private::mojom::Value for WindowSetConstraintsResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowSetConstraintsResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <WindowInfo as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct WindowSetFullscreenRequest {
     pub r#fullscreen: bool,
     pub r#id: Option<i64>,
@@ -6036,6 +6160,90 @@ impl ::tuffite::__private::mojom::Struct for WindowSetTitleResponse {
                 base + 8,
                 0,
             )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct WindowSizeConstraints {
+    pub r#min_width: f64,
+    pub r#min_height: f64,
+    pub r#max_width: Option<f64>,
+    pub r#max_height: Option<f64>,
+}
+impl ::tuffite::__private::mojom::Value for WindowSizeConstraints {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for WindowSizeConstraints {
+    const SIZE: usize = 48;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#min_width, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#min_height, w, base + 16, 0)?;
+        w.boolean(base + 24, 0, self.r#max_width.is_some())?;
+        if let Some(value) = &self.r#max_width {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 32, 0)?;
+        }
+        w.boolean(base + 24, 1, self.r#max_height.is_some())?;
+        if let Some(value) = &self.r#max_height {
+            ::tuffite::__private::mojom::Value::put(value, w, base + 40, 0)?;
+        }
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#min_width: <f64 as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#min_height: <f64 as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 16,
+                0,
+            )?,
+            r#max_width: if r.boolean(base + 24, 0)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 32, 0)?)
+            } else {
+                None
+            },
+            r#max_height: if r.boolean(base + 24, 1)? {
+                Some(::tuffite::__private::mojom::Value::get(r, base + 40, 0)?)
+            } else {
+                None
+            },
         };
         let _ = (r, base);
         Ok(value)
@@ -6749,6 +6957,22 @@ pub mod window {
             bytes: &[u8],
         ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
             let response = <super::WindowSetBoundsResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                bytes,
+            )?;
+            Ok(response.result)
+        }
+    }
+    pub type SetConstraints = super::WindowSetConstraintsRequest;
+    impl ::tuffite::ShellApiRequest for super::WindowSetConstraintsRequest {
+        type Response = WindowInfo;
+        const CHANNEL: &'static str = "tuffite.Window.SetConstraints";
+        fn encode(&self) -> Result<Vec<u8>, ::tuffite::__private::codec::CodecError> {
+            ::tuffite::__private::mojom::Struct::encode_mojom(self)
+        }
+        fn decode(
+            bytes: &[u8],
+        ) -> Result<Self::Response, ::tuffite::__private::codec::CodecError> {
+            let response = <super::WindowSetConstraintsResponse as ::tuffite::__private::mojom::Struct>::decode_mojom(
                 bytes,
             )?;
             Ok(response.result)

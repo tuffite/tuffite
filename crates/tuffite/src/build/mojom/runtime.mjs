@@ -202,11 +202,11 @@ export class TuffiteError extends Error {
 
 const transportCodes = Object.freeze({
   1: 'invalid_argument',
-  2: 'incompatible_abi',
-  3: 'invalid_handle',
-  4: 'unavailable',
-  5: 'resource_exhausted',
-  6: 'internal',
+  2: 'access_denied',
+  3: 'unavailable',
+  4: 'cancelled',
+  5: 'timed_out',
+  6: 'resource_exhausted',
 });
 const commandCodes = Object.freeze({
   1: 'invalid_request',

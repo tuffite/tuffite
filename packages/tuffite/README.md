@@ -27,3 +27,9 @@ The plugin also exposes the authenticated per-run readiness probe used by
 `tuff dev`; a pre-existing server cannot be mistaken for the privileged dev
 page. Static mounts are canonicalized before serving, including symlink and
 junction targets.
+
+Window size constraints can change at runtime, for example when opening a side
+panel. Grant `tuffite.Window.SetConstraints` (or `tuffite.Window.*`) and call
+`await window.setConstraints({ minWidth: 900, minHeight: 640 })`. Omitted maximum
+dimensions retain the current limits. The native resize minimum updates and the
+current bounds grow or shrink to fit those limits while retaining their origin.

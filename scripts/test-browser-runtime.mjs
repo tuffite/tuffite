@@ -78,7 +78,7 @@ await assert.rejects(api.commands.echo('hello'), (error) => {
 
 globalThis.tuffite.invoke = async () => {
   const error = new Error('transport stopped');
-  error.status = 4;
+  error.status = 3;
   throw error;
 };
 await assert.rejects(api.commands.echo('hello'), (error) => {

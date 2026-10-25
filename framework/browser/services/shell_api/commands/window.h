@@ -10,6 +10,10 @@ namespace tuffite::shell_api::window {
 
 class WindowImpl final : public generated::Window {
  public:
+  void SetConstraints(
+      const dispatch::Context& context,
+      generated::Window::SetConstraintsRequestPtr request,
+      generated::Window::SetConstraintsCallback callback) override;
   void Current(const dispatch::Context& context,
                generated::Window::CurrentRequestPtr request,
                generated::Window::CurrentCallback callback) override;

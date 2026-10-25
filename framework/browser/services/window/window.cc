@@ -203,6 +203,14 @@ Window::~Window() {
   }
 }
 
+void Window::SetConstraints(const window::Constraints& constraints) {
+  minimum_size_ = constraints.minimum_size;
+  maximum_size_ = constraints.maximum_size;
+  if (widget_) {
+    widget_->OnSizeConstraintsChanged();
+  }
+}
+
 Window* Window::Create(content::BrowserContext* browser_context,
                        const GURL& url,
                        const gfx::Size& size,
