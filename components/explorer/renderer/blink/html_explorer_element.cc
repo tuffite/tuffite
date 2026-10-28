@@ -137,11 +137,11 @@ String HTMLExplorerElement::partition() const {
 void HTMLExplorerElement::setPartition(const String& value) {
   setAttribute(AtomicString("partition"), AtomicString(value));
 }
-String HTMLExplorerElement::navigation() const {
-  return FrozenAttribute("navigation", "emit");
+String HTMLExplorerElement::behavior() const {
+  return FrozenAttribute("behavior", "");
 }
-void HTMLExplorerElement::setNavigation(const String& value) {
-  setAttribute(AtomicString("navigation"), AtomicString(value));
+void HTMLExplorerElement::setBehavior(const String& value) {
+  setAttribute(AtomicString("behavior"), AtomicString(value));
 }
 bool HTMLExplorerElement::isolated() const {
   return hasAttribute(AtomicString("isolated"));
@@ -153,13 +153,6 @@ void HTMLExplorerElement::setIsolated(bool value) {
     removeAttribute(AtomicString("isolated"));
   }
 }
-String HTMLExplorerElement::dialogs() const {
-  return FrozenAttribute("dialogs", "suppress");
-}
-void HTMLExplorerElement::setDialogs(const String& value) {
-  setAttribute(AtomicString("dialogs"), AtomicString(value));
-}
-
 String HTMLExplorerElement::FrozenAttribute(const char* name,
                                             const char* default_value) const {
   const AtomicString value = getAttribute(AtomicString(name));
@@ -409,6 +402,19 @@ ScriptPromise<IDLBoolean> HTMLExplorerElement::cancelDownload(
     uint32_t id) {
   return BooleanOperation(state, host_, [&](auto callback) {
     host_->CancelDownload(id, std::move(callback));
+  });
+}
+ScriptPromise<IDLBoolean> HTMLExplorerElement::pauseDownload(ScriptState* state,
+                                                             uint32_t id) {
+  return BooleanOperation(state, host_, [&](auto callback) {
+    host_->PauseDownload(id, std::move(callback));
+  });
+}
+ScriptPromise<IDLBoolean> HTMLExplorerElement::resumeDownload(
+    ScriptState* state,
+    uint32_t id) {
+  return BooleanOperation(state, host_, [&](auto callback) {
+    host_->ResumeDownload(id, std::move(callback));
   });
 }
 ScriptPromise<IDLString> HTMLExplorerElement::readDownload(ScriptState* state,
@@ -676,6 +682,25 @@ void HTMLExplorerElement::ParseAttribute(
     }
     return;
   }
+  if (params.name == AtomicString("behavior")) {
+    if (host_.is_bound()) {
+      host_->SetBehavior(
+          behavior(),
+          BindOnce(
+              [](WeakPersistent<HTMLExplorerElement> element, bool accepted) {
+                if (!accepted && element && element->GetExecutionContext()) {
+                  element->GetExecutionContext()->AddConsoleMessage(
+                      MakeGarbageCollected<ConsoleMessage>(
+                          mojom::blink::ConsoleMessageSource::kJavaScript,
+                          mojom::blink::ConsoleMessageLevel::kError,
+                          "Explorer behavior update rejected; the previous "
+                          "behavior remains active."));
+                }
+              },
+              WrapWeakPersistent(this)));
+    }
+    return;
+  }
   if (params.name == html_names::kAllowAttr) {
     UpdateContainerPolicy();
     if (host_.is_bound()) {
@@ -760,8 +785,7 @@ HTMLExplorerElement::CreateParams() const {
                             ? BlankUrl().GetString()
                             : GetDocument().CompleteURL(src()).GetString();
   params->partition = partition();
-  params->navigation = navigation();
-  params->dialogs = dialogs();
+  params->behavior = behavior();
   params->isolated = isolated();
   params->context_menu_enabled = context_menu_enabled_;
   params->frame_policy = GetFramePolicy();
@@ -993,7 +1017,9 @@ void HTMLExplorerElement::DidRequestDialog(uint64_t request_id,
   dialogs_pending_.Set(String::Number(request_id), detail);
   CustomEvent* event = CustomEvent::Create();
   event->initCustomEvent(
-      state, AtomicString("dialog"), true, true,
+      state,
+      AtomicString(type == "external-protocol" ? "externalprotocol" : "dialog"),
+      true, true,
       ScriptValue(state->GetIsolate(),
                   ToV8Traits<ExplorerDialog>::ToV8(state, detail)));
   event->SetComposed(true);

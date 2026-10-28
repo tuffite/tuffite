@@ -6,6 +6,7 @@ import re
 import tomllib
 
 from .common import require
+from .abi import header as abi_header
 
 
 def replace_once(text, pattern, replacement, label):
@@ -97,6 +98,9 @@ def plan(root, requested):
             text = replace_once(text, r'("' + re.escape(key) + r'": \{\n\s*"name": "' + re.escape(package['name']) + r'",\n\s*"version": ")' + re.escape(current) + r'(")',
                                 lambda m: m[1] + version + m[2], f'bun.lock: {key}')
     update(lock, text)
+    native_version = root / 'framework/public/c_api/version.h'
+    if native_version.is_file():
+        update(native_version, abi_header(tuple(map(int, version.split('.')))))
     return current, version, edits
 
 

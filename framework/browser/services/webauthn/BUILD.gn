@@ -27,6 +27,7 @@ source_set("webauthn") {
     "//content/public/browser",
   ]
   deps = [
+    "//components/prefs",
     "//components/qr_code_generator:bitmap_generator",
     "//crypto",
     "//device/fido",
@@ -38,6 +39,9 @@ source_set("webauthn") {
   ]
   if (is_mac) {
     sources += [ "platform_mac.mm" ]
-    frameworks = [ "Foundation.framework" ]
+    frameworks = [
+      "Foundation.framework",
+      "Security.framework",
+    ]
   }
 }

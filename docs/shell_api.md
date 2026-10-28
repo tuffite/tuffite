@@ -75,30 +75,40 @@ Each interface generates a Rust trait and typed dispatcher. Process ownership is
 separate from interface identity:
 
 ```rust
-#[tuffite::browser(interfaces(shell_api::Commands, shell_api::Diagnostics))]
-impl tuffite::Browser for App { /* new(context), optional shutdown() */ }
-impl shell_api::Commands for App { /* business methods */ }
-impl shell_api::Diagnostics for App { /* business methods */ }
+impl tuffite::Browser for Profile { /* new(context), optional shutdown() */ }
+impl shell_api::Commands for Profile { /* business methods */ }
+impl shell_api::Diagnostics for Profile { /* business methods */ }
 
-#[tuffite::utility(interfaces(shell_api::Echo, shell_api::Aux))]
 #[derive(Default)]
 struct Worker { /* state shared by both interfaces */ }
+impl tuffite::Utility for Worker {
+    fn setup(builder: tuffite::utility::Builder<Self>) -> tuffite::Result<tuffite::utility::Builder<Self>> {
+        Ok(builder.interfaces(|registry| registry
+            .register::<shell_api::interfaces::Echo>()
+            .register::<shell_api::interfaces::Aux>()))
+    }
+    async fn new(_: tuffite::UtilityContext) -> tuffite::Result<Self> { Ok(Self::default()) }
+}
 impl shell_api::Echo for Worker { /* business methods */ }
 impl shell_api::Aux for Worker { /* business methods */ }
 
-#[tuffite::main(browser = App, utilities(Worker))]
-fn main() -> tuffite::app::Builder<App> { tuffite::app::Builder::new() }
+impl tuffite::Application for App {
+    /* new(context), optional initialize() and shutdown() */
+}
+#[tuffite::main]
+fn main() -> tuffite::Embedding<App> {
+    tuffite::Embedding::new().browser::<Profile>().utility::<Worker>()
+}
 ```
 
-`main` selects process implementation types. Browser installs interface registries
-from its attribute. All interfaces on a Worker share one supervised process and
+`main` exports the Embedding bindings; setup registers interfaces on each backend. Application and Browser
+interfaces are appended in explicitly typed groups. All interfaces on a Worker share one supervised process and
 instance. Registration rejects duplicate ownership and Browser/Utility conflicts.
-Utility initialization uses `Default` or an asynchronous `factory = create_worker` beside
-`interfaces(...)`; the factory accepts `UtilityContext` and returns
-`ApplicationResult<Worker>`. Its internal owner name is `module_path!()` + `::` +
-the struct name, also exposed by `UtilityContext::name()`. Optional startup JSON
-in `app.utilities` uses that name; empty entries are unnecessary. Raw Rust/V8
-utilities retain their explicit `name = "..."` declaration and session lifecycle.
+Utility initialization uses asynchronous `Utility::new(UtilityContext)`. Its
+`setup(builder)` configures the service name, startup data and typed interfaces.
+`UtilityContext::name()` exposes the selected name. Without `.name(...)`, the
+Rust type name identifies the service. V8 providers use their own setup builder
+and synchronous `V8::new`. There is no manifest utility configuration map.
 
 ## Permissions and routing
 
@@ -109,7 +119,7 @@ Permissions use exact, case-sensitive `module.Interface.Method` names:
  "shellApi":["example.Commands.Echo","tuffite.Fs.ReadFile"]}
 ```
 
-Place grants in `app.security.capabilities`. Prefer exact methods; wildcards
+Place grants in `browser.rules`. Prefer exact methods; wildcards
 expand against the generated endpoint catalogue at packaging. Unknown endpoints
 and patterns fail validation. There is no per-method permission metadata or
 scope registry. The loader validates scope syntax; each concrete API validates
@@ -133,7 +143,7 @@ callback. The independent Cargo SDK and native C ABI remain separate from Mojo.
 
 ## Native Framework implementation
 
-`framework/shell_api/*.mojom` is authoritative. Chromium's parser/IR drives
+`framework/public/shell_api/*.mojom` is authoritative. Chromium's parser/IR drives
 thin native interface and dispatcher templates under `build/mojom_templates`.
 Per-source `*-wire.mojom` projections expose method request/response structs to
 the official C++ generator. Implementations directly use its structs, enums,
@@ -147,7 +157,7 @@ service. The router selects the interface, then its generated dispatcher selects
 a method. `BuiltinServices()` is only the composition list of implementations;
 there is no reflection or per-method route registry.
 
-Methods take `(const dispatch::Context&, RequestPtr, Callback)`. Context is an
+Methods take `(const dispatch::RendererRequestContext&, RequestPtr, Callback)`. Context is an
 explicit, borrowed invocation identity; the callback is an ordinary
 `base::OnceCallback<void(rpc::Status, Results...)>` that only replies. The public
 signature preserves all response parameters. Empty responses take only Status.
@@ -155,7 +165,8 @@ signature preserves all response parameters. Empty responses take only Status.
 pending implementation ownership. `rpc::Reject(callback, status)` sends an error
 without a wire payload, regardless of the response parameter count.
 
-Context uses weak document/application references. The dispatcher rejects an
+RendererRequestContext requires a real RenderFrameHost and stores its weak document,
+connection token and request ID. It has no application/native caller mode. The dispatcher rejects an
 expired caller with `kCancelled`. Async implementations must explicitly copy
 needed identity/snapshots before returning, never retain the borrowed Context
 reference, and recheck validity before later accessing the caller. Invocation
@@ -165,15 +176,15 @@ Service bindings and pending completions retain the implementation object.
 Native bindings have standard `.mojom.h` / `.mojom.cc` paths. GN invokes the
 official parser and `--generate_extra_cpp_only` template projection without
 emitting unused Mojo endpoint bindings at those same paths.
-Application URL schemes come from the entry window and are independent of
+Application URL schemes are explicitly declared in `app.schemes` and are independent of
 Mojom modules; native routing uses the generated method table, never a module
 prefix configured by hand. The source frontend currently compiles one module
 per SDK generation, with dotted module names supported.
 
 Framework dispatch already carries RPC identity/status and transports raw typed
 struct bodies. Application dispatch retains the CERM request/response/cancel
-envelope around Mojom structs to preserve the standalone C ABI. Framework native
-Rust calls use generated `ShellApiRequest` encode/decode adapters. Window snapshots
+envelope around Mojom structs to preserve the standalone C ABI. Rust-to-native calls use dedicated capabilities and reach domain services directly;
+they share protocol data models where useful, without entering renderer routing. Window snapshots
 retain their captured messaging identity independently of the data codec.
 
 JS/TS source templates are parsed and filled using typed OXC AST holes, including
@@ -188,6 +199,9 @@ Run `scripts/test-browser-runtime.mjs`, `scripts/test-mojom-codec.mjs` and
 source generation, codecs and independent generated SDK fixtures. Native
 `dispatch_unittests` compares the official C++ codec against the same Rust/JS
 fixtures for enums, nullable scalars/references and nested arrays.
+`renderer_rpc_unittests` uses real documents to verify navigation revocation,
+request identity and deferred implementation/reply ownership; `abi_unittests`
+covers direct capability calls and shutdown admission.
 
 Use `python3 x.py build` / `package` for Framework, then package Playground with
 the `tuff` CLI. Packaged smoke checks cover normal startup, Framework methods,

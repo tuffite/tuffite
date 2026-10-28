@@ -75,8 +75,8 @@ let explorerSuiteComplete = false;
 function createExplorer() {
   const element = document.createElement("explorer");
   element.id = "thread-explorer";
-  element.navigation = "emit";
-  element.dialogs = "emit";
+  element.behavior = "navigation: delegate;";
+  element.behavior += " dialog: delegate;";
   element.contextMenuEnabled =
     document.querySelector("#explorer-context-menu")?.checked ?? true;
   element.src = new URL("./explorer.html?mode=thread", document.baseURI).href;
@@ -663,8 +663,8 @@ async function ensurePartitionExplorer(kind) {
   element.id = `${kind.replaceAll("+", "-")}-explorer`;
   element.className = "compact-explorer";
   element.partition = configuration.partition;
-  element.navigation = "emit";
-  element.dialogs = "suppress";
+  element.behavior = "navigation: delegate;";
+  element.behavior += " dialog: block;";
   element.src = new URL(
     `./explorer.html?mode=${configuration.mode}`,
     document.baseURI,
@@ -758,7 +758,7 @@ document
     () =>
       void loadExplorer(
         "load(A)",
-        new URL("./history-a.html", document.baseURI).href,
+        new URL("./fixtures/history.html?page=a", document.baseURI).href,
       ),
   );
 document
@@ -768,7 +768,7 @@ document
     () =>
       void loadExplorer(
         "load(B)",
-        new URL("./history-b.html", document.baseURI).href,
+        new URL("./fixtures/history.html?page=b", document.baseURI).href,
       ),
   );
 document
@@ -1143,17 +1143,17 @@ async function checkExplorerV2() {
 
     reportExplorerStage("history-a");
     await waitForExplorerLoad(explorer, () =>
-      explorer.load(new URL("./history-a.html", document.baseURI).href),
+      explorer.load(new URL("./fixtures/history.html?page=a", document.baseURI).href),
     );
     reportExplorerStage("history-b");
     await waitForExplorerLoad(explorer, () =>
-      explorer.load(new URL("./history-b.html", document.baseURI).href),
+      explorer.load(new URL("./fixtures/history.html?page=b", document.baseURI).href),
     );
     reportExplorerStage("back");
     const backLoad = waitForExplorerLoad(explorer, () => {});
     if (!(await explorer.back())) throw new Error("back was not accepted");
     await backLoad;
-    if (!(await explorer.getNavigationState()).url.includes("history-a.html")) {
+    if (!(await explorer.getNavigationState()).url.includes("fixtures/history.html?page=a")) {
       throw new Error("back did not restore history A");
     }
     reportExplorerStage("forward");
@@ -1161,7 +1161,7 @@ async function checkExplorerV2() {
     if (!(await explorer.forward()))
       throw new Error("forward was not accepted");
     await forwardLoad;
-    if (!(await explorer.getNavigationState()).url.includes("history-b.html")) {
+    if (!(await explorer.getNavigationState()).url.includes("fixtures/history.html?page=b")) {
       throw new Error("forward did not restore history B");
     }
     markExplorerCheck("history");

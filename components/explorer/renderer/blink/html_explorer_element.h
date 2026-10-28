@@ -50,12 +50,16 @@ class CORE_EXPORT HTMLExplorerElement final
   void setSrc(const String& value);
   String partition() const;
   void setPartition(const String& value);
-  String navigation() const;
-  void setNavigation(const String& value);
+  String behavior() const;
+  void setBehavior(const String& value);
   bool isolated() const;
   void setIsolated(bool);
-  String dialogs() const;
-  void setDialogs(const String& value);
+  EventListener* onexternalprotocol() {
+    return GetAttributeEventListener(AtomicString("externalprotocol"));
+  }
+  void setOnexternalprotocol(EventListener* listener) {
+    SetAttributeEventListener(AtomicString("externalprotocol"), listener);
+  }
   bool contextMenuEnabled() const;
   void setContextMenuEnabled(bool enabled);
   ScriptPromise<ExplorerHandle> detach(ScriptState*);
@@ -159,6 +163,8 @@ class CORE_EXPORT HTMLExplorerElement final
   }
   void load(const String& value);
   ScriptPromise<IDLBoolean> cancelDownload(ScriptState*, uint32_t id);
+  ScriptPromise<IDLBoolean> pauseDownload(ScriptState*, uint32_t id);
+  ScriptPromise<IDLBoolean> resumeDownload(ScriptState*, uint32_t id);
   ScriptPromise<IDLBoolean> download(ScriptState*, const String& url);
   ScriptPromise<IDLAny> getDownloads(ScriptState*);
   ScriptPromise<IDLString> readDownload(ScriptState*, uint32_t id);

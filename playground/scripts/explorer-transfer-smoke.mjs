@@ -65,17 +65,18 @@ try {
   const replacement = await app.evaluate(async () => {
     const demo = window.transferDemo;
     const target = document.createElement("explorer");
-    target.navigation="allow"; target.dialogs="emit";
+    target.behavior = "navigation: browser;"; target.behavior += " dialog: delegate;";
     const loaded = new Promise(resolve => target.addEventListener("loadstop", resolve, {once:true}));
-    target.src = new URL("history-a.html?replacement", location.href).href;
+    target.src = new URL("fixtures/history.html?page=a&replacement", location.href).href;
     document.querySelector("#hosts").append(target); await loaded;
     await target.executeJavaScript("globalThis.replacementMarker='old-page'");
     const original = await target.getNavigationState();
     const declared = target.getAttribute("src");
     const incompatible = document.createElement("explorer");
-    incompatible.navigation="emit"; incompatible.dialogs="emit";
+    incompatible.isolated = true;
+    incompatible.behavior = "navigation: delegate;"; incompatible.behavior += " dialog: delegate;";
     const ready = new Promise(resolve => incompatible.addEventListener("loadstop", resolve, {once:true}));
-    incompatible.src=new URL("history-b.html",location.href).href;
+    incompatible.src=new URL("fixtures/history.html?page=b",location.href).href;
     document.querySelector("#hosts").append(incompatible); await ready;
     const wrongHandle=await incompatible.detach();
     let failure;
@@ -88,7 +89,7 @@ try {
     await demo.detach(); await target.attach(demo.transfer);
     const adopted=await target.getNavigationState();
     const cleared=target.getAttribute("src");
-    target.src=new URL("history-b.html?after-attach",location.href).href;
+    target.src=new URL("fixtures/history.html?page=b&after-attach",location.href).href;
     await new Promise(resolve => target.addEventListener("loadstop",resolve,{once:true}));
     const navigated=await target.getNavigationState();
     target.remove();

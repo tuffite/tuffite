@@ -3,40 +3,40 @@
 
 #include "tuffite/framework/app/application_context.h"
 
-#include "tuffite/components/dispatch/browser/context.h"
 #include "tuffite/framework/app/services/application_dependency_manager.h"
 #include "tuffite/framework/app/services/asset/asset_service_factory.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
+#include "tuffite/framework/app/services/profile/profile_service_factory.h"
 #include "tuffite/framework/app/services/remoting/remoting_service_factory.h"
 #include "tuffite/framework/app/services/utility/utility_service_factory.h"
+#include "tuffite/framework/browser/services/window/window_service_factory.h"
 
 namespace tuffite {
 ApplicationContext::ApplicationContext(
-    std::unique_ptr<ManifestService> manifest,
-    AbiHostBridge& bridge)
-    : pending_manifest_(std::move(manifest)), bridge_(bridge) {
+    std::unique_ptr<ManifestService> manifest)
+    : pending_manifest_(std::move(manifest)) {
   ManifestServiceFactory::Get();
   AssetServiceFactory::Get();
   remoting::RemotingServiceFactory::Get();
   UtilityServiceFactory::Get();
+  window::WindowServiceFactory::Get();
+  ProfileServiceFactory::Get();
 
   ApplicationDependencyManager::Get()->DisallowKeyedServiceFactoryRegistration(
       "ApplicationContext");
+  ApplicationDependencyManager::Get()->CreateServices(this);
 }
-ApplicationContext::~ApplicationContext() = default;
+
+ApplicationContext::~ApplicationContext() {
+  weak_factory_.InvalidateWeakPtrs();
+  ApplicationDependencyManager::Get()->DestroyServices(this);
+}
 
 KeyedService* ApplicationContext::GetServiceByType(const void* service_type,
                                                    bool create) {
   return ApplicationDependencyManager::Get()->GetForApplication(
       this, service_type, create);
 }
-}  // namespace tuffite
 
-namespace tuffite::dispatch {
-Context::Context(::tuffite::ApplicationContext& application,
-                 base::UnguessableToken owner)
-    : caller(Caller::kApplication),
-      native_application(application.GetWeakPtr()),
-      document(owner) {}
-}  // namespace tuffite::dispatch
+}  // namespace tuffite

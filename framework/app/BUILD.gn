@@ -15,12 +15,15 @@ source_set("context") {
   ]
 }
 
-source_set("host_headers") {
-  sources = [ "abi_host_bridge.h" ]
+source_set("abi_headers") {
+  sources = [
+    "abi/application.h",
+    "abi/host.h",
+  ]
   deps = [
     "//base",
     "//tuffite/components/dispatch/browser",
-    "//tuffite/framework/public:abi",
+    "//tuffite/framework/public/c_api:abi",
   ]
 }
 
@@ -30,7 +33,8 @@ source_set("app") {
     "process_launch.h",
   ]
   sources = [
-    "abi_host_bridge.cc",
+    "abi/application.cc",
+    "abi/host.cc",
     "application_context.cc",
     "content_client.cc",
     "content_client.h",
@@ -71,18 +75,20 @@ source_set("app") {
     "//tuffite/components/explorer/browser",
     "//tuffite/components/explorer/common:mojom",
     "//tuffite/components/explorer/renderer",
-    "//tuffite/framework/app:host_headers",
+    "//tuffite/framework/app:abi_headers",
     "//tuffite/framework/app/services:manager",
     "//tuffite/framework/app/services/asset",
     "//tuffite/framework/app/services/manifest",
+    "//tuffite/framework/app/services/profile",
     "//tuffite/framework/app/services/remoting",
+    "//tuffite/framework/app/services/remoting:protocol",
     "//tuffite/framework/app/services/utility",
     "//tuffite/framework/browser",
     "//tuffite/framework/browser/services/isolated",
-    "//tuffite/framework/browser/services/shell_api/commands",
+    "//tuffite/framework/browser/services/window",
     "//tuffite/framework/common:switches",
     "//tuffite/framework/common/utility:mojom",
-    "//tuffite/framework/public:abi",
+    "//tuffite/framework/public/c_api:abi",
     "//tuffite/framework/renderer",
     "//tuffite/framework/utility",
     "//ui/base",

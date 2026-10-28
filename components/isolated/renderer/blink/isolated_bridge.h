@@ -19,9 +19,9 @@
 #endif
 
 namespace blink {
-  class ScriptState;
-  TUFFITE_ISOLATED_EXPORT void InstallIsolatedHost(v8::Local<v8::Context>,
-    v8::Local<v8::Function> load);
-  TUFFITE_ISOLATED_EXPORT bool IsTuffiteIsolatedWorld(ScriptState*);
+class ScriptState;
+TUFFITE_ISOLATED_EXPORT void InstallIsolatedHost(v8::Local<v8::Context>,
+                                                 v8::Local<v8::Function> load);
+TUFFITE_ISOLATED_EXPORT bool IsTuffiteIsolatedWorld(ScriptState*);
 }  // namespace blink
 #endif

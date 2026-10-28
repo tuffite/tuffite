@@ -286,7 +286,7 @@ fn generate_bindings(
         // confined to their manifest directory.
         let import_root = source_root
             .ancestors()
-            .nth(3)
+            .find(|root| root.join("tuffite/framework/public/shell_api") == source_root)
             .ok_or("missing Chromium source root")?;
         let definitions = definitions
             .into_iter()
@@ -330,43 +330,43 @@ pub(crate) fn security_command_ids(
     let sources = vec![
         (
             PathBuf::from("common.mojom"),
-            include_str!("../../../framework/shell_api/common.mojom").to_owned(),
+            include_str!("../../../framework/public/shell_api/common.mojom").to_owned(),
         ),
         (
             PathBuf::from("dialog.mojom"),
-            include_str!("../../../framework/shell_api/dialog.mojom").to_owned(),
+            include_str!("../../../framework/public/shell_api/dialog.mojom").to_owned(),
         ),
         (
             PathBuf::from("path.mojom"),
-            include_str!("../../../framework/shell_api/path.mojom").to_owned(),
+            include_str!("../../../framework/public/shell_api/path.mojom").to_owned(),
         ),
         (
             PathBuf::from("fs.mojom"),
-            include_str!("../../../framework/shell_api/fs.mojom").to_owned(),
+            include_str!("../../../framework/public/shell_api/fs.mojom").to_owned(),
         ),
         (
             PathBuf::from("storage.mojom"),
-            include_str!("../../../framework/shell_api/storage.mojom").to_owned(),
+            include_str!("../../../framework/public/shell_api/storage.mojom").to_owned(),
         ),
         (
             PathBuf::from("log.mojom"),
-            include_str!("../../../framework/shell_api/log.mojom").to_owned(),
+            include_str!("../../../framework/public/shell_api/log.mojom").to_owned(),
         ),
         (
             PathBuf::from("network.mojom"),
-            include_str!("../../../framework/shell_api/network.mojom").to_owned(),
+            include_str!("../../../framework/public/shell_api/network.mojom").to_owned(),
         ),
         (
             PathBuf::from("utility.mojom"),
-            include_str!("../../../framework/shell_api/utility.mojom").to_owned(),
+            include_str!("../../../framework/public/shell_api/utility.mojom").to_owned(),
         ),
         (
             PathBuf::from("remoting.mojom"),
-            include_str!("../../../framework/shell_api/remoting.mojom").to_owned(),
+            include_str!("../../../framework/public/shell_api/remoting.mojom").to_owned(),
         ),
         (
             PathBuf::from("window.mojom"),
-            include_str!("../../../framework/shell_api/window.mojom").to_owned(),
+            include_str!("../../../framework/public/shell_api/window.mojom").to_owned(),
         ),
     ];
     for method in tuffite_mojom::compile(&sources)
@@ -384,7 +384,7 @@ pub(crate) fn security_command_ids(
         "0000000000000000".into(),
     );
     if let Some(capabilities) = value
-        .pointer("/app/security/capabilities")
+        .pointer("/browser/rules")
         .and_then(serde_json::Value::as_array)
     {
         for capability in capabilities {
@@ -576,7 +576,7 @@ mod tests {
         )
         .unwrap();
         let manifest = root.join("tuffite.json");
-        fs::write(&manifest, r#"{"app":{"identifier":"example"},"build":{"mojomSources":["api.mojom"],"shellApi":{"facade":"framework"}}}"#).unwrap();
+        fs::write(&manifest, r#"{"app":{"schemes":["myapp"],"identifier":"example"},"build":{"mojomSources":["api.mojom"],"shellApi":{"facade":"framework"}}}"#).unwrap();
         let error = shell_api::Generator::new()
             .manifest(&manifest)
             .generate()
@@ -738,7 +738,7 @@ mod tests {
             fs::copy(source.join(name), root.join(name)).unwrap();
         }
         let base: serde_json::Value =
-            serde_json::from_slice(&fs::read(source.join("tuffite.json")).unwrap()).unwrap();
+            serde_json::from_str(include_str!("../tests/fixtures/runtime.json")).unwrap();
         let manifest = root.join("tuffite.json");
         fs::write(&manifest, serde_json::to_vec(&base).unwrap()).unwrap();
         assert!(security_command_ids(&manifest).is_ok());
@@ -748,7 +748,7 @@ mod tests {
             serde_json::json!({"method":"playground.Aux.RoundTrip"}),
         ] {
             let mut config = base.clone();
-            config["app"]["security"]["capabilities"][0]["shellApi"] = serde_json::json!([good]);
+            config["browser"]["rules"][0]["shellApi"] = serde_json::json!([good]);
             fs::write(&manifest, serde_json::to_vec(&config).unwrap()).unwrap();
             assert!(security_command_ids(&manifest).is_ok());
         }
@@ -758,7 +758,7 @@ mod tests {
             serde_json::json!({"method":"playground.Echo.RoundTrip","service":"legacy"}),
         ] {
             let mut config = base.clone();
-            config["app"]["security"]["capabilities"][0]["shellApi"] = serde_json::json!([bad]);
+            config["browser"]["rules"][0]["shellApi"] = serde_json::json!([bad]);
             fs::write(&manifest, serde_json::to_vec(&config).unwrap()).unwrap();
             assert!(security_command_ids(&manifest).is_err());
         }
@@ -844,7 +844,7 @@ mod tests {
         fs::write(
             &manifest,
             r#"{
-  "app": {
+  "app": {"schemes":["myapp"],
     "identifier": "com.example.reserved"
   },
   "build": {
@@ -884,7 +884,7 @@ mod tests {
         fs::write(
             &manifest,
             r#"{
-  "app": {
+  "app": {"schemes":["myapp"],
     "identifier": "com.example.builder"
   },
   "build": {
@@ -954,7 +954,7 @@ mod tests {
         fs::write(
             &manifest,
             r#"{
-  "app": {
+  "app": {"schemes":["myapp"],
     "identifier": "com.example.multiple"
   },
   "build": {

@@ -4,9 +4,8 @@ use crate::abi::NativeHost;
 use crate::executor::ChromiumExecutor;
 use crate::javascript_extension::JavaScriptExtensionHost;
 use crate::lifecycle::BoxFuture;
-use crate::shell_api::ShellApiHost;
 use crate::utility_host::UtilitySessionHost;
-use crate::{ApplicationError, ApplicationResult, CommandResult, ShutdownContext, StopSignal};
+use crate::{CommandResult, Error, Result, ShutdownContext, StopSignal};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::future::Future;
@@ -45,12 +44,15 @@ impl std::fmt::Debug for SharedState {
 /// Immutable startup data supplied when one browser instance is created.
 #[derive(Clone, Debug)]
 pub struct BrowserContext {
+    pub(crate) application: Option<crate::ApplicationContext>,
+    pub(crate) profile_id: Option<crate::ProfileId>,
+    pub(crate) context_identity: Arc<AtomicU64>,
+    pub(crate) native_calls: Arc<RwLock<bool>>,
     configuration: Arc<[u8]>,
     events: EventEmitter,
     executor: ChromiumExecutor,
     utility_sessions: UtilitySessionHost,
     javascript_extensions: JavaScriptExtensionHost,
-    shell_api: ShellApiHost,
     isolated: crate::isolated::Host,
     state: SharedState,
     providers: Arc<crate::utility::V8Providers>,
@@ -69,13 +71,11 @@ impl BrowserContext {
         runtime: Arc<AtomicU64>,
         callbacks: NativeHost,
         session: tuffite_abi::UtilitySessionClient,
-        shell_api: Option<tuffite_abi::ShellApi>,
         isolated: Option<tuffite_abi::Isolated>,
     ) -> Self {
         let executor = ChromiumExecutor::new(callbacks);
         let utility_sessions = UtilitySessionHost::new(session);
         let javascript_extensions = JavaScriptExtensionHost::new(utility_sessions.clone());
-        let shell_api = ShellApiHost::new(shell_api);
         let configuration: Arc<[u8]> = configuration.into();
         let state = SharedState::default();
         let providers = Arc::new(crate::utility::V8Providers::new(
@@ -84,6 +84,10 @@ impl BrowserContext {
             state.clone(),
         ));
         Self {
+            application: None,
+            profile_id: None,
+            context_identity: Arc::new(AtomicU64::new(0)),
+            native_calls: Arc::new(RwLock::new(true)),
             configuration,
             stop: StopSignal(crate::supervisor::CancellationToken::new()),
             state,
@@ -92,9 +96,41 @@ impl BrowserContext {
             executor,
             utility_sessions,
             javascript_extensions,
-            shell_api,
             isolated: crate::isolated::Host::new(isolated),
         }
+    }
+
+    /// Owning application. Available for contexts created by the profile manager.
+    #[must_use]
+    pub fn application(&self) -> Option<crate::ApplicationContext> {
+        self.application.clone()
+    }
+    #[must_use]
+    pub fn profile_id(&self) -> Option<&crate::ProfileId> {
+        self.profile_id.as_ref()
+    }
+    /// The generation is published before `initialize`. Constructors can retain
+    /// the context and its clients, then obtain this identity during initialization.
+    pub fn handle(&self) -> Result<crate::BrowserContextHandle> {
+        crate::BrowserContextHandle::from_u64(self.context_identity.load(Ordering::Acquire))
+    }
+    pub(crate) fn remoting_host(&self) -> crate::native_remoting::Host {
+        crate::native_remoting::Host::discover(
+            self.events.callbacks,
+            self.stop_signal(),
+            self.native_calls.clone(),
+        )
+    }
+    pub(crate) fn context_client(&self) -> crate::contexts::Client {
+        crate::contexts::Client::discover(
+            self.events.callbacks,
+            self.stop_signal(),
+            self.native_calls.clone(),
+        )
+    }
+    #[must_use]
+    pub fn views(&self) -> crate::Views {
+        crate::Views::new(self.context_client(), self.context_identity.clone())
     }
 
     /// Read-only signal fired before draining ordinary Browser work.
@@ -163,12 +199,6 @@ impl BrowserContext {
     pub fn isolated(&self) -> crate::isolated::Host {
         self.isolated.clone()
     }
-
-    /// Returns the trusted Host API backed by Chromium Remote Desktop.
-    #[must_use]
-    pub fn shell_api(&self) -> ShellApiHost {
-        self.shell_api.clone()
-    }
 }
 
 /// Cloneable, thread-safe handle for broadcasting named binary events.
@@ -183,29 +213,29 @@ impl EventEmitter {
     const MAX_PAYLOAD_BYTES: usize = 1024 * 1024;
 
     /// Broadcasts one event to all currently authorized renderer documents.
-    pub fn emit(&self, name: &str, payload: &[u8]) -> ApplicationResult<()> {
+    pub fn emit(&self, name: &str, payload: &[u8]) -> Result<()> {
         if name.is_empty() || name.len() > Self::MAX_NAME_BYTES || name.as_bytes().contains(&0) {
-            return Err(ApplicationError::new("event name is invalid"));
+            return Err(Error::new("event name is invalid"));
         }
         if payload.len() > Self::MAX_PAYLOAD_BYTES {
-            return Err(ApplicationError::new("event payload is too large"));
+            return Err(Error::new("event payload is too large"));
         }
-        let name_length = u16::try_from(name.len())
-            .map_err(|_| ApplicationError::new("event name is invalid"))?;
+        let name_length =
+            u16::try_from(name.len()).map_err(|_| Error::new("event name is invalid"))?;
         let mut envelope = Vec::with_capacity(2 + name.len() + payload.len());
         envelope.extend_from_slice(&name_length.to_le_bytes());
         envelope.extend_from_slice(name.as_bytes());
         envelope.extend_from_slice(payload);
         let runtime = self.runtime.load(Ordering::Acquire);
         if runtime == 0 {
-            return Err(ApplicationError::new("runtime is not ready"));
+            return Err(Error::new("runtime is not ready"));
         }
         let status =
             self.callbacks
                 .post_event(runtime, RuntimeEventKind::ApplicationEvent, &envelope);
         match status {
             Status::Ok => Ok(()),
-            _ => Err(ApplicationError::new(format!(
+            _ => Err(Error::new(format!(
                 "unable to emit renderer event: {status:?}"
             ))),
         }
@@ -251,19 +281,47 @@ impl<'a> Command<'a> {
 /// Trusted browser configuration collected before native services and windows.
 /// These denials supplement the manifest; neither source can enable an origin
 /// denied by the other. This configuration is never exposed to renderer scripts.
-#[derive(Debug, Default)]
-pub struct Builder {
+pub struct Builder<B = ()> {
     pub(crate) devtools_denied_origins: Vec<String>,
+    pub(crate) interfaces: crate::app::InterfaceRegistry<B>,
+    pub(crate) profile_id: Option<crate::ProfileId>,
 }
-
-impl Builder {
-    /// Disables `DevTools` for an origin pattern, including root windows.
-    /// Accepts the same origins as manifest capabilities (including `*` and
-    /// wildcard host labels). Invalid patterns abort native startup.
+impl<B> Default for Builder<B> {
+    fn default() -> Self {
+        Self {
+            devtools_denied_origins: Vec::new(),
+            interfaces: crate::app::InterfaceRegistry::default(),
+            profile_id: None,
+        }
+    }
+}
+impl<B> Builder<B> {
     #[must_use]
     pub fn disable_devtools_for_origin(mut self, origin: impl Into<String>) -> Self {
         self.devtools_denied_origins.push(origin.into());
         self
+    }
+    #[must_use]
+    pub fn interfaces(
+        mut self,
+        register: impl FnOnce(crate::app::InterfaceRegistry<B>) -> crate::app::InterfaceRegistry<B>,
+    ) -> Self {
+        self.interfaces
+            .commands
+            .extend(register(crate::app::InterfaceRegistry::default()).commands);
+        self
+    }
+    /// None while static interface metadata is collected, Some during profile construction.
+    #[must_use]
+    pub fn profile_id(&self) -> Option<&crate::ProfileId> {
+        self.profile_id.as_ref()
+    }
+    #[cfg(test)]
+    pub(crate) fn retype<T>(self) -> Builder<T> {
+        Builder {
+            devtools_denied_origins: self.devtools_denied_origins,
+            ..Builder::default()
+        }
     }
 }
 
@@ -273,10 +331,11 @@ impl Builder {
 /// after the backend rejects new commands. Utility children never construct
 /// this state or receive its trusted native capabilities.
 pub trait Browser: Send + 'static {
-    /// Configures trusted native policy once in the browser process, before
-    /// `new`, native service creation, and the first window. No Browser state or
-    /// runtime capabilities are available yet. Errors abort startup.
-    fn setup(builder: Builder) -> ApplicationResult<Builder>
+    /// Collects static interfaces and native policy without a profile, then runs
+    /// again before each profile backend is constructed. `profile_id()` identifies
+    /// the latter pass. Interfaces and native denials must match the frozen pass;
+    /// setup has no runtime capabilities. Errors reject startup or the profile.
+    fn setup(builder: Builder<Self>) -> Result<Builder<Self>>
     where
         Self: Sized,
     {
@@ -284,17 +343,18 @@ pub trait Browser: Send + 'static {
     }
 
     /// Creates browser state from validated startup configuration.
-    fn new(context: BrowserContext) -> ApplicationResult<Self>
+    fn new(context: BrowserContext) -> Result<Self>
     where
         Self: Sized;
 
     /// Runs once after `BrowserContext` services and their task runner are bound,
     /// before startup windows and business dispatch. Runs on the Rust worker.
-    fn initialize(&mut self) -> impl Future<Output = ApplicationResult<()>> + Send {
+    fn initialize(&mut self) -> impl Future<Output = Result<()>> + Send {
         async { Ok(()) }
     }
 
-    /// Handles one binary `ShellAPI` command.
+    /// Low-level dispatch hook used by standalone runtime adapters. Embedded
+    /// applications dispatch through their explicitly registered interfaces.
     fn dispatch(&mut self, _command: Command<'_>) -> CommandResult {
         Err(crate::CommandError::UnknownCommand)
     }
@@ -302,41 +362,24 @@ pub trait Browser: Send + 'static {
     /// Cleans up after dispatch, Utility sessions and module workers stop.
     /// The Chromium executor remains available; UI-dependent host calls reject.
     /// Pending futures have the supplied cleanup budget; blocking polls cannot be interrupted.
-    fn shutdown(
-        &mut self,
-        _context: ShutdownContext,
-    ) -> impl Future<Output = ApplicationResult<()>> + Send {
+    fn shutdown(&mut self, _context: ShutdownContext) -> impl Future<Output = Result<()>> + Send {
         async { Ok(()) }
     }
 }
 
 pub(crate) trait ErasedBrowser: Send {
-    fn initialize(&mut self) -> BoxFuture<'_, ApplicationResult<()>>;
+    fn initialize(&mut self) -> BoxFuture<'_, Result<()>>;
     fn dispatch(&mut self, command: Command<'_>) -> CommandResult;
-    fn shutdown(&mut self, context: ShutdownContext) -> BoxFuture<'_, ApplicationResult<()>>;
+    fn shutdown(&mut self, context: ShutdownContext) -> BoxFuture<'_, Result<()>>;
 }
 impl<B: Browser> ErasedBrowser for B {
-    fn initialize(&mut self) -> BoxFuture<'_, ApplicationResult<()>> {
+    fn initialize(&mut self) -> BoxFuture<'_, Result<()>> {
         Box::pin(Browser::initialize(self))
     }
     fn dispatch(&mut self, command: Command<'_>) -> CommandResult {
         Browser::dispatch(self, command)
     }
-    fn shutdown(&mut self, context: ShutdownContext) -> BoxFuture<'_, ApplicationResult<()>> {
+    fn shutdown(&mut self, context: ShutdownContext) -> BoxFuture<'_, Result<()>> {
         Box::pin(Browser::shutdown(self, context))
-    }
-}
-
-/// Type metadata emitted by the browser attribute and checked by main.
-#[doc(hidden)]
-pub trait BrowserDefinition: Browser {
-    const TYPE_NAME: &'static str;
-
-    #[must_use]
-    fn interfaces() -> Vec<crate::CommandRegistry<Self>>
-    where
-        Self: Sized,
-    {
-        Vec::new()
     }
 }

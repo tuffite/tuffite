@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "tuffite/framework/public/abi.h"
+#include "tuffite/framework/public/c_api/application.h"
 
 namespace tuffite {
 // Synchronously prepares arguments for every native process role. Legacy

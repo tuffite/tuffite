@@ -3,13 +3,13 @@ import { runBrowserCompatibilityProbe, readTurnstileResult } from './browser-com
 const status = document.querySelector('#compatibility-status');
 const output = document.querySelector('#compatibility-report');
 const explorer = document.createElement('explorer');
-explorer.navigation = 'allow';
+explorer.behavior = "navigation: browser;";
 explorer.style.height = '650px';
 document.querySelector('#compatibility-host').append(explorer);
 const fixture = new URLSearchParams(location.search).get('fixture');
 const fixtureURL = fixture ? new URL(fixture) : null;
 if (fixtureURL && !(fixtureURL.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(fixtureURL.hostname))) throw new Error('Fixtures must use local loopback HTTP');
-const sample = fixtureURL?.href || new URL('./compatibility-sample.html', location.href).href;
+const sample = fixtureURL?.href || new URL('./fixtures/compatibility.html', location.href).href;
 explorer.src = sample;
 async function read(expression) {
   const state = await explorer.getNavigationState();

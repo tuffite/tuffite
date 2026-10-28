@@ -4,6 +4,7 @@
 #define TUFFITE_FRAMEWORK_BROWSER_SERVICES_ISOLATED_ISOLATED_REGISTRY_H_
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -28,6 +29,8 @@ class IsolatedRegistry {
   void AddBundled(const std::string& name, const Definition& definition);
   std::optional<std::string> Source(std::string_view name,
                                     const url::Origin& origin) const;
+  std::shared_ptr<const Definition> Find(std::string_view name,
+                                         const url::Origin& origin) const;
   // Native application control plane only; never dispatched by renderer RPC.
   // Returns a generation as decimal text, or nullopt for invalid/stale
   // requests.
@@ -35,7 +38,7 @@ class IsolatedRegistry {
 
  private:
   struct Entry {
-    Definition definition;
+    std::shared_ptr<const Definition> definition;
     uint64_t generation;
     bool bundled;
   };

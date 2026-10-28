@@ -1,5 +1,11 @@
 # Tuffite `<explorer>`
 
+Runtime configuration examples below show the native in-memory descriptor.
+Declare these values in Rust `configuration::Configuration` installed by
+`Application::setup`; source `tuffite.json` contains only tool/build metadata.
+See [configuration responsibilities](architecture.md#manifest-and-rust-configuration-responsibilities).
+
+
 `<explorer>` embeds a normal, non-Guest Chromium `WebContents` in trusted app
 UI. It preserves normal compositor layout, clipping, focus, input, accessibility
 and DevTools behavior while giving the embedded document its own browsing
@@ -9,6 +15,66 @@ This is the architecture used for extension-heavy conversations and browser
 previews: a slow or failed Explorer renderer does not share the app renderer,
 and renderer-originated navigation/open behavior can be routed to application
 workbench tabs.
+
+## Origin rules and behavior
+
+`browser.rules[]` is the shared origin-scoped configuration entry point. Each
+rule requires `origins`; `identifier` is optional. Matching uses canonical
+scheme/host/port patterns, never URL paths. Opaque origins receive no grants.
+`shellApi` and `explorer` retain their native authorization semantics.
+`browser.devtools` is the master switch for native DevTools and CDP inspection
+(default `true`). Setting it to `false` prevents the debugging server from starting,
+including with an explicit port. `rules[].devtools` restricts the matching target
+document origin for top-level pages, Explorers and frames. Any matching `false`
+wins; neither a rule's `true` nor a development URL can bypass the master switch.
+The policy is independent of the Explorer owner's origin and is not an element
+property. `build.devtoolsPort` selects a development port, not permission.
+All matching `csp` values are enforced together on the document's packaged or
+HTTP(S) response, alongside server CSP. They never replace server restrictions.
+The secure built-in packaged CSP applies when no manifest CSP matches.
+
+`explorer.behavior` sets defaults for Explorers created by that origin's document,
+not for every page that happens to navigate to that origin. Later matching rules
+replace individual action entries. An element's `behavior` declarations override
+those defaults, independently of the creation/script grants. The framework
+defaults are normal `browser` behavior for all actions.
+
+```html
+<explorer behavior="navigation: delegate; dialog: delegate timeout(15s); external-protocol: browser; new-window: block;"></explorer>
+```
+
+The supported actions are `navigation`, `dialog`, `external-protocol` and
+`new-window`; modes are `browser`, `delegate` and `block`. Declarations use a
+restricted CSS-style grammar, not CSS styles, selectors, variables or cascade.
+Names are lowercase, whitespace and trailing semicolons are accepted, and the
+last duplicate declaration wins. Unknown actions/modes reject the whole update;
+the previous native behavior remains active. Invalid initial declarations reject
+creation. Setting an empty attribute restores manifest defaults.
+
+Manifest entries are objects, e.g. `"externalProtocol": {"mode": "delegate",
+"timeoutMs": 15000}`. `timeout(15s)`/`timeout(15000ms)` maps to that value. Deadlines
+are positive integer durations up to five minutes; the default is 30 seconds. Navigation has no asynchronous decision and does not accept a timeout.
+Delegated dialog/protocol controllers are single-use and abort on source document
+retirement, Explorer destruction, policy update or timeout. Pending popup handles
+expire at their deadline. Unhandled external protocols are rejected, never sent
+to the OS through an implicit native fallback. Navigation delegation cancels the
+page's navigation and emits the existing navigation request event.
+
+`externalprotocol.detail` provides `url`, `initiatingOrigin`, `from`, `signal`,
+`accept()` and `dismiss()`. A listener claims it with `preventDefault()` and must
+make its own explicit decision. Native protocol validation, user activation and
+sandbox checks happen before delegation. Acceptance cannot bypass those checks.
+`browser` retains the native confirmation dialog; `block` performs no launch.
+
+Live-page transfer checks immutable security/partition constraints, while the
+destination rebinds behavior to its own owner and declarations. Behavior equality
+is not an authorization requirement. Apps can copy `target.behavior = source.behavior`
+to retain explicit overrides during promotion. Inherited defaults are resolved against the destination owner.
+
+The editor schema in `tuffite.schema.json` describes development, build
+and packaging settings only. Runtime declarations use the typed Rust
+`configuration` module and native validation. The JSON examples below describe
+the internal runtime descriptor, not fields accepted in source `tuffite.json`.
 
 ## Configuration
 
@@ -20,7 +86,7 @@ The configuration separates resource routing, runtime settings and authorization
 | `build.mojomSources` | Mojom source paths; module and interface names come from IDL. |
 | `app.windows[]` | Startup state and per-window min/max size constraints. |
 | `app.network` | Request timeout, maximum response size and HTTP/2 setting. |
-| `app.security.capabilities[]` | Positive operation grants and resource scopes by committed document origin. |
+| `browser.rules[]` | Positive operation grants and resource scopes by committed document origin. |
 
 ```json
 {
@@ -64,119 +130,119 @@ The configuration separates resource routing, runtime settings and authorization
       "timeoutSeconds": 30,
       "maxResponseBytes": 1048576,
       "disableHttp2": false
-    },
-    "security": {
-      "capabilities": [
-        {
-          "identifier": "app-shell",
-          "origins": [
-            "myapp://main"
-          ],
-          "explorer": {
-            "create": true,
-            "executeJavaScript": true
-          },
-          "shellApi": [
-            "myapp.*",
-            "tuffite.storage.*",
-            "tuffite.window.current",
-            "tuffite.window.list",
-            "tuffite.window.create",
-            "tuffite.window.getBounds",
-            "tuffite.window.focus",
-            "tuffite.window.minimize",
-            "tuffite.window.maximize",
-            "tuffite.window.restore",
-            "tuffite.window.setFullscreen",
-            "tuffite.window.close",
-            "tuffite.window.setTitle",
-            "tuffite.window.setBounds",
-            {
-              "method": "tuffite.fs.readFile",
-              "allow": [
-                {
-                  "path": "resource/*"
-                },
-                {
-                  "path": "data/*"
-                }
-              ]
-            },
-            {
-              "method": "tuffite.fs.exists",
-              "allow": [
-                {
-                  "path": "resource/*"
-                },
-                {
-                  "path": "data/*"
-                }
-              ]
-            },
-            {
-              "method": "tuffite.fs.writeFile",
-              "allow": [
-                {
-                  "path": "data/*"
-                }
-              ]
-            },
-            {
-              "method": "tuffite.fs.createDir",
-              "allow": [
-                {
-                  "path": "data/*"
-                }
-              ]
-            },
-            {
-              "method": "tuffite.fs.removeFile",
-              "allow": [
-                {
-                  "path": "data/*"
-                }
-              ]
-            },
-            "tuffite.path.directories",
-            {
-              "method": "tuffite.path.resolve",
-              "allow": [
-                {
-                  "path": "resource/*"
-                },
-                {
-                  "path": "data/*"
-                }
-              ]
-            },
-            {
-              "method": "tuffite.net.request",
-              "allow": [
-                {
-                  "url": "https://api.example.com/*"
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "identifier": "artifact-and-preview",
-          "origins": [
-            "myapp://*.artifact",
-            "myapp://*.preview"
-          ],
-          "shellApi": [
-            "tuffite.path.directories",
-            "tuffite.storage.get"
-          ]
-        }
-      ]
     }
   },
   "build": {
     "mojomSources": [
-        "shell_api.mojom"
-      ]
+      "shell_api.mojom"
+    ]
+  },
+  "browser": {
+    "rules": [
+      {
+        "identifier": "app-shell",
+        "origins": [
+          "myapp://main"
+        ],
+        "explorer": {
+          "create": true,
+          "executeJavaScript": true
+        },
+        "shellApi": [
+          "myapp.*",
+          "tuffite.storage.*",
+          "tuffite.window.current",
+          "tuffite.window.list",
+          "tuffite.window.create",
+          "tuffite.window.getBounds",
+          "tuffite.window.focus",
+          "tuffite.window.minimize",
+          "tuffite.window.maximize",
+          "tuffite.window.restore",
+          "tuffite.window.setFullscreen",
+          "tuffite.window.close",
+          "tuffite.window.setTitle",
+          "tuffite.window.setBounds",
+          {
+            "method": "tuffite.fs.readFile",
+            "allow": [
+              {
+                "path": "resource/*"
+              },
+              {
+                "path": "data/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.fs.exists",
+            "allow": [
+              {
+                "path": "resource/*"
+              },
+              {
+                "path": "data/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.fs.writeFile",
+            "allow": [
+              {
+                "path": "data/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.fs.createDir",
+            "allow": [
+              {
+                "path": "data/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.fs.removeFile",
+            "allow": [
+              {
+                "path": "data/*"
+              }
+            ]
+          },
+          "tuffite.path.directories",
+          {
+            "method": "tuffite.path.resolve",
+            "allow": [
+              {
+                "path": "resource/*"
+              },
+              {
+                "path": "data/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.net.request",
+            "allow": [
+              {
+                "url": "https://api.example.com/*"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "identifier": "artifact-and-preview",
+        "origins": [
+          "myapp://*.artifact",
+          "myapp://*.preview"
+        ],
+        "shellApi": [
+          "tuffite.path.directories",
+          "tuffite.storage.get"
+        ]
+      }
+    ]
   }
 }
 ```
@@ -226,7 +292,7 @@ matching entries. `identifier` is a configuration label, not an element role.
 - `explorer.executeJavaScript` permits isolated-world execution in an owned
   Explorer, including cross-origin DOM access. Calls check the current owner
   and the captured element grant. Transfer checks the receiving owner's policy.
-- Dialog forwarding defaults to `suppress` and is enabled with `dialogs="emit"`, and
+- Dialogs use the native browser UI by default. `behavior="dialog: delegate;"` forwards them to the owner, and
   messages follow actual owner relations. Neither grants guest ShellAPI access.
   Business-wide event subscriptions require all registered business commands.
 
@@ -250,7 +316,7 @@ profiles and element-selected capabilities are not supported.
 
 ```html
 <explorer id="thread"
-  navigation="emit" dialogs="emit"></explorer>
+  behavior="navigation: delegate; dialog: delegate;"></explorer>
 ```
 
 The `partition` attribute is intentionally omitted above. Omission shares the
@@ -286,13 +352,13 @@ const value = await explorer.executeJavaScript(source, {
 explorer.postMessage(data, { targetOrigin: location.origin });
 ```
 
-Creation-time `partition`, `navigation`, and `dialogs` values are
-immutable for a WebContents. Recreate the element to change them or to switch a
-conversation session. `contextMenuEnabled` remains mutable.
+The creation-time `partition` is immutable for a WebContents. `behavior` and
+`contextMenuEnabled` are mutable. Changing behavior cancels outstanding delegated
+dialog/protocol requests; it cannot expand manifest capability grants.
 
 ## Events and dialogs
 
-The request events are `navigation`, `newwindow`, and `dialog`. All are
+The request events are `navigation`, `newwindow`, `dialog`, and `externalprotocol`. All are
 `bubbles: true`, `composed: true`, `cancelable: true`. Each owner document uses
 ordinary DOM capture, target, and bubble phases, including shadow-root retargeting.
 After that dispatch, the browser offers an unclaimed request at the next outer
@@ -312,7 +378,7 @@ intercepted current-page navigation. `newwindow.detail` adds `signal`,
 target=_blank and browser gestures; `disposition` retains the native classification.
 Attach adopts the original WebContents, preserving opener, POST, sessionStorage
 and its actual partition. It requires a connected target with matching
-immutable policy and partition. It never replays the URL. Successful attach and
+compatible security policy and partition. It never replays the URL. Successful attach and
 discard return true; duplicate or stale responses return false. Invalid attach
 targets reject with a DOMException. The old `open` and `popup` event names are
 replaced by `newwindow`.
@@ -343,7 +409,7 @@ audiostatechange and faviconchange. Both element and surface message events use
 window.tuffite.addEventListener('newwindow', event => {
   event.preventDefault();
   const target = document.createElement('explorer');
-    target.navigation = 'allow'; // match the source's immutable policy
+    target.behavior = source.behavior; // copy explicit interaction overrides
   document.querySelector('#tabs').append(target);
   void event.detail.attach(target);
 });
@@ -450,7 +516,7 @@ file schemes. They retain tuple security origins for standard messaging and
 Workers without granting file-origin access.
 
 Normal origin security still applies, and an Explorer does not receive ShellAPI
-unless its committed origin is granted ShellAPI commands in `app.security.capabilities`.
+unless its committed origin is granted ShellAPI commands in `browser.rules`.
 
 The initial SiteInstance carries both that stable isolation id and the final
 StoragePartitionConfig. For named non-default partitions its BrowsingInstance
@@ -475,6 +541,17 @@ interfaces, and runtime feature are absent. Chromium-owned changes are guarded
 by `tuffite_in_chromium` / `BUILDFLAG(TUFFITE_IN_CHROMIUM)` or narrow Tuffite
 markers. Sources compiled into Chromium targets are listed through component-owned
 `tuffite_in_chromium.gni` files imported directly by Chromium.
+
+## External protocols
+
+User-activated links and trusted application navigations to custom protocols
+such as `lark://` and `mailto:` open a browser-owned confirmation dialog. Cancel
+is the default action. Acceptance invokes the operating system handler; the URL
+never commits as an Explorer document. The requesting origin and destination
+are shown, and navigation/destruction of the initiating document revokes the
+pending launch. Fenced frames and disallowed sandboxed navigation cannot launch
+external handlers. Script/data/internal browser URLs are excluded. No persistent
+"always allow" exception is created.
 
 ## Moving a live page
 
@@ -636,6 +713,15 @@ and a properly provisioned application signature. Ad-hoc `tuff package` signatur
 do not grant this entitlement. The Framework checks actual OS support and omits
 the iCloud option when unavailable; it does not forge an entitlement or store a
 second copy of the user's passkeys.
+
+Local Touch ID credentials are also supported when the application signature
+grants a `keychain-access-groups` entry ending in `.webauthn`. The Framework uses
+the actual signed entitlement and a persistent, independent metadata secret in
+each browser profile's `WebAuthn Local State`; it never invents an access group.
+Local Touch ID does not require the restricted iCloud browser entitlement.
+Unsigned/ad-hoc bundles without a usable group cannot offer this mechanism.
+Windows requests enter the OS WebAuthn chooser directly, which owns Windows
+Hello, system passkeys and supported external authenticators.
 
 Phone sign-in on macOS requires a packaged `.app` with
 `NSBluetoothAlwaysUsageDescription` and launch from Finder so the responsible

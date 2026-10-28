@@ -187,7 +187,7 @@ void Show(content::RenderFrameHost& frame,
 
 }  // namespace
 
-void DialogImpl::OpenFile(const dispatch::Context& context,
+void DialogImpl::OpenFile(const dispatch::RendererRequestContext& context,
                           OpenFileRequestPtr request,
                           OpenFileCallback callback) {
   if (!context.sender()) {
@@ -206,7 +206,7 @@ void DialogImpl::OpenFile(const dispatch::Context& context,
        std::move(callback));
 }
 
-void DialogImpl::SaveFile(const dispatch::Context& context,
+void DialogImpl::SaveFile(const dispatch::RendererRequestContext& context,
                           generated::Dialog::SaveFileRequestPtr request,
                           generated::Dialog::SaveFileCallback callback) {
   if (!context.sender()) {
@@ -258,7 +258,7 @@ void DialogImpl::SaveFile(const dispatch::Context& context,
           std::move(request->contents), std::move(callback)));
 }
 
-void DialogImpl::OpenDirectory(const dispatch::Context& context,
+void DialogImpl::OpenDirectory(const dispatch::RendererRequestContext& context,
                                OpenDirectoryRequestPtr request,
                                OpenDirectoryCallback callback) {
   if (!context.sender()) {

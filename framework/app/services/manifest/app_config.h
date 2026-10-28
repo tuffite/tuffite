@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "url/gurl.h"
 
@@ -32,7 +33,7 @@ struct AppInfo {
   std::string identifier;
   std::string product_name;
   GURL entry_url;
-  std::string scheme;
+  std::vector<std::string> schemes;
 };
 
 struct NetworkLimits {

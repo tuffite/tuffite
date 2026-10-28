@@ -74,6 +74,48 @@ v8::MaybeLocal<v8::Value> Evaluate(ScriptState* state, const char* source) {
   return script->Run(state->GetContext());
 }
 
+// Entry completion crosses realms as a primitive ID or a message-only error.
+void ModuleCompleted(const v8::FunctionCallbackInfo<v8::Value>& info) {
+  auto* isolate = info.GetIsolate();
+  auto* state = ScriptState::ForCurrentRealm(isolate);
+  auto* window = LocalDOMWindow::From(state);
+  if (!window || !window->GetFrame()) {
+    return;
+  }
+  auto& manager = Worlds::From(*window);
+  auto data = info.Data().As<v8::Array>();
+  auto context = state->GetContext();
+  const int id =
+      data->Get(context, 1).ToLocalChecked().As<v8::Int32>()->Value();
+  const bool success = data->Get(context, 2).ToLocalChecked()->IsTrue();
+  auto resolver =
+      data->Get(context, 0).ToLocalChecked().As<v8::Promise::Resolver>();
+  if (!manager.host || !manager.host->ContextIsValid() ||
+      !manager.worlds.Contains(id)) {
+    return;
+  }
+  std::string message = "Isolated module evaluation failed";
+  if (!success && info.Length()) {
+    v8::String::Utf8Value detail(isolate, info[0]);
+    if (*detail) {
+      message.assign(*detail, detail.length());
+    }
+  }
+  ScriptState::Scope scope(manager.host);
+  if (success) {
+    std::ignore = resolver->Resolve(manager.host->GetContext(),
+                                    v8::Integer::New(isolate, id));
+  } else {
+    auto* world = manager.worlds.find(id)->value.Get();
+    manager.worlds.erase(id);
+    window->GetFrame()->WindowProxy(world->state->World())->ClearForClose();
+    SetIsolatedWorldInfo(id, WebIsolatedWorldInfo());
+    std::ignore =
+        resolver->Reject(manager.host->GetContext(),
+                         v8::Exception::Error(Text(isolate, message.c_str())));
+  }
+}
+
 // No callback carries a raw C++ owner pointer or a caller-supplied principal.
 // Every entry resolves its document and world from the executing context.
 void Operate(const v8::FunctionCallbackInfo<v8::Value>& info) {
@@ -153,10 +195,25 @@ void Operate(const v8::FunctionCallbackInfo<v8::Value>& info) {
     }
     WebIsolatedWorldInfo policy;
     policy.security_origin = WebSecurityOrigin(window->GetSecurityOrigin());
+    v8::String::Utf8Value entry_text(isolate, info[2]);
+    std::string entry(*entry_text, entry_text.length());
+    constexpr std::string_view marker = "/.tuffite-isolated/";
+    const auto start = entry.find(marker);
+    if (start == std::string::npos) {
+      fail();
+      return;
+    }
+    const auto end = entry.find('/', start + marker.size());
+    if (end == std::string::npos) {
+      fail();
+      return;
+    }
+    const auto root = entry.substr(0, end + 1);
     policy.content_security_policy = WebString::FromUtf8(
-        "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; "
-        "img-src data: blob:; connect-src 'none'; base-uri 'none'; form-action "
-        "'none'");
+        "default-src 'none'; script-src " + root +
+        "; style-src 'unsafe-inline' " + root +
+        "; img-src data: blob: " + root + "; font-src data: " + root +
+        "; connect-src " + root + "; base-uri 'none'; form-action 'none'");
     v8::String::Utf8Value name(isolate, info[1]);
     policy.human_readable_name =
         WebString::FromUtf8(std::string(*name, name.length()));
@@ -171,6 +228,8 @@ void Operate(const v8::FunctionCallbackInfo<v8::Value>& info) {
     auto* world = MakeGarbageCollected<World>();
     world->state = state;
     manager.worlds.Set(id, world);
+    auto ready =
+        v8::Promise::Resolver::New(caller->GetContext()).ToLocalChecked();
     bool success = false;
     {
       ScriptState::Scope scope(state);
@@ -184,17 +243,39 @@ void Operate(const v8::FunctionCallbackInfo<v8::Value>& info) {
       v8::Local<v8::Value> args[] = {
           info[1], ToV8Traits<CustomElementRegistry>::ToV8(state, registry),
           native};
-      v8::Local<v8::Script> script;
       success = Evaluate(state, kIsolatedWorldScript).ToLocal(&factory) &&
                 factory.As<v8::Function>()
                     ->Call(state->GetContext(), v8::Undefined(isolate), 3, args)
                     .ToLocal(&operations);
       if (success) {
         world->operations.Reset(isolate, operations);
-        success =
-            v8::Script::Compile(state->GetContext(), info[2].As<v8::String>())
-                .ToLocal(&script) &&
-            script->Run(state->GetContext()).ToLocal(&ignored);
+        v8::Local<v8::Value> importer;
+        success = Evaluate(state, "(url => import(url))").ToLocal(&importer);
+        if (success) {
+          v8::Local<v8::Value> url = info[2];
+          success =
+              importer.As<v8::Function>()
+                  ->Call(state->GetContext(), v8::Undefined(isolate), 1, &url)
+                  .ToLocal(&ignored) &&
+              ignored->IsPromise();
+        }
+        if (success) {
+          std::array<v8::Local<v8::Function>, 2> callbacks;
+          for (int i = 0; i < 2; ++i) {
+            auto data = v8::Array::New(isolate, 3);
+            data->Set(state->GetContext(), 0, ready).Check();
+            data->Set(state->GetContext(), 1, v8::Integer::New(isolate, id))
+                .Check();
+            data->Set(state->GetContext(), 2, v8::Boolean::New(isolate, i == 0))
+                .Check();
+            callbacks[i] =
+                v8::Function::New(state->GetContext(), ModuleCompleted, data)
+                    .ToLocalChecked();
+          }
+          success = !ignored.As<v8::Promise>()
+                         ->Then(state->GetContext(), callbacks[0], callbacks[1])
+                         .IsEmpty();
+        }
       }
       if (caught.HasCaught()) {
         v8::String::Utf8Value message(isolate, caught.Exception());
@@ -211,7 +292,7 @@ void Operate(const v8::FunctionCallbackInfo<v8::Value>& info) {
       fail();
       return;
     }
-    info.GetReturnValue().Set(id);
+    info.GetReturnValue().Set(ready->GetPromise());
     return;
   }
   if (info.Length() < 2 || !info[1]->IsInt32()) {

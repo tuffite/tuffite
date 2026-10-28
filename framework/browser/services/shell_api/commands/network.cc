@@ -113,7 +113,7 @@ class NetworkRequest {
 
 }  // namespace
 
-void NetImpl::Request(const dispatch::Context& context,
+void NetImpl::Request(const dispatch::RendererRequestContext& context,
                       RequestRequestPtr request,
                       RequestCallback callback) {
   if (!context.sender()) {

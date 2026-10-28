@@ -8,6 +8,9 @@ function check(name, condition) {
 }
 try {
   check('nativeRegistrationOnly', typeof tuffite.isolated.register === 'undefined');
+  const dynamic = await tuffite.isolated.createWorld({name: 'dynamicProbe'});
+  await dynamic.dispose();
+  check('dynamicPackage', true);
   const first = await tuffite.isolated.createWorld({name: 'weather'});
   const second = await tuffite.isolated.createWorld({name: 'weatherOther'});
   const views = await Promise.all([first, second].map((world, index) => world.mount(
@@ -39,6 +42,12 @@ try {
   let removedDenied = false;
   try { await tuffite.isolated.createWorld({name: 'removed'}); } catch { removedDenied = true; }
   check('removedDenied', removedDenied);
+  let failures = 0;
+  for (let i = 0; i < 40; ++i) {
+    try { await tuffite.isolated.createWorld({name: 'broken'}); }
+    catch (error) { if (error.message.includes('ESM fixture failure')) ++failures; }
+  }
+  check('failedModulesReleaseWorldsAndLeases', failures === 40);
   globalThis.__isolatedLab = {first, second, views};
   document.querySelector('#update').onclick = () => views[0].update({data: {title: 'Interactive update', value: Date.now()}});
   document.querySelector('#dispose').onclick = async () => {

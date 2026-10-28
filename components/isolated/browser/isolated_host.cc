@@ -16,10 +16,25 @@ IsolatedHost::IsolatedHost(base::WeakPtr<IsolatedSourceProvider> provider,
                            mojo::PendingReceiver<mojom::IsolatedHost> receiver)
     : DocumentService(frame, std::move(receiver)),
       provider_(std::move(provider)) {}
-IsolatedHost::~IsolatedHost() = default;
+IsolatedHost::~IsolatedHost() {
+  if (provider_) {
+    for (const auto& entry : entries_) {
+      provider_->Release(entry);
+    }
+  }
+}
 void IsolatedHost::Load(const std::string& name, LoadCallback callback) {
-  std::move(callback).Run(
-      provider_ ? provider_->SourceForFrame(render_frame_host(), name)
-                : std::nullopt);
+  auto entry = provider_ && entries_.size() < 32
+                   ? provider_->LoadForFrame(render_frame_host(), name)
+                   : std::nullopt;
+  if (entry) {
+    entries_.insert(*entry);
+  }
+  std::move(callback).Run(entry);
+}
+void IsolatedHost::Release(const std::string& entry_url) {
+  if (entries_.erase(entry_url) && provider_) {
+    provider_->Release(entry_url);
+  }
 }
 }  // namespace tuffite

@@ -478,7 +478,8 @@ void ShowDevToolsFrontend(window::WindowService& windows,
     frontend->Focus();
     return;
   }
-  Window* window = windows.Create(gfx::Size(1100, 760));
+  Window* window =
+      windows.Create(*inspected->GetBrowserContext(), gfx::Size(1100, 760));
   if (!window) {
     return;
   }

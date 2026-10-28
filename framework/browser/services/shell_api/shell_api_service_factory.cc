@@ -7,7 +7,6 @@
 
 #include "base/check.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
-#include "tuffite/framework/app/abi_host_bridge.h"
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
@@ -25,9 +24,7 @@ ShellApiServiceFactory* ShellApiServiceFactory::Get() {
 ShellApiServiceFactory::ShellApiServiceFactory()
     : BrowserContextKeyedServiceFactory(
           "TuffiteShellApi",
-          BrowserContextDependencyManager::GetInstance()) {
-  DependsOn(window::WindowServiceFactory::Get());
-}
+          BrowserContextDependencyManager::GetInstance()) {}
 ShellApiService* ShellApiServiceFactory::GetForBrowserContext(
     content::BrowserContext* context) {
   return static_cast<ShellApiService*>(
@@ -39,10 +36,11 @@ ShellApiServiceFactory::BuildServiceInstanceForBrowserContext(
   auto& application = BrowserContext::GetFrom(*context).application_context();
   auto* manifest = application.GetService<ManifestService>();
   CHECK(manifest);
-  auto* utility = application.GetService<UtilityService>();
+  auto* utility = &BrowserContext::GetFrom(*context).utility_service();
   CHECK(utility);
   auto service = std::make_unique<ShellApiServiceImpl>(
-      *context, application.bridge(), *manifest, *utility);
+      *context, BrowserContext::GetFrom(*context).host_dispatch(), *manifest,
+      *utility);
   services_.insert_or_assign(
       context, RegisteredService{&application, service->GetWeakPtr()});
   return service;

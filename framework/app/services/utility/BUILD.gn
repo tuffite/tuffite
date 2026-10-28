@@ -7,14 +7,11 @@ assert(tuffite_in_chromium)
 
 source_set("utility") {
   public = [
-    "host_runtime.h",
     "utility_service.h",
     "utility_service_factory.h",
     "utility_types.h",
   ]
   sources = [
-    "host_runtime.cc",
-    "host_runtime.h",
     "utility_process_launcher.cc",
     "utility_process_launcher.h",
     "utility_service.h",
@@ -27,7 +24,7 @@ source_set("utility") {
     "//base",
     "//components/keyed_service/core",
     "//tuffite/framework/app/services:factory",
-    "//tuffite/framework/public:abi",
+    "//tuffite/framework/public/c_api:abi",
   ]
   deps = [
     "//content/public/browser",
@@ -35,6 +32,6 @@ source_set("utility") {
     "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/common/utility:mojom",
     "//tuffite/framework/common/utility:service_name",
-    "//tuffite/framework/public:abi",
+    "//tuffite/framework/public/c_api:abi",
   ]
 }

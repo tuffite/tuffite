@@ -9,8 +9,8 @@ custom-element registries. This is not a restricted DOM or process sandbox.
 
 Retain `context.isolated()` from `Browser::new`, then perform registrations in
 `Browser::initialize` or later, after native services become available.
-Applications install and validate third-party packages, then register immutable,
-self-contained classic-script snapshots through `BrowserContext::isolated()`:
+Applications install and validate third-party packages, then register
+immutable ESM package snapshots through `BrowserContext::isolated()`:
 
 ```rust
 let isolated = context.isolated();
@@ -24,11 +24,13 @@ isolated.register(
 )?;
 ```
 
-`script_snapshot` is an owned UTF-8 String read from an application-validated
-package (or embedded with `include_str!`). Registration performs no file or
-network loading. Package installation, signatures, extension manifests and user
-permissions belong to the application. Compile the UI entry into a self-contained
-classic script; ESM imports and arbitrary resource loading are not provided.
+`WorldDefinition::new(name, source)` creates a single-entry ESM package.
+For a module graph, use `WorldDefinition::package(name, "entry.js")` with
+`.resource(path, bytes)`, or `WorldDefinition::from_directory(name, directory,
+"entry.js")` after application package validation. Files are snapshotted before
+registration; the native control plane accepts binary-safe resource bytes,
+not arbitrary paths or remote URLs. Installation, signatures and user permissions
+remain application responsibilities.
 
 After the native completion callback succeeds, the authorized page uses the
 same `createWorld({name: 'io.example.weather'})` API. No application restart or
@@ -74,7 +76,7 @@ the native context WeakPtr; accepted native calls complete or are cancelled by
 the bridge's common shutdown queue.
 The renderer lookup path is:
 `createWorld` → `IsolatedBindings::Load` → `mojo::Remote<mojom::IsolatedHost>::Load`
-→ generated Mojo dispatch → `IsolatedHost::Load` → `IsolatedSourceProvider::SourceForFrame` → `IsolatedService::Source`.
+→ generated Mojo dispatch → `IsolatedHost::Load` → `IsolatedSourceProvider::LoadForFrame` → `IsolatedService::LoadForFrame`.
 `isolated_host.{h,cc}` lives in `components/isolated/browser/`. Following the
 `DispatchHost`/`RpcHandler` and `ExplorerHost`/`ExplorerPolicyProvider` pattern,
 it only depends on a component-level `IsolatedSourceProvider` interface;
@@ -86,35 +88,77 @@ there is no direct browser C++ call to its `Load` override.
 
 `IsolatedHost` owns document-scoped Mojo lifetime. The profile service checks the
 actual primary main frame, browser-owned App or Explorer policy, and committed
-origin before returning source. Subframes and unclassified surfaces are denied.
+origin before pinning an immutable package and returning its entry URL. The
+normal asset loader resolves subsequent package requests for that document.
+Disposal, failed startup and document teardown release the lease. Subframes and
+unclassified surfaces are denied.
 
-## Bundled registration shorthand
+## Application-owned Web assets
 
-For application-owned components, the manifest remains optional startup sugar.
-Its snapshots enter the same browser registry and reserve their names:
+Keep JS/TS, CSS and images in one package directory. The entry is a native ES
+module: static and dynamic `import`, cyclic dependencies, JSON modules and
+`import.meta.url` use Blink's standard loader and per-world module map.
+`createWorld()` resolves only after the entry module graph finishes evaluation,
+including top-level await. Evaluation failures reject with a message-only error
+and release the partially created world and package lease.
 
-```json
-{
-  "app": {
-    "isolatedWorlds": {
-      "weather": {
-        "entry": "src/isolated/card.js",
-        "origins": ["playground://main"]
-      }
-    }
-  }
-}
+```js
+import sheet from './card.css' with { type: 'css' };
+import data from './weather.json' with { type: 'json' };
+const extra = await import('./details.js');
+const icon = new URL('./icon.svg', import.meta.url);
+// After attachShadow(...), using the world's registry:
+this.root.adoptedStyleSheets = [sheet];
 ```
 
-Entries are relative to the packaged `assets/` directory; the application CLI
-copies them from the same relative project path. Native startup rejects parent
-traversal, symlinks, invalid origins, non-UTF-8 sources, entries above 8 MiB,
-and aggregate sources above 32 MiB (at most 32 definitions). The browser snapshots
-sources at startup. Authorized App and browser-created Explorer primary main
-documents can load them, subject to each world's origin grants. Other origins,
-subframes, and unclassified surfaces remain denied. Development aliases follow
-the packaged entry origin's grants. Renderer JavaScript cannot register a package or supply
-an arbitrary entry URL/source through this API.
+CSS module scripts produce a `CSSStyleSheet`; they do not inject styles into the
+host document. Standard CSS module scripts do not support CSS `@import`. Import
+multiple stylesheets from JS and adopt them together, or resolve CSS imports at
+build time. CSS-relative image/font URLs resolve against the stylesheet URL.
+Ordinary side-effect CSS imports and `?inline` are bundler conventions, not
+native module syntax.
+
+Playground's [`ui/public/isolated/`](../playground/ui/public/isolated/) uses plain
+browser-standard modules and assets. Its existing public-resource staging copies
+that tree into `ui/dist/playground-public/isolated/`; no isolated-specific Vite
+build, IIFE, Rust `include_str!`, resource-inlining plugin or asset URL scheme is
+required. TypeScript/npm projects can emit ESM and chunks with their existing
+bundler. Preserve relative paths and import attributes in those outputs. Modules
+must not import the host ShellAPI clients or its dev-server/HMR runtime.
+
+Declare application-owned packages in Rust startup configuration:
+
+```rust
+configuration.app.isolated_worlds.insert(
+    "weather".into(),
+    tuffite::configuration::IsolatedWorld {
+        directory: "ui/dist/playground-public/isolated".into(),
+        entry: "card.js".into(),
+        origins: vec!["playground://main".into()],
+    },
+);
+```
+
+`directory` is relative to packaged `assets/`; `entry` is relative to that
+package. `bundle.resources` is the explicit packaging inventory. The
+`beforePackageCommand` builds/stages frontend outputs after Cargo. Runtime
+origin declarations stay out of source `tuffite.json`. Native startup snapshots
+regular package files, rejecting unsafe paths and symlinks. Limits are 1024 files,
+8 MiB per file, 32 MiB total registered resource bytes and 32 definitions.
+
+Each accepted load gets an unguessable, document-bound resource URL under the
+existing application scheme. The profile service pins the complete immutable
+package version, so later dynamic imports and assets cannot mix replacement
+versions. Its resource loader rechecks the owning document and profile; another
+frame cannot reuse the URL. CSP restricts script/style/image/font and resource
+fetches to that package prefix. Data/blob images and inline styling retain their
+existing allowance. Ordinary document CSP also governs DOM resource effects.
+No remote imports, document/iframe navigation or Worker entry loading is granted.
+
+Disposal releases the package lease; the document-scoped host also releases all
+leases on navigation/disconnection. Accepted in-flight resource requests retain
+their copied bytes. Existing worlds remain pinned after registration replacement
+or removal until disposed. Disposed code can no longer load additional resources.
 
 ## Main world
 
@@ -134,7 +178,7 @@ await view.dispose();
 await world.dispose();
 ```
 
-`createWorld` resolves after synchronous entry evaluation and registration.
+`createWorld` resolves after entry-module evaluation and registration, including top-level await.
 Each call creates a fresh world; the application can cache the handle. At most
 32 worlds may be active in one document. A world can mount multiple instances.
 Types are exported from `tuffite/isolated`: `IsolatedHost`,
@@ -209,7 +253,7 @@ than assigning custom properties through its own DOM wrapper.
 Only registered Tuffite worlds gain custom-element construction support. Other
 isolated worlds and DevTools contexts retain upstream behavior. The world has
 no ambient ShellAPI binding. Its own execution CSP disables dynamic scripts,
-eval and direct network requests; inline styling and data/blob images are
+eval and requests outside its immutable package; inline styling and data/blob images are
 allowed. This policy does not restrict all side effects through shared DOM.
 
 A world can read/change reachable host DOM, observe inputs, and create misleading
@@ -222,12 +266,13 @@ hard termination guarantee. Use Explorer or remote rendering for narrower trust.
 
 ## Playground proof
 
-Playground registers its two script snapshots from Rust during Browser initialization,
-without `app.isolatedWorlds`. Startup replaces an obsolete throwing script with
-the working component, checks stale-generation rejection, and unregisters a third
-entry. The UI smoke verifies that the removed entry cannot be created. Open the Isolated Web Components lab. Its two worlds register
+Playground declares two packaged worlds using the same native ESM component.
+Its separate dynamic-registration probe replaces an obsolete script, checks
+stale-generation rejection, and unregisters a removed entry. The UI smoke
+verifies that the removed entry cannot be created. The two UI worlds register
 the same tags, receive isolated property updates and request results, and can
-be disposed interactively. After building local Framework and Playground:
+be disposed interactively. Open the Isolated Web Components lab after building
+local Framework and Playground:
 
 ```sh
 mise exec -- python3 playground/scripts/smoke.py \
@@ -237,3 +282,5 @@ mise exec -- python3 playground/scripts/smoke.py \
 The CDP smoke inspects closed shadow roots without adding a production DOM
 backdoor. It checks registration, nested upgrade, separate globals/registries,
 setter updates, callback world, request/reply and idempotent disposal/revocation.
+It also checks static/dynamic imports, top-level await, JSON and CSS modules,
+relative CSS/image URLs, actual image decoding and rejected out-of-package imports.

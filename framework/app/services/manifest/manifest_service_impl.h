@@ -10,7 +10,7 @@
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 
 namespace tuffite::app {
-struct OriginCapability;
+struct OriginRule;
 }
 
 namespace tuffite {
@@ -23,8 +23,6 @@ class ManifestServiceImpl final : public ManifestService {
   app::NetworkLimits network_limits() const override;
   asset::AssetConfiguration assets() const override;
   const std::string& SerializeRuntimeConfiguration() const override;
-  std::map<std::string, std::vector<uint8_t>> UtilityConfigurations()
-      const override;
   std::string SerializeShellApiOrigins() const override;
   std::string SerializeExplorerOrigins() const override;
   const std::map<std::string, isolated::WorldDefinition>&
@@ -46,6 +44,8 @@ class ManifestServiceImpl final : public ManifestService {
   bool IsShellApiOriginAllowed(const url::Origin& origin) const override;
   bool IsAllShellApiAllowed(const url::Origin& origin) const override;
   bool IsDevToolsAllowed(const url::Origin& origin) const override;
+  bool IsDevToolsEnabled() const override;
+  ExplorerBehavior ExplorerDefaults(const url::Origin& origin) const override;
   bool IsExplorerOriginAllowed(const url::Origin& origin) const override;
   bool IsShellApiCommandAllowed(const url::Origin& origin,
                                 std::string_view channel) const override;
@@ -64,9 +64,9 @@ class ManifestServiceImpl final : public ManifestService {
   void Shutdown() override;
 
  private:
-  using OriginCapability = app::OriginCapability;
+  using OriginRule = app::OriginRule;
   const app::ManifestData& data() const { return configuration_.data(); }
-  OriginCapability GrantsFor(const url::Origin& origin) const;
+  OriginRule GrantsFor(const url::Origin& origin) const;
   bool IsFileSystemPathAllowed(const url::Origin&,
                                std::string_view base,
                                std::string_view relative,

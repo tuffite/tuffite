@@ -10,6 +10,7 @@
 #include "content/public/browser/navigation_throttle.h"
 #include "content/public/browser/navigation_throttle_registry.h"
 #include "tuffite/components/explorer/browser/explorer_host.h"
+#include "tuffite/components/explorer/common/external_protocol.h"
 #include "tuffite/framework/browser/web_contents_role.h"
 
 namespace tuffite {
@@ -17,9 +18,9 @@ namespace {
 class ExplorerNavigationThrottle final : public content::NavigationThrottle {
  public:
   ExplorerNavigationThrottle(content::NavigationThrottleRegistry& registry,
-                             std::string app_scheme)
+                             std::vector<std::string> app_schemes)
       : content::NavigationThrottle(registry),
-        app_scheme_(std::move(app_scheme)) {}
+        app_schemes_(std::move(app_schemes)) {}
 
   ThrottleCheckResult WillStartRequest() override { return CheckUrl(); }
   ThrottleCheckResult WillRedirectRequest() override { return CheckUrl(); }
@@ -34,8 +35,13 @@ class ExplorerNavigationThrottle final : public content::NavigationThrottle {
         navigation_handle()->GetWebContents());
     const auto& url = navigation_handle()->GetURL();
     if (!policy || !(url.IsAboutBlank() || url.SchemeIsHTTPOrHTTPS() ||
-                     url.SchemeIsFile() || url.scheme() == app_scheme_)) {
+                     url.SchemeIsFile() ||
+                     std::ranges::contains(app_schemes_, url.scheme()) ||
+                     IsExternalProtocol(url, app_schemes_))) {
       return BLOCK_REQUEST;
+    }
+    if (IsExternalProtocol(url, app_schemes_)) {
+      return PROCEED;
     }
     if (navigation_handle()->IsRendererInitiated() &&
         ExplorerHost::MaybeEmitNavigation(
@@ -46,20 +52,20 @@ class ExplorerNavigationThrottle final : public content::NavigationThrottle {
     }
     return PROCEED;
   }
-  const std::string app_scheme_;
+  const std::vector<std::string> app_schemes_;
 };
 
 }  // namespace
 
 void AddExplorerNavigationThrottles(
     content::NavigationThrottleRegistry& registry,
-    std::string app_scheme) {
+    std::vector<std::string> app_schemes) {
   auto& handle = registry.GetNavigationHandle();
   if (handle.IsInPrimaryMainFrame() &&
       WebContentsRoleData::GetRole(handle.GetWebContents()) ==
           WebContentsRole::kExplorer) {
     registry.AddThrottle(std::make_unique<ExplorerNavigationThrottle>(
-        registry, std::move(app_scheme)));
+        registry, std::move(app_schemes)));
   }
 }
 

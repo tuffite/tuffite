@@ -59,6 +59,20 @@ const ExplorerPolicy* ExplorerSurfaceData::GetExplorerPolicy(
   const auto* data = contents ? FromWebContents(contents) : nullptr;
   return data && data->policy_ ? &*data->policy_ : nullptr;
 }
+void ExplorerSurfaceData::UpdateExplorerBehavior(
+    content::WebContents* contents,
+    const ExplorerPolicy& requested) {
+  auto* data = FromWebContents(contents);
+  CHECK(data && data->policy_);
+  auto candidate = *data->policy_;
+  candidate.behavior = requested.behavior;
+  candidate.navigation = requested.navigation;
+  candidate.dialogs = requested.dialogs;
+  CHECK(candidate == requested);
+  data->policy_->behavior = requested.behavior;
+  data->policy_->navigation = requested.navigation;
+  data->policy_->dialogs = requested.dialogs;
+}
 void ExplorerSurfaceData::SetExplorerContextMenuEnabled(
     content::WebContents* contents,
     bool enabled) {

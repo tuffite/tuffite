@@ -56,7 +56,7 @@ try {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.equal(state?.error, undefined, JSON.stringify(state));
-  for (const name of ['mounted','globalsIsolated','registryIsolated','updated','invalidPropertiesRejected','unregisteredDenied','removedDenied','nativeRegistrationOnly'])
+  for (const name of ['mounted','globalsIsolated','registryIsolated','updated','invalidPropertiesRejected','unregisteredDenied','removedDenied','nativeRegistrationOnly','dynamicPackage','failedModulesReleaseWorldsAndLeases'])
     assert.equal(state?.[name], true, name);
   const frameTree = await send('Page.getFrameTree', {});
   const ordinary = await send('Page.createIsolatedWorld', {
@@ -92,8 +92,41 @@ try {
     assert.equal(attrs(card)['data-foreign-denied'], 'true');
     assert.equal(attrs(card)['data-main-registry'], 'null');
     assert.equal(attrs(card)['data-shell-api'], 'undefined');
+    const modules = JSON.parse(attrs(card)['data-modules']);
+    assert.equal(modules.label, 'native ESM');
+    assert.equal(modules.lazy, 'dynamic import');
+    assert.equal(modules.city, 'Shanghai');
+    assert.equal(modules.escapeDenied, true);
+    assert.equal(modules.networkDenied, true);
+    assert.match(modules.moduleUrl, /\/.tuffite-isolated\/[^/]+\/details.js$/);
+    const object = await send('DOM.resolveNode', {nodeId: card.nodeId});
+    const computed = await send('Runtime.callFunctionOn', {
+      objectId: object.object.objectId,
+      functionDeclaration: `function() {
+        const style = getComputedStyle(this);
+        return {padding: style.padding, border: style.borderTopColor, background: style.backgroundImage};
+      }`,
+      returnByValue: true,
+    });
+    assert.deepEqual({...computed.result.value, background: undefined}, {
+      padding: '16px', border: 'rgb(136, 136, 136)', background: undefined,
+    }, 'native CSS module applies inside the component shadow root');
+    assert.match(computed.result.value.background, /^url\("playground:\/\/main\/\.tuffite-isolated\//, 'CSS relative url() resolves in the package');
     // Host mutation invokes the extension callback in its owning world.
     await send('DOM.setAttributeValue', {nodeId:card.nodeId, name:'data-probe', value:'host'});
+  }
+  const images = collect(doc.root, 'img');
+  assert.equal(images.length, 2);
+  for (const image of images) {
+    const object = await send('DOM.resolveNode', {nodeId: image.nodeId});
+    const decoded = await send('Runtime.callFunctionOn', {
+      objectId: object.object.objectId,
+      functionDeclaration: 'async function() { await this.decode(); return {url: this.currentSrc, width: this.naturalWidth}; }',
+      awaitPromise: true, returnByValue: true,
+    });
+    assert.equal(decoded.exceptionDetails, undefined, 'bundled image decodes under native CSP');
+    assert.match(decoded.result.value.url, /^playground:\/\/main\/\.tuffite-isolated\//);
+    assert.equal(decoded.result.value.width, 24);
   }
   const buttons = collect(doc.root, 'button').filter(node => node.attributes.length === 0);
   assert.equal(buttons.length, 2);
@@ -141,7 +174,7 @@ try {
     await evaluate(() => {
       const explorer = document.createElement('explorer');
       explorer.id = 'isolated-explorer-smoke';
-      explorer.navigation = 'allow';
+      explorer.behavior = "navigation: browser;";
       explorer.style.cssText = 'display:block;width:500px;height:300px';
       document.body.append(explorer);
     });
@@ -191,5 +224,5 @@ try {
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   assert.match(deniedState?.error ?? '', /unavailable or denied/);
-  console.log(JSON.stringify({isolated_worlds:true,dynamic_registration:true,removed_registration_denied:true,scoped_components:true,property_setters:true,callbacks:true,request_reply:true,disposal:true,explorer_authorized:true,explorer_origin_denied:true}));
+  console.log(JSON.stringify({isolated_worlds:true,native_esm:true,css_modules:true,json_modules:true,relative_assets:true,failed_entry_cleanup:true,dynamic_registration:true,removed_registration_denied:true,scoped_components:true,property_setters:true,callbacks:true,request_reply:true,disposal:true,explorer_authorized:true,explorer_origin_denied:true}));
 } finally { socket.close(); }

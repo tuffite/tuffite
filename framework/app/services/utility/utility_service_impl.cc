@@ -23,7 +23,7 @@
 #include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/common/utility/utility_service.mojom.h"
 #include "tuffite/framework/common/utility/utility_service_name.h"
-#include "tuffite/framework/public/abi.h"
+#include "tuffite/framework/public/c_api/types.h"
 
 namespace tuffite {
 namespace {
@@ -749,12 +749,6 @@ class UtilityServiceImpl final : public UtilityService {
   explicit UtilityServiceImpl(std::unique_ptr<UtilityProcessLauncher> launcher)
       : launcher_(std::move(launcher)) {}
   ~UtilityServiceImpl() override { Shutdown(); }
-  void SetUtilityStartupConfigurations(
-      std::map<std::string, std::vector<uint8_t>> configurations) override {
-    if (!stopped_ && hosts_.empty()) {
-      configurations_ = std::move(configurations);
-    }
-  }
   void SetUtilityModuleResolver(UtilityModuleResolver resolver) override {
     if (!stopped_) {
       resolver_ = std::move(resolver);
@@ -909,7 +903,7 @@ class UtilityServiceImpl final : public UtilityService {
     auto [entry, inserted] = hosts_.try_emplace(name, nullptr);
     if (inserted) {
       entry->second = std::make_unique<UtilityServiceHost>(
-          name, *launcher_, resolver_, canceller_, configurations_[name]);
+          name, *launcher_, resolver_, canceller_, std::vector<uint8_t>{});
     }
     entry->second->Invoke(request_id, std::move(request), std::move(callback));
   }
@@ -941,7 +935,7 @@ class UtilityServiceImpl final : public UtilityService {
     auto [entry, inserted] = hosts_.try_emplace(name, nullptr);
     if (inserted) {
       entry->second = std::make_unique<UtilityServiceHost>(
-          name, *launcher_, resolver_, canceller_, configurations_[name]);
+          name, *launcher_, resolver_, canceller_, std::vector<uint8_t>{});
     }
     entry->second->CreateSession(
         session_id, std::move(init), initial_event_credits, max_event_bytes,
@@ -975,7 +969,6 @@ class UtilityServiceImpl final : public UtilityService {
   }
 
  private:
-  std::map<std::string, std::vector<uint8_t>> configurations_;
   std::unique_ptr<UtilityProcessLauncher> launcher_;
   bool stopped_ = false;
   uint64_t next_internal_request_id_ = 1;

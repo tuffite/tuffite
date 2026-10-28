@@ -128,7 +128,7 @@ The public build API has three deliberate layers:
   returns a `BuildOutput` containing the resolved Distribution and generated
   bindings. It also emits Cargo rerun directives for the manifest, ShellAPI
   declaration and verified-output paths, and every Framework environment
-  override; application build scripts do not repeat those declarations.
+  override. Application scripts additionally track their shared declaration module.
 
 `Generator::new()` reads `tuffite.json` beside `build.rs` using
 `CARGO_MANIFEST_DIR`; `.manifest(path)` overrides that convention. `.rust(directory,
@@ -156,7 +156,7 @@ Both components are required, in either addition order, and duplicates are
 rejected. Framework resolution runs before generation. Source manifests put
 Mojom source paths under `build.mojomSources`. Packaging removes
 `build` and emits only namespace and command IDs under the runtime
-`app.shellApi`; capability grants remain under `app.security.capabilities`.
+`app.shellApi`; capability grants remain under `browser.rules`.
 
 Application crates build a business runtime library without linking Chromium.
 `tuff build` still resolves the Distribution so its target triple controls
@@ -352,14 +352,82 @@ runtime and generated built-in ShellAPI facade from the single `tuffite` npm
 package; applications cannot shadow those reserved framework resources. A
 direct invocation is:
 
-Application assets are explicit `app.assets[]` origin/path rules. Each rule
-maps paths to one project-relative `file` or `directory`; the packager includes
-those sources automatically alongside `bundle.resources`. Exact paths take
+Source `tuffite.json` contains identity/display metadata, `build` and `bundle`.
+List all packaged runtime files explicitly under `bundle.resources`. Runtime Rust
+configuration is installed by `Application::setup`; build.rs does not import it
+or export a runtime inventory. Packaging never executes the target application.
+The field paths below describe the in-memory native runtime descriptor, not source
+manifest keys. See [embedding and startup](embedding.md).
+
+Application assets are typed `configuration::Asset::{file,directory}` declarations,
+serialized as `app.assets[]` origin/path rules. Each rule
+maps paths to one project-relative `file` or `directory`; those sources must be included explicitly in `bundle.resources`. Exact paths take
 priority over prefix paths, and ambiguous equal-priority mappings fail validation.
 SPA routes explicitly map to their index file; no `frontend` or generated
 `assetRoutes` index is used. See the
 [complete configuration example](../components/explorer/README.md#manifest).
-`app.security.csp` sets the response policy for packaged assets.
+`browser.rules[].csp` sets the response policy for packaged assets.
+
+`app.schemes` explicitly declares 1 to 16 unique lowercase internal schemes,
+each at most 64 ASCII characters. Reserved browser/network schemes are rejected.
+All startup-window and asset origins must use a declared scheme; neither window
+URLs nor `browser.rules` implicitly register one. All declared schemes receive
+Chromium standard/secure/CORS-enabled registration, renderer Fetch support and
+navigation/subresource/Worker resource factories before documents load. The first
+scheme supplies the default base for relative V8 utility entries; explicit entries
+may use any declared scheme. Schemes are process-wide and shared by profiles,
+while origins, storage and origin grants remain distinct. Registration is not an
+OS deep-link association and does not grant ShellAPI or Explorer permissions.
+
+### Asset loading review
+
+The existing non-network `URLLoaderFactory` integration is the appropriate
+Chromium extension point for ordinary application documents. Chromium's
+`URLDataSource` can serve a custom scheme, but it uses the WebUI data-manager
+pipeline. `WebUIDataSource` explicitly disallows arbitrary scheme-wide source
+names; adopting WebUI would introduce controller, binding and scheme policies
+that the application asset mechanism does not need. Keep ordinary application
+documents separate from privileged browser WebUI.
+
+The mapping has three independent steps: a registered scheme chooses the loader,
+the canonical destination origin chooses published mounts, and an exact path or
+longest matching prefix chooses a file. Origin patterns describe where resources
+are published; they do not authorize a caller or grant IPC access. Different
+origins with the same mounted file remain different web origins. Query strings
+and fragments do not select a different disk file. Missing paths should return
+404; SPA index fallbacks remain explicit exact mappings.
+
+The loader review identified follow-up work, separate from multi-scheme support:
+
+- The current loader serves GET only, buffers up to 64 MiB, and always uses
+  `no-store`. HEAD, byte ranges, cancellation during file reads, streaming and
+  versioned caching need explicit request/response contracts and browser tests.
+- The factory is supplied to non-network consumers broadly and does not explicitly
+  check initiator origin or request mode. Cross-origin Fetch/module/Worker access
+  must be tested independently of CSP; registration as CORS-enabled is not itself
+  an access-control implementation. Do not infer that an origin grant protects
+  packaged bytes.
+- Path resolution rejects decoded absolute paths and parent traversal, but runtime
+  file reads currently follow filesystem links. Packaging validation alone does
+  not establish a runtime file-handle containment guarantee. Immutable packaging
+  and platform-specific safe-open behavior need to be evaluated before exposing
+  writable directories through mounts.
+
+Prefer improving the existing loader using Chromium file/data-pipe primitives
+over switching all application content to `file://` or WebUI. Build an immutable
+route index by scheme/origin and exact/prefix path if routing volume warrants it;
+the public manifest can keep its current origin/path format until a concrete
+mapping requirement justifies changing it.
+
+A concrete Chromium integration to evaluate is
+`network::mojom::URLLoaderFactoryOverride`: it replaces the network service's
+inner data-producing factory while retaining the outer `CorsURLLoader` security
+layer. The Mojo declaration explicitly supports custom-scheme providers through
+this mechanism. Asset bytes can remain in Tuffite's backend while Chromium owns
+CORS checks and response filtering. Factories must receive trusted process and
+initiator locks from browser-side frame/worker state, not renderer-supplied
+authorization claims. This is a proposed loader improvement, not implemented by
+the multi-scheme change.
 
 ```console
 cargo run --package tuffite --bin tuff -- package --manifest playground/tuffite.json --destination dist --name tuffite-playground-windows-x64 --force
@@ -456,24 +524,6 @@ Manifest schema v2 separates runtime application policy from packaging:
   "productName": "My App",
   "app": {
     "identifier": "com.example.playground",
-    "security": {
-      "csp": "default-src 'self'",
-      "capabilities": [
-        {
-          "identifier": "app-shell",
-          "origins": [
-            "playground://main"
-          ],
-          "explorer": {
-            "create": true,
-            "executeJavaScript": false
-          },
-          "shellApi": [
-            "playground.*"
-          ]
-        }
-      ]
-    },
     "windows": [
       {
         "label": "main",
@@ -501,14 +551,37 @@ Manifest schema v2 separates runtime application policy from packaging:
       "cwd": "packages/ui"
     },
     "mojomSources": [
-        "shell_api.mojom"
-      ]
+      "shell_api.mojom"
+    ]
   },
   "bundle": {
     "executable": "demo",
     "resources": [
       "index.html",
       "generated/shell_api.js"
+    ]
+  },
+  "browser": {
+    "rules": [
+      {
+        "identifier": "app-shell",
+        "origins": [
+          "playground://main"
+        ],
+        "explorer": {
+          "create": true,
+          "executeJavaScript": false
+        },
+        "shellApi": [
+          "playground.*"
+        ]
+      },
+      {
+        "origins": [
+          "playground://main"
+        ],
+        "csp": "default-src 'self'"
+      }
     ]
   }
 }
@@ -535,6 +608,19 @@ an object with `script` and `cwd`. An optional `devtoolsPort` enables the loopba
 CDP endpoint for that development launch; `--devtools-port` overrides it. The CLI
 checks availability before starting and prints both the JSON target list and the
 browser inspect page. Production launches do not consume this setting.
+`browser.devtools` is the master switch (default `true`); setting it to `false`
+blocks both the built-in inspector and CDP, regardless of a requested port.
+`browser.rules[].devtools: false` restricts matching document origins; any denial
+wins and a rule cannot re-enable the master switch. No `explorer.devtools`
+permission or element attribute is needed.
+When the master switch is disabled, `tuff dev` ignores `build.devtoolsPort` and
+rejects an explicit `--devtools-port` with a configuration error.
+
+Run `python3 playground/scripts/devtools-policy-smoke.py --package PATH
+--staging-dir PATH` to check a disposable packaged application. The three cases
+verify the master switch with an explicit native port, origin-scoped Explorer
+inspection and revocation after navigation, and denial of a top-level document.
+Each case keeps its own package, profile and diagnostic logs.
 
 The selected Framework Distribution also selects the native Cargo target. Tuffite
 passes its manifest target to `cargo build --target`, so an arm64 development
@@ -550,7 +636,7 @@ Explorer surfaces continue to use the independent, mutable
 `contextMenuEnabled` property.
 
 Explorer is compiled into Tuffite but native permissions default to deny.
-`app.security.capabilities[].explorer` authorizes owner creation and scripts.
+`browser.rules[].explorer` authorizes owner creation and scripts.
 Guest ShellAPI grants depend on the guest's own
 committed origin and are rechecked on every invocation.
 

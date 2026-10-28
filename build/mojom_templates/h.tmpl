@@ -23,7 +23,7 @@ class {{interface.name}} {
   using {{name}}RequestPtr = {{name}}Method::RequestPtr;
   using {{name}}Callback = {{name}}Method::Callback;
 {% if method.response_parameters|length == 1 %}  using {{name}}Result = decltype({{response}}::{{m.snake(method.response_parameters[0].name)}});
-{% endif %}  virtual void {{name}}(const dispatch::Context& context, {{name}}RequestPtr request, {{name}}Callback callback) = 0;
+{% endif %}  virtual void {{name}}(const dispatch::RendererRequestContext& context, {{name}}RequestPtr request, {{name}}Callback callback) = 0;
 {% endfor %}};
 {% endfor %}
 }  // namespace tuffite::shell_api::generated

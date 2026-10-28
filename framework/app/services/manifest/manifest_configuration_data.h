@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "tuffite/components/explorer/common/explorer_behavior.h"
 #include "tuffite/components/isolated/common/isolated_configuration.h"
 #include "tuffite/framework/app/services/asset/asset_configuration.h"
 #include "tuffite/framework/app/services/manifest/app_config.h"
@@ -23,13 +24,15 @@ struct ShellApiGrant {
   std::vector<std::string> deny;
 };
 
-struct OriginCapability {
+struct OriginRule {
   std::string identifier;
   std::vector<std::string> origins;
   bool devtools_allowed = true;
   bool create_explorer = false;
   bool execute_javascript = false;
   std::vector<ShellApiGrant> shell_api;
+  ExplorerBehaviorOverrides behavior;
+  std::string csp;
 };
 
 // Native configuration data. Only the loader and assembler obtain mutable
@@ -54,12 +57,12 @@ struct ManifestData {
   std::vector<app::AppWindow> windows_;
   std::vector<std::string> shell_api_origin_patterns_;
   std::vector<std::string> explorer_origin_patterns_;
-  std::vector<OriginCapability> origin_capabilities_;
+  std::vector<OriginRule> origin_rules_;
   std::vector<std::pair<std::string, uint64_t>> shell_api_command_ids_;
   size_t network_max_response_bytes_ = 1024 * 1024;
   int network_timeout_seconds_ = 30;
   bool network_disable_http2_ = false;
-  std::map<std::string, std::vector<uint8_t>> utility_configurations_;
+  bool devtools_enabled_ = true;
 };
 
 }  // namespace tuffite::app

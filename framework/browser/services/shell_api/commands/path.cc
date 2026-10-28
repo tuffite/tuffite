@@ -17,7 +17,7 @@ using DirectoriesResult = generated::Path::DirectoriesResult;
 using ResolveCallback = generated::Path::ResolveCallback;
 using ResolveRequestPtr = generated::Path::ResolveRequestPtr;
 
-void PathImpl::Directories(const dispatch::Context& context,
+void PathImpl::Directories(const dispatch::RendererRequestContext& context,
                            DirectoriesRequestPtr,
                            DirectoriesCallback callback) {
   if (!context.sender()) {
@@ -49,7 +49,7 @@ void PathImpl::Directories(const dispatch::Context& context,
   std::move(callback).Run(rpc::Status::kOk, std::move(result));
 }
 
-void PathImpl::Resolve(const dispatch::Context& context,
+void PathImpl::Resolve(const dispatch::RendererRequestContext& context,
                        ResolveRequestPtr request,
                        ResolveCallback callback) {
   if (!context.sender()) {

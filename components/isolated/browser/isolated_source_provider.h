@@ -14,9 +14,10 @@ namespace tuffite {
 class IsolatedSourceProvider {
  public:
   virtual ~IsolatedSourceProvider() = default;
-  virtual std::optional<std::string> SourceForFrame(
+  virtual std::optional<std::string> LoadForFrame(
       content::RenderFrameHost& frame,
-      const std::string& name) const = 0;
+      const std::string& name) = 0;
+  virtual void Release(const std::string& entry_url) = 0;
 };
 }  // namespace tuffite
 #endif

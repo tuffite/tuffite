@@ -42,30 +42,45 @@ test("utility_service_unittests") {
     "//testing/gtest",
     "//tuffite/framework/common/utility:mojom",
     "//tuffite/framework/common/utility:service_name",
-    "//tuffite/framework/public:abi",
+    "//tuffite/framework/public/c_api:abi",
   ]
 }
 
-test("abi_host_bridge_unittests") {
+test("renderer_rpc_unittests") {
+  sources = [ "renderer_rpc_unittest.cc" ]
+  deps = [
+    ":dispatch_fixture",
+    "//base",
+    "//base/test:test_support",
+    "//content/public/browser",
+    "//content/test:test_support",
+    "//mojo/core/embedder",
+    "//testing/gtest",
+    "//tuffite/components/dispatch/browser",
+    "//tuffite/framework/public/shell_api:protocol",
+    "//url",
+  ]
+}
+
+test("abi_unittests") {
   sources = [
     "//tuffite/framework/browser/services/isolated/isolated_service_impl.h",
-    "abi_host_bridge_unittest.cc",
+    "abi_unittest.cc",
     "utility_test_main.cc",
   ]
   deps = [
-    ":dispatch_fixture",
     "//base",
     "//base/test:test_support",
     "//mojo/core/embedder",
     "//testing/gtest",
     "//tuffite/framework:core",
     "//tuffite/framework/app",
-    "//tuffite/framework/app:host_headers",
+    "//tuffite/framework/app:abi_headers",
+    "//tuffite/framework/app/services/remoting",
     "//tuffite/framework/browser",
     "//tuffite/framework/browser:support",
     "//tuffite/framework/browser/services/isolated:registry",
-    "//tuffite/framework/browser/services/shell_api/commands",
-    "//tuffite/framework/public:abi",
+    "//tuffite/framework/public/c_api:abi",
     "//url",
   ]
 }

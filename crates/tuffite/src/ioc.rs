@@ -30,6 +30,25 @@ pub use tuffite_ioc::{Factory, FactoryContext, KeyedService, Registrar, Result, 
 #[cfg(feature = "ioc-registry")]
 pub use tuffite_ioc::Registry;
 
+/// Creates an application-scoped registry without starting any service roots.
+#[cfg(feature = "ioc-registry")]
+pub fn application_registry<C>(context: C) -> Result<Registry<C>>
+where
+    C: AsRef<crate::ApplicationContext> + Send + Sync + 'static,
+{
+    use std::sync::Arc;
+    let context = Arc::new(context);
+    let app = context.as_ref().as_ref();
+    let mut registry = Registry::new(Arc::clone(&context));
+    registry.inject(Arc::new(app.events()))?;
+    registry.inject(Arc::new(app.executor()))?;
+    registry.inject(Arc::new(app.utility_sessions()))?;
+    registry.inject(Arc::new(app.utilities()))?;
+    registry.inject(Arc::new(app.profiles()))?;
+    registry.inject(Arc::new(app.windows()))?;
+    Ok(registry)
+}
+
 /// Creates a Browser-local registry retaining the complete application context.
 /// Native capabilities are obtained through `AsRef`; no services are started.
 #[cfg(feature = "ioc-registry")]
@@ -43,7 +62,6 @@ where
     let mut registry = Registry::new(Arc::clone(&context));
     registry.inject(Arc::new(browser.events()))?;
     registry.inject(Arc::new(browser.executor()))?;
-    registry.inject(Arc::new(browser.shell_api()))?;
     registry.inject(Arc::new(browser.utility_sessions()))?;
     registry.inject(Arc::new(browser.utilities()))?;
     Ok(registry)

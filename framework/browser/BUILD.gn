@@ -23,6 +23,7 @@ source_set("support") {
   public_deps = [
     "//base",
     "//content/public/browser",
+    "//tuffite/components/dispatch/browser",
     "//tuffite/components/explorer/browser",
   ]
 }
@@ -30,7 +31,7 @@ source_set("support") {
 source_set("browser") {
   visibility = [
     "//tuffite/framework/app",
-    "//tuffite/framework/test:abi_host_bridge_unittests",
+    "//tuffite/framework/test:abi_unittests",
   ]
   public_deps = [
     ":support",
@@ -50,6 +51,7 @@ source_set("browser") {
     "//tuffite/framework/app:context",
     "//tuffite/framework/app/services/asset",
     "//tuffite/framework/app/services/manifest",
+    "//tuffite/framework/app/services/profile",
     "//tuffite/framework/app/services/remoting",
     "//tuffite/framework/app/services/utility",
   ]
@@ -98,13 +100,14 @@ source_set("browser") {
     "//tuffite/components/dispatch/common:implementation",
     "//tuffite/components/dispatch/common:mojom",
     "//tuffite/components/explorer/browser",
+    "//tuffite/components/explorer/common:external_protocol",
     "//tuffite/components/explorer/common:mojom",
-    "//tuffite/framework/app:host_headers",
+    "//tuffite/framework/app:abi_headers",
     "//tuffite/framework/common:languages",
     "//tuffite/framework/common:switches",
     "//tuffite/framework/common/utility:mojom",
     "//tuffite/framework/common/utility:service_name",
-    "//tuffite/framework/public:abi",
+    "//tuffite/framework/public/c_api:abi",
     "//ui/base",
     "//ui/compositor",
     "//ui/display",

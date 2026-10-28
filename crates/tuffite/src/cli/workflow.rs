@@ -60,7 +60,6 @@ tuffite = {{ version = "{}", default-features = false, features = ["build"] }}
     write(
         &directory.join("build.rs"),
         r#"use std::path::PathBuf;
-
 fn main() {
     let out = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR"));
     let framework = tuffite::build::framework::Resolver::from_env()
@@ -78,28 +77,41 @@ fn main() {
     )?;
     write(
         &directory.join("src/lib.rs"),
-        r#"use tuffite::{BrowserContext, ApplicationResult, CommandError};
+        r#"use tuffite::{ApplicationContext, BrowserContext, Result, CommandError};
 
+#[path = "../configuration.rs"]
+mod configuration;
 mod shell_api { include!(concat!(env!("OUT_DIR"), "/bindings.rs")); }
 
 struct AppBrowser {
     _services: tuffite::ioc::Registry<BrowserContext>,
 }
 
-#[tuffite::browser(interfaces(shell_api::Commands))]
+struct App;
+impl tuffite::Application for App {
+    fn setup(builder: tuffite::app::Builder<Self>) -> Result<tuffite::app::Builder<Self>> {
+        Ok(builder.configuration(configuration::configuration()))
+    }
+    fn new(_: ApplicationContext) -> Result<Self> { Ok(Self) }
+}
+
 impl tuffite::Browser for AppBrowser {
-    fn new(context: BrowserContext) -> ApplicationResult<Self> {
+    fn setup(builder: tuffite::browser::Builder<Self>) -> Result<tuffite::browser::Builder<Self>> {
+        Ok(builder.interfaces(|registry| registry.register::<shell_api::interfaces::Commands>()))
+    }
+
+    fn new(context: BrowserContext) -> Result<Self> {
         let mut registry = tuffite::ioc::browser_registry(context)
-            .map_err(tuffite::ApplicationError::new)?;
-        // Register application factories here, then explicitly start service roots.
+            .map_err(tuffite::Error::new)?;
+        // Register profile factories here, then explicitly start service roots.
         registry.freeze();
         Ok(Self { _services: registry })
     }
 }
 
-#[tuffite::main(browser = AppBrowser)]
-fn main() -> tuffite::app::Builder<AppBrowser> {
-    tuffite::app::Builder::new()
+#[tuffite::main]
+fn main() -> tuffite::Embedding<App> {
+    tuffite::Embedding::new().browser::<AppBrowser>()
 }
 
 impl shell_api::Commands for AppBrowser {
@@ -113,20 +125,26 @@ impl shell_api::Commands for AppBrowser {
             "module {namespace}; interface Commands {{ Ping@0(string message) => (string result); }};\n"
         ),
     )?;
+    write(
+        &directory.join("configuration.rs"),
+        &format!(
+            r#"use tuffite::configuration::{{Asset, Configuration, Rule, Window}};
+pub fn configuration() -> Configuration {{
+    let mut rule = Rule::new(["{namespace}://main"]).grant("{namespace}.*");
+    rule.csp = Some("default-src 'self'".into());
+    Configuration::new(["{namespace}"])
+        .window(Window {{ label: "main".into(), url: "{namespace}://main/index.html".into(), title: "{package}".into(), width: 1000, height: 700, ..Window::default() }})
+        .asset(Asset::file(["{namespace}://main"], ["/index.html"], "ui/index.html"))
+        .rule(rule)
+}}
+"#
+        ),
+    )?;
     let manifest = serde_json::json!({
         "$schema": "https://tuffite.org/schema/v2/tuffite.schema.json",
         "productName": package,
         "app": {
             "identifier": identifier,
-            "security": {"csp": "default-src 'self'", "capabilities": [{
-                "identifier": "app-shell", "origins": [format!("{namespace}://main")],
-                "shellApi": [format!("{namespace}.*")]
-            }]},
-            "windows": [{
-                "label": "main", "url": format!("{namespace}://main/index.html"),
-                "title": package, "width": 1000, "height": 700
-            }],
-            "assets": [{"origins": [format!("{namespace}://main")], "paths": ["/index.html"], "file": "ui/index.html"}],
         },
         "build": {"mojomSources": ["shell_api.mojom"]},
         "bundle": {"resources": ["ui"]}

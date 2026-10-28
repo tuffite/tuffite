@@ -5,6 +5,7 @@
 
 #include "base/functional/bind.h"
 #include "tuffite/components/dispatch/common/status.h"
+
 namespace tuffite::rpc {
 RequestRegistry::RequestRegistry() = default;
 RequestRegistry::~RequestRegistry() {

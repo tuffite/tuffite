@@ -7,13 +7,11 @@
 #include <memory>
 #include <type_traits>
 
-#include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "components/keyed_service/core/keyed_service.h"
 
 namespace tuffite {
 
-class AbiHostBridge;
 class ManifestService;
 class ManifestServiceFactory;
 
@@ -23,11 +21,14 @@ const void* ApplicationServiceTypeKey() {
   static const int key = 0;
   return &key;
 }
+
 }  // namespace internal
 
+// Application service scope. Construction creates the keyed-service graph;
+// destruction shuts it down and destroys services in dependency order.
 class ApplicationContext final {
  public:
-  ApplicationContext(std::unique_ptr<ManifestService>, AbiHostBridge&);
+  explicit ApplicationContext(std::unique_ptr<ManifestService>);
   ~ApplicationContext();
   ApplicationContext(const ApplicationContext&) = delete;
   ApplicationContext& operator=(const ApplicationContext&) = delete;
@@ -39,7 +40,6 @@ class ApplicationContext final {
         internal::ApplicationServiceTypeKey<Service>(), create));
   }
 
-  AbiHostBridge& bridge() const { return *bridge_; }
   base::WeakPtr<ApplicationContext> GetWeakPtr() {
     return weak_factory_.GetWeakPtr();
   }
@@ -50,7 +50,6 @@ class ApplicationContext final {
   friend class ManifestServiceFactory;
   // Consumed once when the service graph eagerly creates ManifestService.
   std::unique_ptr<ManifestService> pending_manifest_;
-  const raw_ref<AbiHostBridge> bridge_;
   base::WeakPtrFactory<ApplicationContext> weak_factory_{this};
 };
 

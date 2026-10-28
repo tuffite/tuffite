@@ -1,6 +1,6 @@
 //! Shared lifecycle controls. Application traits return native Send futures.
 use crate::supervisor::CancellationToken;
-use crate::{ApplicationError, ApplicationResult};
+use crate::{Error, Result};
 use std::future::{Future, poll_fn};
 use std::pin::Pin;
 use std::sync::{Arc, Condvar, Mutex};
@@ -72,10 +72,7 @@ impl ShutdownContext {
     pub async fn cancelled(&self) {
         self.cancellation.cancelled().await;
     }
-    pub(crate) fn run<T>(
-        &self,
-        future: impl Future<Output = ApplicationResult<T>>,
-    ) -> ApplicationResult<T> {
+    pub(crate) fn run<T>(&self, future: impl Future<Output = Result<T>>) -> Result<T> {
         run_until(future, &self.cancellation.0, self.deadline)
     }
 }
@@ -131,10 +128,10 @@ impl Drop for Deadline {
 /// Drives a cooperative future on its caller's worker, never on Chromium UI.
 /// A future that blocks inside poll still cannot be forcibly interrupted safely.
 pub(crate) fn run_until<T>(
-    future: impl Future<Output = ApplicationResult<T>>,
+    future: impl Future<Output = Result<T>>,
     stop: &CancellationToken,
     deadline: Instant,
-) -> ApplicationResult<T> {
+) -> Result<T> {
     let timeout = CancellationToken::new();
     let _timer = Deadline::new(deadline, timeout.clone());
     let mut future = std::pin::pin!(future);
@@ -145,10 +142,10 @@ pub(crate) fn run_until<T>(
             stop.cancel();
             // Give cooperative cleanup one poll to observe its deadline signal.
             let _ = future.as_mut().poll(cx);
-            return Poll::Ready(Err(ApplicationError::new("lifecycle deadline exceeded")));
+            return Poll::Ready(Err(Error::new("lifecycle deadline exceeded")));
         }
         if stopped.as_mut().poll(cx).is_ready() {
-            return Poll::Ready(Err(ApplicationError::new("lifecycle interrupted")));
+            return Poll::Ready(Err(Error::new("lifecycle interrupted")));
         }
         future.as_mut().poll(cx)
     }))
@@ -195,7 +192,7 @@ mod tests {
         let stopping = stop.clone();
         let worker = std::thread::spawn(move || {
             run_until(
-                std::future::pending::<ApplicationResult<()>>(),
+                std::future::pending::<Result<()>>(),
                 &stopping,
                 Instant::now() + Duration::from_secs(5),
             )

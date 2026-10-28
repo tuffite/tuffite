@@ -4,11 +4,11 @@ document.querySelector("#nested-open").addEventListener("click", () => {
     { type: "nested-request-triggered", eventType: "open" },
     { targetOrigin: "*" },
   );
-  window.open("./history-a.html?source=nested-open", "_blank");
+  window.open("./fixtures/history.html?page=a&source=nested-open", "_blank");
 });
 document.querySelector("#nested-popup").addEventListener("click", () => {
   window.open(
-    "./history-a.html?source=nested-popup",
+    "./fixtures/history.html?page=a&source=nested-popup",
     "_blank",
     "popup,width=420,height=300",
   );

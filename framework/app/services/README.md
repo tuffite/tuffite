@@ -66,6 +66,12 @@ particular, service registration is static for the lifetime of the process.
 
 ## Scope model
 
+ProfileManager and WindowService are application services. ProfileManager owns
+loaded BrowserContexts; WindowService owns native windows independently of the
+context associated with their current content. Profile teardown first releases
+referencing content and windows. Browser factories do not `DependsOn()` these
+application factories. See [the profile model](../../../../docs/profiles.md).
+
 Use the Chromium mechanism matching the lifetime of the service:
 
 | Scope | Mechanism |
@@ -117,12 +123,10 @@ class ApplicationContext final {
         GetServiceByType(internal::ApplicationServiceTypeKey<Service>(), create));
   }
 
-  AbiHostBridge& bridge() const;
 
  private:
   KeyedService* GetServiceByType(const void* service_type, bool create);
 
-  raw_ref<AbiHostBridge> bridge_;
 };
 ```
 
@@ -262,18 +266,18 @@ Services must release asynchronous work and borrowed dependencies from
 All application factories are registered explicitly in the `ApplicationContext`
 constructor. It instantiates the manifest, asset, remoting, and utility factories,
 then freezes registration through Chromium's dependency manager. Registration
-runs before `MainDelegate` creates keyed services. No separate registration entry
-point is required.
+runs before the constructor creates keyed services. No separate registration
+entry point is required.
 
 The required order is:
 
 ```text
 Construct ApplicationContext (register factories and freeze registration)
-ApplicationDependencyManager::CreateServices(context)
+ApplicationContext construction → ApplicationDependencyManager::CreateServices(context)
 Create BrowserContexts
 ...
 Destroy all BrowserContexts
-ApplicationDependencyManager::DestroyServices(context)
+ApplicationContext destruction → ApplicationDependencyManager::DestroyServices(context)
 Destroy ApplicationContext
 ```
 
@@ -330,9 +334,9 @@ utility->InvokeUtilityService(/* ... */);
 BrowserContext downcast helpers. Call sites must not repeat
 `static_cast<BrowserContext&>`.
 
-The ABI bridge has no renderer sender. It retains its owning
-`ApplicationContext` and resolves the same interfaces from that
-context. It never consults a process-global active key.
+abi::Host has no renderer sender. MainDelegate binds it weakly to
+ApplicationContext; it resolves native interfaces from that scope and never
+consults a process-global active key. MainDelegate owns all three objects.
 
 Caller identity remains separate from service scope. Utility operations retain
 the document token so identical request IDs, cancellation, and teardown cannot
@@ -357,7 +361,7 @@ ShellApiServiceFactory::BuildServiceInstanceForBrowserContext(
   auto& application = browser.application_context();
 
   return std::make_unique<ShellApiServiceImpl>(
-      application.bridge(),
+      *context, browser.host_dispatch(),
       *application.GetService<ManifestService>(),
       *application.GetService<UtilityService>());
 }
@@ -562,3 +566,11 @@ ManifestService returns `app::AppInfo` through `app_info()`, startup windows and
 network limits through specific queries, and `asset::AssetConfiguration` resource
 snapshots. Resource configuration is owned by the asset module's configuration
 target, which is separate from AssetService to keep dependencies acyclic.
+
+Builtin renderer dispatch belongs to BrowserContext's ShellApiService. Application
+services expose domain operations to dedicated native ABI capabilities. Host is
+a per-runtime adapter, not a KeyedService or generic method router. Renderer
+request identity is a weak document plus connection token and request ID;
+application backend selection uses the frozen Rust registration map. Profile
+retirement retains only closed Host callback tables, not stopped runtime or
+utility service objects.

@@ -185,8 +185,7 @@ mod tests {
         format!(
             r#"{{
                           "app": {{
-                "identifier": "com.example.dev",
-                "security": {{"capabilities": []}}
+                "identifier": "com.example.dev"
               }},
               "build": {configuration}
             }}"#

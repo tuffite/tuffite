@@ -63,8 +63,27 @@ std::optional<base::FilePath> AssetConfiguration::ResolveAssetFile(
   return root.Append(relative);
 }
 
+std::string AssetConfiguration::ContentSecurityPolicy(const GURL& url,
+                                                      bool fallback) const {
+  std::string policies;
+  const auto origin = url::Origin::Create(url);
+  for (const auto& [origins, csp] : csp_rules) {
+    if (std::ranges::any_of(origins, [&](const auto& pattern) {
+          return access::MatchesOrigin(origin, pattern);
+        })) {
+      if (!policies.empty()) {
+        policies += ", ";
+      }
+      policies += csp;
+    }
+  }
+  return policies.empty() && fallback ? content_security_policy : policies;
+}
+bool AssetConfiguration::HandlesScheme(std::string_view scheme) const {
+  return std::ranges::contains(schemes, scheme);
+}
 bool AssetConfiguration::IsAppUrl(const GURL& url) const {
-  return url.is_valid() && url.scheme() == scheme && !url.has_username() &&
+  return url.is_valid() && HandlesScheme(url.scheme()) && !url.has_username() &&
          !url.has_password() && !url.has_port() &&
          std::ranges::any_of(routes, [&](const auto& route) {
            return std::ranges::any_of(route.origins, [&](const auto& pattern) {

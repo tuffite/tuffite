@@ -4,25 +4,25 @@
 #ifndef TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_LOG_H_
 #define TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_LOG_H_
 
-#include "tuffite/framework/shell_api/log.mojom.h"
+#include "tuffite/framework/public/shell_api/log.mojom.h"
 
 namespace tuffite::shell_api::log {
 
 class LogImpl final : public generated::Log {
  public:
-  void Trace(const dispatch::Context& context,
+  void Trace(const dispatch::RendererRequestContext& context,
              generated::Log::TraceRequestPtr request,
              generated::Log::TraceCallback callback) override;
-  void Debug(const dispatch::Context& context,
+  void Debug(const dispatch::RendererRequestContext& context,
              generated::Log::DebugRequestPtr request,
              generated::Log::DebugCallback callback) override;
-  void Info(const dispatch::Context& context,
+  void Info(const dispatch::RendererRequestContext& context,
             generated::Log::InfoRequestPtr request,
             generated::Log::InfoCallback callback) override;
-  void Warn(const dispatch::Context& context,
+  void Warn(const dispatch::RendererRequestContext& context,
             generated::Log::WarnRequestPtr request,
             generated::Log::WarnCallback callback) override;
-  void Error(const dispatch::Context& context,
+  void Error(const dispatch::RendererRequestContext& context,
              generated::Log::ErrorRequestPtr request,
              generated::Log::ErrorCallback callback) override;
 };

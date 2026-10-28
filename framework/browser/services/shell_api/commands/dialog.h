@@ -4,20 +4,20 @@
 #ifndef TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_DIALOG_H_
 #define TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_DIALOG_H_
 
-#include "tuffite/framework/shell_api/dialog.mojom.h"
+#include "tuffite/framework/public/shell_api/dialog.mojom.h"
 
 namespace tuffite::shell_api::dialog {
 
 class DialogImpl final : public generated::Dialog {
  public:
-  void OpenFile(const dispatch::Context& context,
+  void OpenFile(const dispatch::RendererRequestContext& context,
                 generated::Dialog::OpenFileRequestPtr request,
                 generated::Dialog::OpenFileCallback callback) override;
-  void SaveFile(const dispatch::Context& context,
+  void SaveFile(const dispatch::RendererRequestContext& context,
                 generated::Dialog::SaveFileRequestPtr request,
                 generated::Dialog::SaveFileCallback callback) override;
   void OpenDirectory(
-      const dispatch::Context& context,
+      const dispatch::RendererRequestContext& context,
       generated::Dialog::OpenDirectoryRequestPtr request,
       generated::Dialog::OpenDirectoryCallback callback) override;
 };

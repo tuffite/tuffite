@@ -11,7 +11,7 @@
 #include "base/native_library.h"
 #include "base/path_service.h"
 #include "build/build_config.h"
-#include "tuffite/framework/public/abi.h"
+#include "tuffite/framework/public/c_api/application.h"
 
 #if BUILDFLAG(IS_MAC)
 #include "base/apple/foundation_util.h"

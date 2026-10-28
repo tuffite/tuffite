@@ -15,9 +15,10 @@ source_set("interfaces") {
   ]
   public_deps = [
     "//base",
-    "//components/keyed_service/content",
     "//components/keyed_service/core",
     "//content/public/browser",
+    "//tuffite/framework/app:context",
+    "//tuffite/framework/app/services:factory",
     "//ui/gfx",
   ]
 }
@@ -49,11 +50,12 @@ source_set("window") {
   public_deps = [
     ":interfaces",
     "//base",
-    "//components/keyed_service/content",
     "//components/keyed_service/core",
     "//content/public/browser",
     "//skia",
     "//third_party/blink/public:blink",
+    "//tuffite/framework/app:context",
+    "//tuffite/framework/app/services:factory",
     "//ui/gfx",
     "//ui/views",
     "//url",

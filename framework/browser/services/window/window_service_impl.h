@@ -20,6 +20,7 @@ class WebContents;
 class BrowserContext;
 }  // namespace content
 namespace tuffite {
+class ApplicationContext;
 class Window;
 }  // namespace tuffite
 
@@ -31,13 +32,20 @@ namespace tuffite::window {
 class StartupWindowsObserver;
 class WindowServiceImpl final : public WindowService {
  public:
-  explicit WindowServiceImpl(content::BrowserContext&);
+  explicit WindowServiceImpl(ApplicationContext&);
+  bool HasContext(content::BrowserContext&) const override;
+  void CloseContext(content::BrowserContext&) override;
   ~WindowServiceImpl() override;
   void Shutdown() override;
-  Window* Create(const gfx::Size&,
+  Window* CreateEmpty(const gfx::Size&, bool decorations) override;
+  content::WebContents* OpenBrowserContents(
+      std::unique_ptr<content::WebContents>) override;
+  Window* Create(content::BrowserContext& context,
+                 const gfx::Size&,
                  bool decorations,
                  const Constraints&) override;
-  Window* CreateStartupWindows(std::vector<WindowOptions>,
+  Window* CreateStartupWindows(content::BrowserContext& context,
+                               std::vector<WindowOptions>,
                                const gfx::Size&) override;
   std::optional<Info> GetInfo(Window*) override;
   std::vector<Info> List() override;
@@ -70,14 +78,17 @@ class WindowServiceImpl final : public WindowService {
   };
 
   bool IsAvailable(Window*) const;
-  Window* CreateConfiguredWindow(const WindowOptions&, const gfx::Size&);
+  Window* CreateConfiguredWindow(content::BrowserContext&,
+                                 const WindowOptions&,
+                                 const gfx::Size&);
   void CreateSecondaryWindows();
   void CancelStartupWindows();
   void DestroyWindow(Window*);
   void Reconcile();
   int64_t IdFor(Window* window, std::string label = {});
 
-  const raw_ref<content::BrowserContext> context_;
+  const raw_ref<ApplicationContext> application_;
+  raw_ptr<content::BrowserContext> startup_context_ = nullptr;
   bool stopped_ = false;
   bool startup_created_ = false;
   std::optional<int64_t> startup_primary_id_;

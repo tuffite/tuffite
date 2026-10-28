@@ -3,10 +3,10 @@
 use std::borrow::Cow;
 
 /// Owned V8 startup options, configured before Browser-side provider construction.
-/// Framework supplies `entry.mjs` and the named service's manifest configuration.
+/// Framework supplies `entry.mjs` and empty startup data.
 #[derive(Debug)]
 pub struct Builder {
-    configuration: super::Builder,
+    pub(super) configuration: super::Builder,
     entry: String,
 }
 
@@ -20,6 +20,25 @@ impl Default for Builder {
 }
 
 impl Builder {
+    #[must_use]
+    pub fn service_name(&self) -> Option<&str> {
+        self.configuration.service_name()
+    }
+    #[must_use]
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.configuration = self.configuration.name(name);
+        self
+    }
+    pub(super) fn named(mut self, name: &str) -> Self {
+        self.configuration = self.configuration.named(name);
+        self
+    }
+
+    #[must_use]
+    pub fn startup(&self) -> crate::Startup {
+        self.configuration.startup().clone()
+    }
+
     /// Selects a relative module path or an absolute HTTPS/file URL.
     #[must_use]
     pub fn entry(mut self, entry: impl Into<String>) -> Self {
@@ -40,13 +59,16 @@ impl Builder {
         self.configuration.configuration_bytes()
     }
 
-    pub(super) fn finish(
-        self,
-        scheme: &str,
-        name: &str,
-    ) -> crate::ApplicationResult<(Vec<u8>, String)> {
-        let entry = entry_url(scheme, name, &self.entry)
-            .map_err(|error| crate::ApplicationError::new(error.to_string()))?;
+    pub(super) fn finish(self, schemes: &[String], name: &str) -> crate::Result<(Vec<u8>, String)> {
+        let entry = if url::Url::parse(&self.entry).is_ok() {
+            validate_application_url(name, &self.entry, schemes).map(|_| self.entry.clone())
+        } else {
+            let scheme = schemes
+                .first()
+                .ok_or_else(|| crate::Error::new("application schemes are unavailable"))?;
+            entry_url(scheme, name, &self.entry)
+        }
+        .map_err(|error| crate::Error::new(error.to_string()))?;
         Ok((self.configuration.finish()?, entry))
     }
 }
@@ -56,14 +78,40 @@ mod builder_tests {
     use super::Builder;
 
     #[test]
+    fn entries_accept_all_declared_schemes_and_reject_unregistered_ones() {
+        let schemes = ["myapp".to_owned(), "myapp-resource".to_owned()];
+        let (_, entry) = Builder::default()
+            .entry("myapp-resource://parser.utility/index.mjs")
+            .finish(&schemes, "parser")
+            .unwrap();
+        assert_eq!(entry, "myapp-resource://parser.utility/index.mjs");
+        assert!(
+            Builder::default()
+                .entry("other://parser.utility/index.mjs")
+                .finish(&schemes, "parser")
+                .is_err()
+        );
+        assert!(
+            super::validate_application_url(
+                "parser",
+                "myapp-resource://other.utility/index.mjs",
+                &schemes
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn default_and_overridden_entry_are_canonicalized_at_freeze() {
-        let (configuration, entry) = Builder::default().finish("myapp", "parser").unwrap();
+        let (configuration, entry) = Builder::default()
+            .finish(&["myapp".to_owned()], "parser")
+            .unwrap();
         assert!(configuration.is_empty());
         assert_eq!(entry, "myapp://parser.utility/entry.mjs");
         let (configuration, entry) = Builder::default()
             .configuration(b"manifest".to_vec())
             .entry("extension/main.mjs")
-            .finish("myapp", "parser")
+            .finish(&["myapp".to_owned()], "parser")
             .unwrap();
         assert_eq!(configuration, b"manifest");
         assert_eq!(entry, "myapp://parser.utility/extension/main.mjs");
@@ -80,7 +128,7 @@ mod builder_tests {
             assert!(
                 Builder::default()
                     .entry(entry)
-                    .finish("myapp", "parser")
+                    .finish(&["myapp".to_owned()], "parser")
                     .is_err(),
                 "{entry}"
             );
@@ -88,7 +136,7 @@ mod builder_tests {
         assert!(
             Builder::default()
                 .configuration(vec![0; 64 * 1024 + 1])
-                .finish("myapp", "parser")
+                .finish(&["myapp".to_owned()], "parser")
                 .is_err()
         );
     }
@@ -162,11 +210,32 @@ impl ModuleSource {
     }
 }
 
-/// Reads the application scheme, which native validates against window URLs.
-pub(crate) fn app_scheme(configuration: &[u8]) -> Option<String> {
+/// Reads the explicitly declared internal application schemes.
+pub(crate) fn app_schemes(configuration: &[u8]) -> Option<Vec<String>> {
     let manifest = serde_json::from_slice::<serde_json::Value>(configuration).ok()?;
-    let entry = manifest.pointer("/app/windows/0/url")?.as_str()?;
-    Some(url::Url::parse(entry).ok()?.scheme().to_owned())
+    let values = manifest.pointer("/app/schemes")?.as_array()?;
+    if values.is_empty() {
+        return None;
+    }
+    values
+        .iter()
+        .map(|value| value.as_str().map(str::to_owned))
+        .collect()
+}
+
+pub(crate) fn validate_application_url(
+    name: &str,
+    value: &str,
+    schemes: &[String],
+) -> Result<url::Url, Error> {
+    let parsed = validate_url(name, value, None)?;
+    if !matches!(parsed.scheme(), "https" | "file") && !schemes.iter().any(|s| s == parsed.scheme())
+    {
+        return Err(Error::Module(
+            crate::JavaScriptExtensionError::InvalidModule,
+        ));
+    }
+    Ok(parsed)
 }
 
 /// Builds the canonical entry URL, or accepts an explicit HTTPS/file entry.
@@ -235,10 +304,13 @@ pub(crate) fn validate_url(
 #[cfg(test)]
 mod tests {
     #[test]
-    fn scheme_comes_from_entry_window_without_shell_api_namespace() {
-        let config = br#"{"app":{"windows":[{"url":"assetscheme://main/index.html"}],"shellApi":{"commandIds":{"other.module.Commands.Run":"0000000000000001"}}}}"#;
-        assert_eq!(super::app_scheme(config).as_deref(), Some("assetscheme"));
-        assert_eq!(super::app_scheme(br#"{"app":{"windows":[]}}"#), None);
+    fn schemes_come_from_explicit_declarations_without_shell_api_namespace() {
+        let config = br#"{"app":{"schemes":["assetscheme"],"windows":[{"url":"assetscheme://main/index.html"}],"shellApi":{"commandIds":{"other.module.Commands.Run":"0000000000000001"}}}}"#;
+        assert_eq!(
+            super::app_schemes(config),
+            Some(vec!["assetscheme".to_owned()])
+        );
+        assert_eq!(super::app_schemes(br#"{"app":{"windows":[]}}"#), None);
     }
     use super::*;
 

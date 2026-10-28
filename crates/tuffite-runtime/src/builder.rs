@@ -1,13 +1,6 @@
 //! Explicit application construction and generated command registration.
 
-use std::any::Any;
-use std::sync::OnceLock;
-
-use crate::{
-    ApplicationError, ApplicationResult, Browser, BrowserContext, Command, CommandResult,
-    UtilityServiceRegistration,
-};
-use tuffite_abi::Application as AbiApplication;
+use crate::{Command, CommandResult, Result, UtilityServiceRegistration};
 
 /// Generated metadata for one application `ShellAPI` endpoint.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -56,11 +49,11 @@ type DispatchFn<A> = for<'a> fn(&mut A, Command<'a>) -> CommandResult;
 /// application code should not implement this trait directly.
 #[doc(hidden)]
 pub trait CommandHandler {
-    type Browser: Browser;
+    type Target: Send + 'static;
 
     const COMMAND: CommandDescriptor;
 
-    fn dispatch(browser: &mut Self::Browser, command: Command<'_>) -> CommandResult;
+    fn dispatch(target: &mut Self::Target, command: Command<'_>) -> CommandResult;
 }
 
 /// Statically generated command dispatch table for one browser backend.
@@ -70,6 +63,15 @@ pub struct CommandRegistry<A> {
 }
 
 impl<A> CommandRegistry<A> {
+    pub(crate) fn contains(&self, id: u64) -> bool {
+        self.descriptors.iter().any(|d| d.id() == id)
+    }
+    pub(crate) fn descriptors(&self) -> impl Iterator<Item = &CommandDescriptor> {
+        self.descriptors.iter()
+    }
+    pub(crate) fn dispatch_to(&self, target: &mut A, command: Command<'_>) -> CommandResult {
+        (self.dispatch)(target, command)
+    }
     /// Creates a generated registry.
     #[doc(hidden)]
     #[must_use]
@@ -81,105 +83,21 @@ impl<A> CommandRegistry<A> {
     }
 }
 
-trait ErasedRegistry: Any + Send + Sync {
-    fn as_any(&self) -> &dyn Any;
-    fn utility_services(&self) -> &'static [UtilityServiceRegistration];
-}
-
-struct TypedRegistry<A> {
-    commands: Vec<CommandRegistry<A>>,
-    utility_services: &'static [UtilityServiceRegistration],
-    prepare: Option<StartupHook>,
-}
-
-impl<A: Send + 'static> ErasedRegistry for TypedRegistry<A> {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn utility_services(&self) -> &'static [UtilityServiceRegistration] {
-        self.utility_services
-    }
-}
-
-fn registry() -> &'static OnceLock<Box<dyn ErasedRegistry>> {
-    static REGISTRY: OnceLock<Box<dyn ErasedRegistry>> = OnceLock::new();
-    &REGISTRY
-}
-
 pub(crate) fn utility_definition(name: &str) -> Option<UtilityServiceRegistration> {
-    registry()
-        .get()?
-        .utility_services()
+    #[cfg(test)]
+    if let Some(service) = legacy::lookup_utility(name) {
+        return Some(service);
+    }
+    crate::embedding::utility_services()
         .iter()
         .copied()
         .find(|item| item.name() == name)
 }
-
 pub(crate) fn requires_utility_interfaces() -> bool {
-    registry().get().is_some_and(|entry| {
-        entry
-            .utility_services()
-            .iter()
-            .any(|item| !item.interfaces().is_empty())
-    })
+    crate::embedding::utility_services()
+        .iter()
+        .any(|item| !item.interfaces().is_empty())
 }
-
-struct RegisteredApplication<B>(std::marker::PhantomData<fn() -> B>);
-
-struct RegisteredBrowser<B: 'static> {
-    browser: B,
-    commands: &'static [CommandRegistry<B>],
-}
-
-impl<B: Browser> crate::application::Registrations for RegisteredApplication<B> {
-    fn utility_services() -> &'static [UtilityServiceRegistration] {
-        registry()
-            .get()
-            .and_then(|entry| entry.as_any().downcast_ref::<TypedRegistry<B>>())
-            .map_or(&[], |entry| entry.utility_services)
-    }
-}
-
-impl<B: Browser> Browser for RegisteredBrowser<B> {
-    fn setup(builder: crate::browser::Builder) -> ApplicationResult<crate::browser::Builder> {
-        B::setup(builder)
-    }
-
-    fn new(context: BrowserContext) -> ApplicationResult<Self> {
-        let commands = &registry()
-            .get()
-            .and_then(|entry| entry.as_any().downcast_ref::<TypedRegistry<B>>())
-            .ok_or_else(|| ApplicationError::new("command registry is not installed"))?
-            .commands;
-        Ok(Self {
-            browser: B::new(context)?,
-            commands,
-        })
-    }
-
-    fn dispatch(&mut self, command: Command<'_>) -> CommandResult {
-        for registry in self.commands {
-            if registry.descriptors.is_empty()
-                || registry
-                    .descriptors
-                    .iter()
-                    .any(|entry| entry.id() == command.id())
-            {
-                return (registry.dispatch)(&mut self.browser, command);
-            }
-        }
-        Err(crate::CommandError::UnknownCommand)
-    }
-
-    async fn initialize(&mut self) -> ApplicationResult<()> {
-        self.browser.initialize().await
-    }
-
-    async fn shutdown(&mut self, context: crate::ShutdownContext) -> ApplicationResult<()> {
-        self.browser.shutdown(context).await
-    }
-}
-
 /// Native process role, classified before application argument rewriting.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessKind {
@@ -208,12 +126,12 @@ impl ProcessKind {
 /// The startup hook runs before `ContentMain` and may follow sandbox bootstrap. The
 /// executable and Chromium process role must remain unchanged.
 #[derive(Clone, Debug)]
-pub struct ProcessLaunch {
-    process_kind: ProcessKind,
-    args: Vec<String>,
+pub struct Startup {
+    pub(crate) process_kind: ProcessKind,
+    pub(crate) args: Vec<String>,
 }
 
-impl ProcessLaunch {
+impl Startup {
     /// Returns the original role supplied by native bootstrap.
     #[must_use]
     pub const fn process_kind(&self) -> ProcessKind {
@@ -232,130 +150,35 @@ impl ProcessLaunch {
     }
 }
 
-type StartupHook = Box<dyn Fn(&mut ProcessLaunch) -> ApplicationResult<()> + Send + Sync>;
-
-/// Assembles process definitions and Framework startup configuration.
-///
-/// The main factory is evaluated once in every process loading the business
-/// library. It must only assemble definitions; hooks and browser state run later.
-pub struct Builder<B: Browser> {
-    commands: Vec<CommandRegistry<B>>,
-    prepare: Option<StartupHook>,
-}
-
-impl<B: Browser> Builder<B> {
-    /// Creates a builder using the backend's dispatch implementation.
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            commands: Vec::new(),
-            prepare: None,
-        }
-    }
-
-    /// Installs generated handlers in place of the backend's dispatch method.
-    #[must_use]
-    pub fn commands(mut self, commands: CommandRegistry<B>) -> Self {
-        self.commands = vec![commands];
-        self
-    }
-
-    /// Registers a generated Mojom interface on this Browser backend.
-    #[must_use]
-    pub fn service(mut self, service: CommandRegistry<B>) -> Self {
-        self.commands.push(service);
-        self
-    }
-
-    /// Installs a hook for all process roles before Chromium `ContentMain`.
-    #[must_use]
-    pub fn before_startup(
-        mut self,
-        hook: impl Fn(&mut ProcessLaunch) -> ApplicationResult<()> + Send + Sync + 'static,
-    ) -> Self {
-        self.prepare = Some(Box::new(hook));
-        self
-    }
-
-    /// Installs definitions selected by the main macro and builds the ABI table.
-    #[doc(hidden)]
-    pub fn into_application(
-        self,
-        utility_services: &'static [UtilityServiceRegistration],
-    ) -> ApplicationResult<AbiApplication> {
-        let mut commands = self.commands;
-        if commands.is_empty() {
-            commands.push(CommandRegistry::new(B::dispatch, &[]));
-        }
-        let descriptors = commands
-            .iter()
-            .flat_map(|registry| registry.descriptors)
-            .collect::<Vec<_>>();
-        for (index, descriptor) in descriptors.iter().enumerate() {
-            if descriptor.channel().is_empty() || !descriptor.channel().contains('.') {
-                return Err(ApplicationError::new(
-                    "registered command channel is invalid",
-                ));
-            }
-            if descriptors[..index].iter().any(|registered| {
-                registered.channel() == descriptor.channel() || registered.id() == descriptor.id()
-            }) {
-                return Err(ApplicationError::new(
-                    "duplicate registered ShellAPI command",
-                ));
-            }
-        }
-        for (index, registration) in utility_services.iter().copied().enumerate() {
-            if descriptors.iter().any(|entry| {
-                entry
-                    .channel()
-                    .rsplit_once('.')
-                    .is_some_and(|(interface, _)| {
-                        interface == registration.name()
-                            || registration.interfaces().contains(&interface)
-                    })
-            }) {
-                return Err(ApplicationError::new(
-                    "interface registered in both Browser and Utility",
-                ));
-            }
-            crate::utility_entry::validate_registration(&utility_services[..index], registration)
-                .map_err(ApplicationError::new)?;
-        }
-        let has_prepare = self.prepare.is_some();
-        registry()
-            .set(Box::new(TypedRegistry::<B> {
-                commands,
-                utility_services,
-                prepare: self.prepare,
-            }))
-            .map_err(|_| ApplicationError::new("a Tuffite application is already installed"))?;
-        let mut table =
-            crate::application::for_application::<RegisteredBrowser<B>, RegisteredApplication<B>>();
-        if has_prepare {
-            table.prepare_process = Some(prepare_process::<B>);
-        }
-        Ok(table)
-    }
-}
-
-impl<B: Browser> Default for Builder<B> {
+impl Default for Startup {
     fn default() -> Self {
-        Self::new()
+        if let Some(startup) = crate::embedding::startup() {
+            return startup;
+        }
+        let args: Vec<String> = std::env::args().collect();
+        let kind = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--type="))
+            .unwrap_or("");
+        let process_kind = match kind {
+            "" => ProcessKind::Browser,
+            "utility" => ProcessKind::Utility,
+            "renderer" => ProcessKind::Renderer,
+            "gpu-process" => ProcessKind::Gpu,
+            _ => ProcessKind::Other,
+        };
+        Self { process_kind, args }
     }
 }
 
-/// ABI 0.1.0 process launch adapter. Input and sink bytes are borrowed for each call.
-///
-/// # Safety
-/// The input array and each byte slice must be readable for the call. The sink
-/// context and callback must remain valid until this synchronous call returns.
-pub(crate) unsafe extern "C" fn prepare_process<B: Browser>(
+#[allow(clippy::too_many_lines)]
+pub(crate) unsafe fn prepare_with(
     process_kind: u32,
     args: *const tuffite_abi::ByteSlice,
     count: usize,
     user_data: *mut std::ffi::c_void,
     emit: Option<tuffite_abi::LaunchArgumentFn>,
+    prepare: impl FnOnce(&mut Startup) -> Result<()>,
 ) -> tuffite_abi::Status {
     use tuffite_abi::Status;
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -395,20 +218,12 @@ pub(crate) unsafe extern "C" fn prepare_process<B: Browser>(
             decoded.push(value.to_owned());
         }
         let executable = decoded[0].clone();
-        let mut launch = ProcessLaunch {
+        let mut launch = Startup {
             process_kind,
             args: decoded,
         };
-        let Some(entry) = registry()
-            .get()
-            .and_then(|entry| entry.as_any().downcast_ref::<TypedRegistry<B>>())
-        else {
-            return Status::InvalidState;
-        };
-        if let Some(hook) = &entry.prepare
-            && let Err(error) = hook(&mut launch)
-        {
-            tracing::error!(%error, "process launch preparation failed");
+        if let Err(error) = prepare(&mut launch) {
+            tracing::error!(%error, "process setup failed");
             return Status::InvalidState;
         }
         if launch.args.first() != Some(&executable)
@@ -436,14 +251,275 @@ pub(crate) unsafe extern "C" fn prepare_process<B: Browser>(
     .unwrap_or(Status::Internal)
 }
 
+// Private harness preserving lower-level registry and ABI tests during migration.
+#[cfg(test)]
+#[allow(dead_code)]
+mod legacy {
+    use super::*;
+    use crate::{Browser, BrowserContext, Error};
+    use std::{any::Any, sync::OnceLock};
+    use tuffite_abi::Application as AbiApplication;
+    trait ErasedRegistry: Any + Send + Sync {
+        fn as_any(&self) -> &dyn Any;
+        fn utility_services(&self) -> &'static [UtilityServiceRegistration];
+    }
+
+    struct TypedRegistry<A> {
+        commands: Vec<CommandRegistry<A>>,
+        utility_services: &'static [UtilityServiceRegistration],
+        pub(super) prepare: Option<StartupHook>,
+        policy: crate::browser::Builder,
+    }
+
+    impl<A: Send + 'static> ErasedRegistry for TypedRegistry<A> {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+        fn utility_services(&self) -> &'static [UtilityServiceRegistration] {
+            self.utility_services
+        }
+    }
+
+    fn registry() -> &'static OnceLock<Box<dyn ErasedRegistry>> {
+        static REGISTRY: OnceLock<Box<dyn ErasedRegistry>> = OnceLock::new();
+        &REGISTRY
+    }
+
+    struct RegisteredApplication<B>(std::marker::PhantomData<fn() -> B>);
+
+    struct RegisteredBrowser<B: 'static> {
+        browser: B,
+        commands: &'static [CommandRegistry<B>],
+    }
+
+    impl<B: Browser> crate::application::Registrations for RegisteredApplication<B> {
+        fn utility_services() -> &'static [UtilityServiceRegistration] {
+            registry()
+                .get()
+                .and_then(|entry| entry.as_any().downcast_ref::<TypedRegistry<B>>())
+                .map_or(&[], |entry| entry.utility_services)
+        }
+    }
+
+    impl<B: Browser> Browser for RegisteredBrowser<B> {
+        fn setup(builder: crate::browser::Builder<Self>) -> Result<crate::browser::Builder<Self>> {
+            let mut builder = B::setup(builder.retype())?;
+            if let Some(entry) = registry()
+                .get()
+                .and_then(|entry| entry.as_any().downcast_ref::<TypedRegistry<B>>())
+            {
+                builder
+                    .devtools_denied_origins
+                    .extend(entry.policy.devtools_denied_origins.iter().cloned());
+            }
+            Ok(builder.retype())
+        }
+
+        fn new(context: BrowserContext) -> Result<Self> {
+            let commands = &registry()
+                .get()
+                .and_then(|entry| entry.as_any().downcast_ref::<TypedRegistry<B>>())
+                .ok_or_else(|| Error::new("command registry is not installed"))?
+                .commands;
+            Ok(Self {
+                browser: B::new(context)?,
+                commands,
+            })
+        }
+
+        fn dispatch(&mut self, command: Command<'_>) -> CommandResult {
+            for registry in self.commands {
+                if registry.descriptors.is_empty()
+                    || registry
+                        .descriptors
+                        .iter()
+                        .any(|entry| entry.id() == command.id())
+                {
+                    return (registry.dispatch)(&mut self.browser, command);
+                }
+            }
+            Err(crate::CommandError::UnknownCommand)
+        }
+
+        async fn initialize(&mut self) -> Result<()> {
+            self.browser.initialize().await
+        }
+
+        async fn shutdown(&mut self, context: crate::ShutdownContext) -> Result<()> {
+            self.browser.shutdown(context).await
+        }
+    }
+
+    type StartupHook = Box<dyn Fn(&mut Startup) -> Result<()> + Send + Sync>;
+
+    /// Assembles process definitions and Framework startup configuration.
+    ///
+    /// The main factory is evaluated once in every process loading the business
+    /// library. It must only assemble definitions; hooks and browser state run later.
+    pub struct Builder<B: Browser> {
+        pub(super) commands: Vec<CommandRegistry<B>>,
+        pub(super) prepare: Option<StartupHook>,
+        policy: crate::browser::Builder,
+    }
+
+    impl<B: Browser> Builder<B> {
+        /// Creates a builder using the backend's dispatch implementation.
+        #[must_use]
+        pub fn new() -> Self {
+            Self {
+                commands: Vec::new(),
+                prepare: None,
+                policy: crate::browser::Builder::default(),
+            }
+        }
+
+        /// Installs generated handlers in place of the backend's dispatch method.
+        #[must_use]
+        pub fn commands(mut self, commands: CommandRegistry<B>) -> Self {
+            self.commands = vec![commands];
+            self
+        }
+
+        /// Registers a generated Mojom interface on this Browser backend.
+        #[must_use]
+        pub fn service(mut self, service: CommandRegistry<B>) -> Self {
+            self.commands.push(service);
+            self
+        }
+        /// Adds immutable browser policy before any profile or native window exists.
+        #[must_use]
+        pub fn browser_policy(mut self, policy: crate::browser::Builder) -> Self {
+            self.policy = policy;
+            self
+        }
+
+        /// Installs a hook for all process roles before Chromium `ContentMain`.
+        #[must_use]
+        pub fn before_startup(
+            mut self,
+            hook: impl Fn(&mut Startup) -> Result<()> + Send + Sync + 'static,
+        ) -> Self {
+            self.prepare = Some(Box::new(hook));
+            self
+        }
+
+        /// Installs definitions selected by the main macro and builds the ABI table.
+        #[doc(hidden)]
+        pub fn into_application(
+            self,
+            utility_services: &'static [UtilityServiceRegistration],
+        ) -> Result<AbiApplication> {
+            let mut commands = self.commands;
+            if commands.is_empty() {
+                commands.push(CommandRegistry::new(B::dispatch, &[]));
+            }
+            let descriptors = commands
+                .iter()
+                .flat_map(|registry| registry.descriptors)
+                .collect::<Vec<_>>();
+            for (index, descriptor) in descriptors.iter().enumerate() {
+                if descriptor.channel().is_empty() || !descriptor.channel().contains('.') {
+                    return Err(Error::new("registered command channel is invalid"));
+                }
+                if descriptors[..index].iter().any(|registered| {
+                    registered.channel() == descriptor.channel()
+                        || registered.id() == descriptor.id()
+                }) {
+                    return Err(Error::new("duplicate registered ShellAPI command"));
+                }
+            }
+            for (index, registration) in utility_services.iter().copied().enumerate() {
+                if descriptors.iter().any(|entry| {
+                    entry
+                        .channel()
+                        .rsplit_once('.')
+                        .is_some_and(|(interface, _)| {
+                            interface == registration.name()
+                                || registration.interfaces().contains(&interface)
+                        })
+                }) {
+                    return Err(Error::new(
+                        "interface registered in both Browser and Utility",
+                    ));
+                }
+                crate::utility_entry::validate_registration(
+                    &utility_services[..index],
+                    registration,
+                )
+                .map_err(Error::new)?;
+            }
+            let has_prepare = self.prepare.is_some();
+            registry()
+                .set(Box::new(TypedRegistry::<B> {
+                    commands,
+                    utility_services,
+                    prepare: self.prepare,
+                    policy: self.policy,
+                }))
+                .map_err(|_| Error::new("a Tuffite application is already installed"))?;
+            let mut table = crate::application::for_application::<
+                RegisteredBrowser<B>,
+                RegisteredApplication<B>,
+            >();
+            if has_prepare {
+                table.prepare_process = Some(prepare_process::<B>);
+            }
+            Ok(table)
+        }
+    }
+
+    impl<B: Browser> Default for Builder<B> {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    /// ABI 0.1.0 process launch adapter. Input and sink bytes are borrowed for each call.
+    ///
+    /// # Safety
+    /// The input array and each byte slice must be readable for the call. The sink
+    /// context and callback must remain valid until this synchronous call returns.
+    pub(super) unsafe extern "C" fn prepare_process<B: Browser>(
+        process_kind: u32,
+        args: *const tuffite_abi::ByteSlice,
+        count: usize,
+        user_data: *mut std::ffi::c_void,
+        emit: Option<tuffite_abi::LaunchArgumentFn>,
+    ) -> tuffite_abi::Status {
+        // SAFETY: The native input and sink contract is forwarded unchanged.
+        unsafe {
+            prepare_with(process_kind, args, count, user_data, emit, |launch| {
+                let entry = registry()
+                    .get()
+                    .and_then(|entry| entry.as_any().downcast_ref::<TypedRegistry<B>>())
+                    .ok_or_else(|| Error::new("process registry is unavailable"))?;
+                if let Some(hook) = &entry.prepare {
+                    hook(launch)?;
+                }
+                Ok(())
+            })
+        }
+    }
+
+    pub(super) fn lookup_utility(name: &str) -> Option<UtilityServiceRegistration> {
+        registry()
+            .get()?
+            .utility_services()
+            .iter()
+            .copied()
+            .find(|item| item.name() == name)
+    }
+}
 #[cfg(test)]
 mod tests {
+    use super::legacy::*;
     use super::*;
+    use crate::{Browser, BrowserContext, Error};
 
     struct App;
 
     impl Browser for App {
-        fn new(_: BrowserContext) -> ApplicationResult<Self> {
+        fn new(_: BrowserContext) -> Result<Self> {
             Ok(Self)
         }
     }
@@ -455,7 +531,7 @@ mod tests {
     static BROWSER_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
     impl Browser for Backend {
-        fn new(context: BrowserContext) -> ApplicationResult<Self> {
+        fn new(context: BrowserContext) -> Result<Self> {
             context.set_state(std::sync::Arc::new(String::from("shared")));
             BROWSER_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(Self)
@@ -463,7 +539,7 @@ mod tests {
     }
 
     impl crate::Utility for Worker {
-        async fn new(_: crate::UtilityContext) -> ApplicationResult<Self> {
+        async fn new(_: crate::UtilityContext) -> Result<Self> {
             Ok(Self)
         }
 
@@ -529,7 +605,7 @@ mod tests {
                     "hook panic"
                 );
                 if launch.argv().iter().any(|arg| arg == "--error") {
-                    return Err(ApplicationError::new("hook failed"));
+                    return Err(Error::new("hook failed"));
                 }
                 if launch
                     .argv()
@@ -746,7 +822,7 @@ mod tests {
     static V8_SHUTDOWNS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
     const PROVIDER_CONFIG: &[u8] =
-        br#"{"app":{"windows":[{"url":"myapp://main/index.html"}],"utilities":{"v8_entry_test":{"configuration":{"flag":true}}}}}"#;
+        br#"{"app":{"schemes":["myapp"],"windows":[{"url":"myapp://main/index.html"}]}}"#;
     static V8_SETUPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     static V8_STARTS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     static FAILED_V8_STARTS: std::sync::atomic::AtomicUsize =
@@ -756,20 +832,20 @@ mod tests {
         std::sync::atomic::AtomicUsize::new(0);
     struct RejectedV8Worker;
     impl crate::utility::V8 for RejectedV8Worker {
-        fn setup(_: crate::utility::v8::Builder) -> ApplicationResult<crate::utility::v8::Builder> {
+        fn setup(_: crate::utility::v8::Builder) -> Result<crate::utility::v8::Builder> {
             REJECTED_V8_SETUPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Err(ApplicationError::new("provider setup rejected"))
+            Err(Error::new("provider setup rejected"))
         }
-        fn new(_: crate::V8Context) -> ApplicationResult<Self> {
+        fn new(_: crate::V8Context) -> Result<Self> {
             panic!("rejected setup must not construct provider state")
         }
     }
 
     struct FailedV8Worker;
     impl crate::utility::V8 for FailedV8Worker {
-        fn new(_: crate::V8Context) -> ApplicationResult<Self> {
+        fn new(_: crate::V8Context) -> Result<Self> {
             FAILED_V8_STARTS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Err(ApplicationError::new("provider startup failed"))
+            Err(Error::new("provider startup failed"))
         }
     }
 
@@ -779,14 +855,12 @@ mod tests {
     }
 
     impl crate::utility::V8 for V8Worker {
-        fn setup(
-            builder: crate::utility::v8::Builder,
-        ) -> ApplicationResult<crate::utility::v8::Builder> {
-            assert_eq!(builder.configuration_bytes(), br#"{"flag":true}"#);
+        fn setup(builder: crate::utility::v8::Builder) -> Result<crate::utility::v8::Builder> {
+            assert!(builder.configuration_bytes().is_empty());
             V8_SETUPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(builder.configuration(br#"{"flag":true,"setup":true}"#.to_vec()))
         }
-        fn new(context: crate::V8Context) -> ApplicationResult<Self> {
+        fn new(context: crate::V8Context) -> Result<Self> {
             assert_eq!(context.name(), "v8_entry_test");
             assert_eq!(context.configuration(), br#"{"flag":true,"setup":true}"#);
             assert_eq!(
@@ -801,7 +875,7 @@ mod tests {
             })
         }
 
-        async fn shutdown(&self, context: crate::ShutdownContext) -> ApplicationResult<()> {
+        async fn shutdown(&self, context: crate::ShutdownContext) -> Result<()> {
             assert!(self.context.is_stopping());
             assert!(context.remaining() > std::time::Duration::ZERO);
             V8_SHUTDOWNS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);

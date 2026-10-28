@@ -15,6 +15,7 @@
 #include "components/keyed_service/core/keyed_service.h"
 #include "tuffite/framework/browser/services/window/window_types.h"
 namespace content {
+class BrowserContext;
 class WebContents;
 class RenderFrameHost;
 }  // namespace content
@@ -24,13 +25,20 @@ class Window;
 namespace tuffite::window {
 class WindowService : public KeyedService {
  public:
-  virtual Window* Create(const gfx::Size& size = {},
+  virtual Window* CreateEmpty(const gfx::Size&, bool decorations = true) = 0;
+  virtual content::WebContents* OpenBrowserContents(
+      std::unique_ptr<content::WebContents>) = 0;
+  virtual Window* Create(content::BrowserContext& context,
+                         const gfx::Size& size = {},
                          bool decorations = true,
                          const Constraints& constraints = {}) = 0;
   // Primary navigation starts on the next task so callers can install
   // observers. Secondary windows open after its first successful navigation.
-  virtual Window* CreateStartupWindows(std::vector<WindowOptions> windows,
+  virtual Window* CreateStartupWindows(content::BrowserContext& context,
+                                       std::vector<WindowOptions> windows,
                                        const gfx::Size& primary_size = {}) = 0;
+  virtual bool HasContext(content::BrowserContext&) const = 0;
+  virtual void CloseContext(content::BrowserContext&) = 0;
   virtual Window* FindById(int64_t) = 0;
   virtual std::optional<Info> GetInfo(Window*) = 0;
   virtual std::vector<Info> List() = 0;

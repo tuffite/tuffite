@@ -13,8 +13,6 @@ namespace tuffite {
 class UtilityProcessLauncher;
 class UtilityService : public KeyedService {
  public:
-  virtual void SetUtilityStartupConfigurations(
-      std::map<std::string, std::vector<uint8_t>> configurations) {}
   virtual void SetUtilityModuleResolver(UtilityModuleResolver resolver) {}
   virtual void SetUtilityModuleCanceller(UtilityModuleCanceller canceller) {}
   virtual void SetUtilityRegistrationChecker(
@@ -60,6 +58,8 @@ class UtilityService : public KeyedService {
 };
 std::unique_ptr<UtilityService> CreateUtilityService(
     std::unique_ptr<UtilityProcessLauncher>);
+// Creates an independent session scope using the framework process launcher.
+std::unique_ptr<UtilityService> CreateUtilityService();
 }  // namespace tuffite
 
 #endif  // TUFFITE_FRAMEWORK_APP_SERVICES_UTILITY_UTILITY_SERVICE_H_

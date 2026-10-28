@@ -44,7 +44,7 @@ try {
   }
   const fileScopes = await artifact.evaluate(async () => {
     const frameworkApi = await import('/tuffite.js');
-    const allowed = await frameworkApi.fs.readFile(frameworkApi.BaseDirectory.Resource, "ui/dist/transfer-sample.html");
+    const allowed = await frameworkApi.fs.readFile(frameworkApi.BaseDirectory.Resource, "ui/dist/fixtures/transfer.html");
     const denied = async (path) => {
       try { await frameworkApi.fs.readFile(frameworkApi.BaseDirectory.Resource, path); return false; }
       catch (error) { return (error.status ?? error.cause?.status) === 2; }
@@ -59,7 +59,7 @@ try {
   assert.equal(await app.evaluate(async () => (await fetch("/not-mapped.html")).status), 404, "Unmapped paths must not fall back to the SPA");
   await app.evaluate(() => {
     const host = document.createElement("explorer");
-    host.src = "playground://public/ui/dist/transfer-sample.html";
+    host.src = "playground://public/ui/dist/fixtures/transfer.html";
     document.querySelector("#hosts").append(host);
     window.capabilitiesDemo.publicHost = host;
   });
@@ -74,7 +74,7 @@ try {
 
   await app.evaluate(() => {
     const host = document.createElement("explorer");
-    host.src = "playground://business/ui/dist/capability-sample.html";
+    host.src = "playground://business/ui/dist/fixtures/capabilities.html";
     document.querySelector("#hosts").append(host);
     window.capabilitiesDemo.businessHost = host;
   });

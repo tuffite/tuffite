@@ -22,6 +22,7 @@ source_set("manifest") {
   public_deps = [
     "//base",
     "//components/keyed_service/core",
+    "//tuffite/components/explorer/common:external_protocol",
     "//tuffite/components/isolated/common:configuration",
     "//tuffite/framework/app/services:factory",
     "//tuffite/framework/app/services/asset:configuration",

@@ -15,18 +15,14 @@ ContentClient::ContentClient() = default;
 ContentClient::~ContentClient() = default;
 
 void ContentClient::AddAdditionalSchemes(Schemes* schemes) {
-  const std::string scheme =
-      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
-          kAppSchemeSwitch);
-  if (scheme.empty()) {
-    return;
+  for (const auto& scheme : ApplicationSchemes()) {
+    schemes->standard_schemes.push_back(scheme);
+    schemes->secure_schemes.push_back(scheme);
+    // Application assets have normal tuple origins. Local-scheme file access
+    // restrictions would serialize their security origin as null and break
+    // standard Window messaging and Workers.
+    schemes->cors_enabled_schemes.push_back(scheme);
   }
-  schemes->standard_schemes.push_back(scheme);
-  schemes->secure_schemes.push_back(scheme);
-  // Application assets have normal tuple origins. Local-scheme file access
-  // restrictions would serialize their security origin as null and break
-  // standard Window messaging and Workers.
-  schemes->cors_enabled_schemes.push_back(scheme);
 }
 
 std::u16string ContentClient::GetLocalizedString(int message_id) {

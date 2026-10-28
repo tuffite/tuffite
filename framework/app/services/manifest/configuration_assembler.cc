@@ -44,7 +44,7 @@ bool ApplyDevelopmentUrl(ManifestData& data,
   };
   data.windows_.front().url = url;
   const auto packaged_origin = url::Origin::Create(data.entry_url_);
-  for (auto& capability : data.origin_capabilities_) {
+  for (auto& capability : data.origin_rules_) {
     if (std::ranges::any_of(capability.origins, [&](const auto& pattern) {
           return access::MatchesOrigin(packaged_origin, pattern);
         })) {
@@ -64,6 +64,13 @@ bool ApplyDevelopmentUrl(ManifestData& data,
       world.origins.push_back(origin);
     }
   }
+  for (auto& [origins, csp] : data.assets_.csp_rules) {
+    if (std::ranges::any_of(origins, [&](const auto& pattern) {
+          return access::MatchesOrigin(packaged_origin, pattern);
+        })) {
+      origins.push_back(origin);
+    }
+  }
   return true;
 }
 
@@ -81,7 +88,7 @@ std::optional<EffectiveConfiguration> ConfigurationAssembler::Build(
     return std::nullopt;
   }
   auto data = std::move(definition.data_);
-  OriginCapability denial;
+  OriginRule denial;
   denial.devtools_allowed = false;
   for (const auto& origin : options.security.devtools.denied_origins) {
     std::string normalized;
@@ -97,7 +104,7 @@ std::optional<EffectiveConfiguration> ConfigurationAssembler::Build(
     }
   }
   if (!denial.origins.empty()) {
-    data->origin_capabilities_.push_back(std::move(denial));
+    data->origin_rules_.push_back(std::move(denial));
   }
   // Apply the alias after all policy sources have been merged: denials inherit
   // too.

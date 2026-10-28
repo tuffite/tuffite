@@ -37,6 +37,7 @@ class ClientView;
 }  // namespace views
 
 namespace tuffite {
+class ApplicationContext;
 namespace window {
 class WindowService;
 struct Constraints;
@@ -52,6 +53,10 @@ class Window final : public views::WidgetDelegate,
                         const gfx::Size& size,
                         bool decorations = true,
                         const window::Constraints* constraints = nullptr);
+  static Window* CreateEmpty(ApplicationContext&,
+                             const gfx::Size&,
+                             bool decorations = true,
+                             const window::Constraints* constraints = nullptr);
   static Window* FromWebContents(content::WebContents* web_contents);
   static const std::vector<Window*>& windows();
   static void SetQuitClosure(base::OnceClosure quit_closure);
@@ -80,6 +85,10 @@ class Window final : public views::WidgetDelegate,
   // Synchronous final teardown, used by the owning WindowService.
   void PrepareForShutdown();
   void LoadURL(const GURL& url);
+  // Installs content already created in its immutable BrowserContext. The
+  // previous content is detached and returned; native window identity survives.
+  std::unique_ptr<content::WebContents> SetContent(
+      std::unique_ptr<content::WebContents>);
 
   bool CanResize() const override;
   bool CanMaximize() const override;
@@ -133,6 +142,12 @@ class Window final : public views::WidgetDelegate,
   void OnWidgetShowStateChanged(views::Widget* widget) override;
 
  private:
+  static Window* CreateForApplication(ApplicationContext&,
+                                      content::BrowserContext*,
+                                      const GURL&,
+                                      const gfx::Size&,
+                                      bool,
+                                      const window::Constraints*);
   Window(content::BrowserContext* browser_context,
          const gfx::Size& size,
          bool decorations);

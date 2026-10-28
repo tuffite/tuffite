@@ -15,7 +15,7 @@
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
-#include "tuffite/components/dispatch/browser/context.h"
+#include "tuffite/components/dispatch/browser/renderer_request_context.h"
 #include "tuffite/components/dispatch/browser/rpc_handler.h"
 #include "tuffite/components/dispatch/common/status.h"
 
@@ -23,10 +23,11 @@ namespace tuffite::rpc {
 
 using Reply = RpcHandler::Reply;
 // A dispatcher consumes the reply only after recognizing the method.
-using ServiceHandler = base::RepeatingCallback<bool(const dispatch::Context&,
-                                                    std::string_view,
-                                                    base::span<const uint8_t>,
-                                                    Reply*)>;
+using ServiceHandler =
+    base::RepeatingCallback<bool(const dispatch::RendererRequestContext&,
+                                 std::string_view,
+                                 base::span<const uint8_t>,
+                                 Reply*)>;
 struct Service {
   std::string_view name;
   ServiceHandler dispatch;
@@ -36,13 +37,7 @@ class Router final {
  public:
   explicit Router(std::vector<Service>);
   ~Router();
-  bool Dispatch(content::RenderFrameHost&,
-                std::string_view,
-                base::span<const uint8_t>,
-                const base::UnguessableToken&,
-                Reply*) const;
-
-  bool Dispatch(const dispatch::Context&,
+  bool Dispatch(const dispatch::RendererRequestContext&,
                 std::string_view,
                 base::span<const uint8_t>,
                 Reply*) const;
@@ -75,7 +70,7 @@ struct Method {
 
   template <typename Interface, typename Handler>
   static bool Dispatch(std::shared_ptr<Interface> implementation,
-                       const dispatch::Context& context,
+                       const dispatch::RendererRequestContext& context,
                        base::span<const uint8_t> input,
                        Reply* reply,
                        Handler handler) {
@@ -83,16 +78,34 @@ struct Method {
       std::move(*reply).Run(static_cast<int32_t>(Status::kCancelled), {});
       return true;
     }
+    Call(input, std::move(*reply),
+         base::BindOnce(
+             [](std::shared_ptr<Interface> implementation,
+                dispatch::RendererRequestContext context, Handler handler,
+                RequestPtr request, Callback callback) {
+               auto retained = base::BindOnce(
+                   [](std::shared_ptr<Interface>, Callback callback,
+                      Status status, Value<Fields>... values) {
+                     std::move(callback).Run(status, std::move(values)...);
+                   },
+                   implementation, std::move(callback));
+               (implementation.get()->*handler)(context, std::move(request),
+                                                std::move(retained));
+             },
+             std::move(implementation), context, handler));
+    return true;
+  }
+
+  static void Call(base::span<const uint8_t> input,
+                   Reply reply,
+                   base::OnceCallback<void(RequestPtr, Callback)> handler) {
     RequestPtr request;
-    // Mojo accepts an empty top-level message as a null struct. RPC method
-    // requests are mandatory, including methods with no arguments.
     if (!Request::Deserialize(input, &request) || !request) {
-      std::move(*reply).Run(static_cast<int32_t>(Status::kInvalidArgument), {});
-      return true;
+      std::move(reply).Run(static_cast<int32_t>(Status::kInvalidArgument), {});
+      return;
     }
     auto completion = base::BindOnce(
-        [](std::shared_ptr<Interface>, Reply reply, Status status,
-           Value<Fields>... values) {
+        [](Reply reply, Status status, Value<Fields>... values) {
           std::vector<uint8_t> bytes;
           if (status == Status::kOk) {
             auto response = Response::New();
@@ -101,10 +114,8 @@ struct Method {
           }
           std::move(reply).Run(static_cast<int32_t>(status), bytes);
         },
-        implementation, std::move(*reply));
-    (implementation.get()->*handler)(context, std::move(request),
-                                     std::move(completion));
-    return true;
+        std::move(reply));
+    std::move(handler).Run(std::move(request), std::move(completion));
   }
 };
 

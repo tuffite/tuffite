@@ -26,7 +26,6 @@ source_set("shell_api") {
   deps = [
     "//content/public/browser",
     "//tuffite/framework/app:context",
-    "//tuffite/framework/app:host_headers",
     "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/app/services/utility",
     "//tuffite/framework/browser:support",

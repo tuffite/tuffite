@@ -53,8 +53,8 @@ const ready = async suffix => {
 };
 const reset = async (suffix = '') => {
   console.log(`reset=${suffix}:start`);
-  await app.locator('#event-source').evaluate((element,url) => { element.src = url; }, new URL(`event-fixture.html${suffix}`, base).href);
-  await ready(`event-fixture.html${suffix}`);
+  await app.locator('#event-source').evaluate((element,url) => { element.src = url; }, new URL(`fixtures/events.html${suffix}`, base).href);
+  await ready(`fixtures/events.html${suffix}`);
   console.log(`reset=${suffix}:ready`);
 };
 const open = async () => {
@@ -99,7 +99,7 @@ const server = createServer((request,response) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 try {
   await app.goto(new URL('events.html',base).href);
-  await ready('event-fixture.html');
+  await ready('fixtures/events.html');
   assert.equal((await state()).fullscreen, false);
   assert.equal((await state()).pictureInPicture, 'none');
   await app.locator('#event-source').evaluate((element,url) => { element.src = url; }, `http://127.0.0.1:${server.address().port}/fixture`);
@@ -157,13 +157,13 @@ try {
 
   await select('#event-handler','top');
   await reset('?iframe');
-  const iframeOwner = pages().find(page => page.url().includes('/event-fixture.html?iframe'));
+  const iframeOwner = pages().find(page => page.url().includes('/fixtures/events.html?iframe'));
   await wait(() => iframeOwner.frame({name:'event-frame'})?.url().includes('?frame'), 'Iframe source missing');
   const originalFrame = iframeOwner.frame({name:'event-frame'});
   const iframeHeld = await app.evaluate(() => window.eventLab.requests.length);
   await originalFrame.locator('#open').click();
   await wait(() => app.evaluate(before => window.eventLab.requests.length > before, iframeHeld), 'Iframe window request missing');
-  await originalFrame.goto(new URL('event-fixture.html?frame-replaced',base).href);
+  await originalFrame.goto(new URL('fixtures/events.html?frame-replaced',base).href);
   await wait(() => app.evaluate(() => window.eventLab.requests.at(-1).signal.aborted), 'Iframe navigation did not cancel its pending window');
   assert.ok((await state()).url.endsWith('?iframe'), 'Iframe cancellation should not require main-document navigation');
   console.log('iframe-window-cancel=passed (original opener document lifetime)');
@@ -177,11 +177,11 @@ try {
 
   // Nested documents have separate dispatches; local stops still reach top.
   await reset('?nested');
-  const parentPage = pages().find(page => page.url().includes('/event-fixture.html?nested'));
+  const parentPage = pages().find(page => page.url().includes('/fixtures/events.html?nested'));
   await wait(() => parentPage.locator('#nested-child').evaluate(async element => {
     const value = await element.getNavigationState(); return value.url.includes('?leaf') && !value.isLoading;
   }), 'Nested child missing');
-  const leaf = pages().find(page => page.url().includes('/event-fixture.html?leaf'));
+  const leaf = pages().find(page => page.url().includes('/fixtures/events.html?leaf'));
   assert.ok(parentPage && leaf);
   await select('#event-handler','top');
   await select('#window-action','discard');
@@ -195,7 +195,7 @@ try {
   console.log('nested=passed (bubble, stop, immediate, claim)');
 
   await reset('?dialogs');
-  const guest = pages().find(page => page.url().includes('/event-fixture.html?dialogs'));
+  const guest = pages().find(page => page.url().includes('/fixtures/events.html?dialogs'));
   for (const [selector,result] of [['#confirm',true],['#prompt','event answer'],['#alert','done']]) {
     await guest.locator(selector).click();
     await wait(() => guest.evaluate(result => window.dialogResult === result, result), 'Native JavaScript dialog result mismatch');
@@ -220,7 +220,7 @@ try {
   // Original POST navigation must survive pending-window adoption.
   await select('#window-action','attach');
   const postUrl = `http://127.0.0.1:${server.address().port}/original`;
-  const postGuest = pages().find(page => page.url().includes('/event-fixture.html?dialog-cancel'));
+  const postGuest = pages().find(page => page.url().includes('/fixtures/events.html?dialog-cancel'));
   await postGuest.evaluate(url => {
     const form = document.createElement('form'); form.method='POST'; form.action=url; form.target='_blank';
     const input = document.createElement('input'); input.name='proof'; input.value='original-body'; form.append(input); document.body.append(form); form.submit();
@@ -248,17 +248,17 @@ try {
     const host = document.createElement('div'); host.id = 'event-shadow-host';
     const root = host.attachShadow({mode:'open'});
     const inner = document.createElement('explorer'); inner.id = 'event-shadow-source';
-    inner.navigation = 'allow'; inner.dialogs = 'emit'; inner.style.cssText='display:block;width:600px;height:200px';
+    inner.behavior = "navigation: browser;"; inner.behavior += " dialog: delegate;"; inner.style.cssText='display:block;width:600px;height:200px';
     root.append(inner); document.body.append(host);
     document.addEventListener('newwindow', event => {
       if (event.target === host) window.eventLab.shadowProof = {target:event.target.id, path:event.composedPath()[0].id};
     });
     inner.src = url; window.eventLab.shadowSource = inner;
-  },new URL('event-fixture.html?shadow',base).href);
+  },new URL('fixtures/events.html?shadow',base).href);
   await wait(() => app.evaluate(async () => {
     const value = await window.eventLab.shadowSource.getNavigationState(); return value.url.endsWith('?shadow') && !value.isLoading;
   }), 'Shadow-root source did not load');
-  const shadowGuest = pages().find(page => page.url().endsWith('/event-fixture.html?shadow'));
+  const shadowGuest = pages().find(page => page.url().endsWith('/fixtures/events.html?shadow'));
   await shadowGuest.locator('#open').click();
   await wait(() => app.evaluate(() => !!window.eventLab.shadowProof), 'Composed request did not leave its shadow root');
   assert.deepEqual(await app.evaluate(() => window.eventLab.shadowProof), {target:'event-shadow-host', path:'event-shadow-source'});

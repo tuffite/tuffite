@@ -1,11 +1,11 @@
 # Remoting
 
 Native Remoting client for Rust applications hosted by Tuffite. The `tuffite::remoting` module wraps
-callback-based ShellAPI calls as async operations and converts native session,
+dedicated native Remoting capability calls as async operations and converts native session,
 stats and screenshot results. It contains no application state, authorization
 policy, Link transport or Tokio runtime owner.
 
-Construct `Remoting::new(Some(context.shell_api()))` in the application's
+Construct `Remoting::new(&context)` in the application's
 composition root. Refresh capabilities before starting a control session; use
 the returned session ID for signaling, stats, clipboard/input and stop requests.
 `RemotingStartOptions`, `RemotingSignal` and `RemotingInputEvent` are reexported
@@ -20,7 +20,7 @@ Enable the public SDK with `tuffite = { version = "0.1.0", features = ["remoting
 
 ```rust
 use tuffite::remoting::Remoting;
-let remoting = Remoting::new(Some(context.shell_api()));
+let remoting = Remoting::new(&context);
 ```
 
 Native connections, ICE sockets, WebRTC callbacks and session teardown are owned

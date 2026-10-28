@@ -472,7 +472,7 @@ fn map_status(status: Status) -> UtilitySessionHostError {
         }
         Status::InvalidHandle | Status::InvalidState => UtilitySessionHostError::InvalidState,
         Status::ResourceExhausted => UtilitySessionHostError::ResourceExhausted,
-        Status::Ok | Status::Internal => UtilitySessionHostError::Internal,
+        _ => UtilitySessionHostError::Internal,
     }
 }
 

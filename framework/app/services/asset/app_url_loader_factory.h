@@ -15,11 +15,13 @@ namespace tuffite {
 class AppURLLoaderFactory final : public network::SelfDeletingURLLoaderFactory {
  public:
   static mojo::PendingRemote<network::mojom::URLLoaderFactory> Create(
-      const asset::AssetConfiguration&);
+      const asset::AssetConfiguration&,
+      asset::MemoryAssetResolver resolver = {});
 
   AppURLLoaderFactory(
       mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
       const asset::AssetConfiguration& assets,
+      asset::MemoryAssetResolver resolver,
       base::SelfDeletingPassKey key);
 
   AppURLLoaderFactory(const AppURLLoaderFactory&) = delete;
@@ -28,6 +30,7 @@ class AppURLLoaderFactory final : public network::SelfDeletingURLLoaderFactory {
  private:
   ~AppURLLoaderFactory() override;
   const asset::AssetConfiguration assets_;
+  asset::MemoryAssetResolver resolver_;
 
   void CreateLoaderAndStart(
       mojo::PendingReceiver<network::mojom::URLLoader> loader,

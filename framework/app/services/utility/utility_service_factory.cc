@@ -9,6 +9,9 @@
 #include "tuffite/framework/app/services/utility/utility_service.h"
 
 namespace tuffite {
+std::unique_ptr<UtilityService> CreateUtilityService() {
+  return CreateUtilityService(CreateUtilityProcessLauncher());
+}
 UtilityServiceFactory* UtilityServiceFactory::Get() {
   static base::NoDestructor<UtilityServiceFactory> instance;
   return instance.get();

@@ -6,6 +6,7 @@ source_set("explorer") {
   public = [
     "explorer_service.h",
     "explorer_service_factory.h",
+    "external_protocol.h",
   ]
   sources = public + [
               "explorer_navigation_throttle.cc",
@@ -13,6 +14,7 @@ source_set("explorer") {
               "explorer_service_factory.cc",
               "explorer_service_impl.cc",
               "explorer_service_impl.h",
+              "external_protocol.cc",
             ]
   public_deps = [
     "//base",
@@ -22,10 +24,13 @@ source_set("explorer") {
   ]
   deps = [
     "//content/public/browser",
-    "//tuffite/framework/browser/services/window:interfaces",
+    "//tuffite/components/explorer/common:external_protocol",
     "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/browser:support",
+    "//tuffite/framework/browser/services/window:interfaces",
     "//tuffite/framework/common:access",
+    "//ui/base",
+    "//ui/views",
     "//url",
   ]
 }

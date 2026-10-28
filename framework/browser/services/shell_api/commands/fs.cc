@@ -76,7 +76,7 @@ void RunBoolean(ResolvedPath path, Work work, Callback callback) {
 
 }  // namespace
 
-void FsImpl::ReadFile(const dispatch::Context& context,
+void FsImpl::ReadFile(const dispatch::RendererRequestContext& context,
                       ReadFileRequestPtr request,
                       ReadFileCallback callback) {
   if (!context.sender()) {
@@ -117,7 +117,7 @@ void FsImpl::ReadFile(const dispatch::Context& context,
           std::move(callback)));
 }
 
-void FsImpl::WriteFile(const dispatch::Context& context,
+void FsImpl::WriteFile(const dispatch::RendererRequestContext& context,
                        WriteFileRequestPtr request,
                        WriteFileCallback callback) {
   if (!context.sender()) {
@@ -147,7 +147,7 @@ void FsImpl::WriteFile(const dispatch::Context& context,
              std::move(callback));
 }
 
-void FsImpl::Exists(const dispatch::Context& context,
+void FsImpl::Exists(const dispatch::RendererRequestContext& context,
                     ExistsRequestPtr request,
                     ExistsCallback callback) {
   if (!context.sender()) {
@@ -182,7 +182,7 @@ void FsImpl::Exists(const dispatch::Context& context,
           std::move(callback)));
 }
 
-void FsImpl::CreateDir(const dispatch::Context& context,
+void FsImpl::CreateDir(const dispatch::RendererRequestContext& context,
                        CreateDirRequestPtr request,
                        CreateDirCallback callback) {
   if (!context.sender()) {
@@ -201,7 +201,7 @@ void FsImpl::CreateDir(const dispatch::Context& context,
              std::move(callback));
 }
 
-void FsImpl::RemoveFile(const dispatch::Context& context,
+void FsImpl::RemoveFile(const dispatch::RendererRequestContext& context,
                         RemoveFileRequestPtr request,
                         RemoveFileCallback callback) {
   if (!context.sender()) {

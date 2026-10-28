@@ -19,6 +19,7 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
+#include "tuffite/framework/browser/browser_context.h"
 #include "tuffite/framework/browser/services/window/platform.h"
 #include "tuffite/framework/browser/services/window/window.h"
 #include "tuffite/framework/browser/web_contents_role.h"
@@ -57,9 +58,12 @@ class StartupWindowsObserver final : public content::WebContentsObserver {
   base::OnceClosure closed_;
 };
 
-Window* WindowServiceImpl::CreateConfiguredWindow(const WindowOptions& options,
-                                                  const gfx::Size& size) {
-  Window* window = Create(size, options.decorations, options.constraints);
+Window* WindowServiceImpl::CreateConfiguredWindow(
+    content::BrowserContext& context,
+    const WindowOptions& options,
+    const gfx::Size& size) {
+  Window* window =
+      Create(context, size, options.decorations, options.constraints);
   CHECK(window);
   if (options.role) {
     WebContentsRoleData::SetRole(window->web_contents(), *options.role);
@@ -79,14 +83,16 @@ Window* WindowServiceImpl::CreateConfiguredWindow(const WindowOptions& options,
   return window;
 }
 Window* WindowServiceImpl::CreateStartupWindows(
+    content::BrowserContext& context,
     std::vector<WindowOptions> windows,
     const gfx::Size& primary_size) {
   CHECK(!stopped_ && !startup_created_ && !windows.empty());
   startup_created_ = true;
+  startup_context_ = &context;
   auto primary = std::move(windows.front());
   windows.erase(windows.begin());
   Window* window = CreateConfiguredWindow(
-      primary, primary_size.IsEmpty() ? primary.size : primary_size);
+      context, primary, primary_size.IsEmpty() ? primary.size : primary_size);
   startup_primary_id_ = GetInfo(window)->id;
   startup_windows_ = std::move(windows);
   if (!startup_windows_.empty()) {
@@ -125,7 +131,8 @@ void WindowServiceImpl::CreateSecondaryWindows() {
     if (stopped_) {
       break;
     }
-    CreateConfiguredWindow(options, options.size)->LoadURL(options.url);
+    CreateConfiguredWindow(*startup_context_, options, options.size)
+        ->LoadURL(options.url);
   }
 }
 void WindowServiceImpl::CancelStartupWindows() {
@@ -133,8 +140,8 @@ void WindowServiceImpl::CancelStartupWindows() {
   startup_windows_.clear();
 }
 
-WindowServiceImpl::WindowServiceImpl(content::BrowserContext& context)
-    : context_(context) {}
+WindowServiceImpl::WindowServiceImpl(ApplicationContext& application)
+    : application_(application) {}
 WindowServiceImpl::~WindowServiceImpl() {
   Shutdown();
 }
@@ -156,7 +163,12 @@ void WindowServiceImpl::Shutdown() {
 }
 void WindowServiceImpl::Adopt(std::unique_ptr<Window> window) {
   CHECK(!stopped_);
-  CHECK_EQ(window->web_contents()->GetBrowserContext(), &*context_);
+  if (window->web_contents()) {
+    CHECK_EQ(
+        &BrowserContext::GetFrom(*window->web_contents()->GetBrowserContext())
+             .application_context(),
+        &*application_);
+  }
   IdFor(window.get());
   windows_.push_back(std::move(window));
 }
@@ -244,14 +256,53 @@ bool WindowServiceImpl::IsAvailable(Window* window) const {
            return owned.get() == window;
          });
 }
+bool WindowServiceImpl::HasContext(content::BrowserContext& context) const {
+  return std::ranges::any_of(windows_, [&](const auto& w) {
+    return w->web_contents() &&
+           w->web_contents()->GetBrowserContext() == &context;
+  });
+}
+void WindowServiceImpl::CloseContext(content::BrowserContext& context) {
+  if (startup_context_ == &context) {
+    startup_windows_observer_.reset();
+    CancelStartupWindows();
+    startup_context_ = nullptr;
+  }
+  for (size_t i = windows_.size(); i > 0; --i) {
+    if (!windows_[i - 1]->web_contents() ||
+        windows_[i - 1]->web_contents()->GetBrowserContext() != &context) {
+      continue;
+    }
+    auto owned = std::move(windows_[i - 1]);
+    windows_.erase(windows_.begin() + i - 1);
+    owned->PrepareForShutdown();
+  }
+}
 void WindowServiceImpl::CloseById(int64_t id) {
   Close(FindById(id));
 }
-Window* WindowServiceImpl::Create(const gfx::Size& size,
+content::WebContents* WindowServiceImpl::OpenBrowserContents(
+    std::unique_ptr<content::WebContents> contents) {
+  auto* window =
+      Create(*contents->GetBrowserContext(), gfx::Size(1000, 700), true, {});
+  if (!window) {
+    return nullptr;
+  }
+  window->SetContent(std::move(contents));
+  window->web_contents()->ResumeLoadingCreatedWebContents();
+  return window->web_contents();
+}
+Window* WindowServiceImpl::CreateEmpty(const gfx::Size& size,
+                                       bool decorations) {
+  return stopped_ ? nullptr
+                  : Window::CreateEmpty(*application_, size, decorations);
+}
+Window* WindowServiceImpl::Create(content::BrowserContext& context,
+                                  const gfx::Size& size,
                                   bool decorations,
                                   const Constraints& constraints) {
   return stopped_ ? nullptr
-                  : Window::Create(&*context_, GURL(), size, decorations,
+                  : Window::Create(&context, GURL(), size, decorations,
                                    &constraints);
 }
 std::optional<Info> WindowServiceImpl::GetInfo(Window* window) {
@@ -261,7 +312,9 @@ std::optional<Info> WindowServiceImpl::GetInfo(Window* window) {
   const auto id = IdFor(window);
   const auto entry = std::ranges::find(entries_, id, &Entry::id);
   return Info{id, entry->label,
-              window->web_contents()->GetLastCommittedURL().spec(),
+              window->web_contents()
+                  ? window->web_contents()->GetLastCommittedURL().spec()
+                  : std::string(),
               GetState(window)};
 }
 std::vector<Info> WindowServiceImpl::List() {
@@ -311,8 +364,13 @@ void WindowServiceImpl::ResolveMessageTarget(
     content::RenderFrameHost& source,
     base::OnceCallback<void(content::RenderFrameHost*)> callback) {
   auto* window = stopped_ || !source.IsActive() ? nullptr : FindById(id);
-  auto* frame =
-      window ? window->web_contents()->GetPrimaryMainFrame() : nullptr;
-  std::move(callback).Run(frame && frame->IsActive() ? frame : nullptr);
+  auto* frame = window && window->web_contents()
+                    ? window->web_contents()->GetPrimaryMainFrame()
+                    : nullptr;
+  std::move(callback).Run(frame && frame->IsActive() &&
+                                  frame->GetBrowserContext() ==
+                                      source.GetBrowserContext()
+                              ? frame
+                              : nullptr);
 }
 }  // namespace tuffite::window

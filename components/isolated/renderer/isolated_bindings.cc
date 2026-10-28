@@ -52,6 +52,15 @@ void IsolatedBindings::Load(const v8::FunctionCallbackInfo<v8::Value>& info) {
         v8::String::NewFromUtf8Literal(isolate, "Document is gone")));
     return;
   }
+  if (info.Length() == 2 && info[0]->IsString() && info[1]->IsString()) {
+    v8::String::Utf8Value action(isolate, info[0]);
+    v8::String::Utf8Value entry(isolate, info[1]);
+    if (std::string_view(*action, action.length()) == "release" &&
+        self->remote_) {
+      self->remote_->Release(std::string(*entry, entry.length()));
+    }
+    return;
+  }
   if (info.Length() != 1 || !info[0]->IsString() ||
       self->pending_.size() >= 32) {
     isolate->ThrowException(v8::Exception::TypeError(

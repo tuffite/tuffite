@@ -4,7 +4,7 @@
 #ifndef TUFFITE_FRAMEWORK_BROWSER_CONTENT_BROWSER_CLIENT_H_
 #define TUFFITE_FRAMEWORK_BROWSER_CONTENT_BROWSER_CLIENT_H_
 
-#include "base/memory/raw_ptr.h"
+#include "base/functional/callback.h"
 #include "base/memory/raw_ref.h"
 #include "content/public/browser/content_browser_client.h"
 
@@ -13,16 +13,20 @@ class CommandLine;
 }
 
 namespace tuffite {
-class AbiHostBridge;
+namespace abi {
+class Application;
+class Host;
+}  // namespace abi
 class ApplicationContext;
 
 class ContentBrowserClient final : public content::ContentBrowserClient {
  public:
-  explicit ContentBrowserClient(AbiHostBridge& bridge);
+  ContentBrowserClient(abi::Application& application,
+                       abi::Host& host,
+                       base::RepeatingClosure prepare_browser,
+                       base::RepeatingClosure begin_shutdown,
+                       base::RepeatingClosure shutdown);
   ~ContentBrowserClient() override;
-  void BindApplicationServices(ApplicationContext* application) {
-    application_ = application;
-  }
 
   std::unique_ptr<content::BrowserMainParts> CreateBrowserMainParts(
       bool is_integration_test) override;
@@ -34,6 +38,29 @@ class ContentBrowserClient final : public content::ContentBrowserClient {
   std::unique_ptr<content::AuthenticatorRequestClientDelegate>
   GetWebAuthenticationRequestDelegate(content::RenderFrameHost* frame) override;
   bool IsHandledURL(const GURL& url) override;
+  std::vector<std::unique_ptr<blink::URLLoaderThrottle>>
+  CreateURLLoaderThrottles(
+      const network::ResourceRequest&,
+      content::BrowserContext*,
+      const base::RepeatingCallback<content::WebContents*()>&,
+      content::NavigationUIData*,
+      content::FrameTreeNodeId,
+      std::optional<int64_t>) override;
+  bool HandleExternalProtocol(
+      const GURL& url,
+      base::RepeatingCallback<content::WebContents*()> web_contents_getter,
+      content::FrameTreeNodeId frame_tree_node_id,
+      content::NavigationUIData* navigation_data,
+      bool is_primary_main_frame,
+      bool is_in_fenced_frame_tree,
+      network::mojom::WebSandboxFlags sandbox_flags,
+      ui::PageTransition page_transition,
+      bool has_user_gesture,
+      const std::optional<url::Origin>& initiating_origin,
+      content::RenderFrameHost* initiator_document,
+      const net::IsolationInfo& isolation_info,
+      mojo::PendingRemote<network::mojom::URLLoaderFactory>* out_factory)
+      override;
   std::vector<base::FilePath> GetNetworkContextsParentDirectory() override;
   std::string GetProduct() override;
   std::string GetAcceptLangs(content::BrowserContext* context) override;
@@ -76,8 +103,12 @@ class ContentBrowserClient final : public content::ContentBrowserClient {
       NonNetworkURLLoaderFactoryMap* factories) override;
 
  private:
-  const raw_ref<AbiHostBridge> bridge_;
-  raw_ptr<ApplicationContext> application_ = nullptr;
+  const raw_ref<abi::Application> application_;
+  const raw_ref<abi::Host> host_;
+  const base::RepeatingClosure prepare_browser_;
+  const base::RepeatingClosure begin_shutdown_;
+  const base::RepeatingClosure shutdown_;
+  ApplicationContext* application_context() const;
 };
 
 }  // namespace tuffite

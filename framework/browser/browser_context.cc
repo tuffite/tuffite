@@ -9,9 +9,11 @@
 #include "base/no_destructor.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "content/public/browser/render_frame_host.h"
+#include "tuffite/components/dispatch/browser/host_dispatch.h"
 #include "tuffite/components/explorer/browser/explorer_router.h"
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/browser/services/client_hints/client_hints_service.h"
 #include "tuffite/framework/browser/services/client_hints/client_hints_service_factory.h"
 #include "tuffite/framework/browser/services/context_menu/context_menu_service_factory.h"
@@ -36,22 +38,34 @@ std::vector<BrowserContext*>& AliveBrowserContexts() {
   static base::NoDestructor<std::vector<BrowserContext*>> contexts;
   return *contexts;
 }
+
 }  // namespace
 
 std::vector<base::FilePath> BrowserContext::GetNetworkStoragePaths() {
   std::vector<base::FilePath> paths;
   for (auto* context : AliveBrowserContexts()) {
-    paths.push_back(context->GetPath());
+    auto path = context->network_storage_root_.empty()
+                    ? context->GetPath()
+                    : context->network_storage_root_;
+    if (std::ranges::find(paths, path) == paths.end()) {
+      paths.push_back(std::move(path));
+    }
   }
   return paths;
 }
 
 BrowserContext::BrowserContext(base::FilePath path,
-                               ApplicationContext& application)
-    : application_(application), path_(std::move(path)) {
+                               ApplicationContext& application,
+                               HostDispatch& host_dispatch,
+                               base::FilePath network_storage_root,
+                               UtilityService* utilities)
+    : application_(application),
+      host_dispatch_(host_dispatch),
+      utilities_(utilities),
+      path_(std::move(path)),
+      network_storage_root_(std::move(network_storage_root)) {
   AliveBrowserContexts().push_back(this);
   ExplorerServiceFactory::Get();
-  window::WindowServiceFactory::Get();
   DownloadServiceFactory::Get();
   DevToolsServiceFactory::Get();
   IsolatedServiceFactory::Get();
@@ -82,12 +96,16 @@ ManifestService& BrowserContext::manifest_service() const {
   return *manifest;
 }
 
+UtilityService& BrowserContext::utility_service() const {
+  return utilities_ ? *utilities_ : *application_->GetService<UtilityService>();
+}
+
 BrowserContext::~BrowserContext() {
   weak_factory_.InvalidateWeakPtrs();
   NotifyWillBeDestroyed();
   if (auto* windows =
           window::WindowServiceFactory::GetForBrowserContext(this, false)) {
-    windows->Shutdown();
+    windows->CloseContext(*this);
   }
   if (auto* downloads =
           DownloadServiceFactory::GetForBrowserContext(this, false)) {

@@ -1,7 +1,7 @@
 window.eventProof = crypto.randomUUID();
 sessionStorage.setItem("event-proof", window.eventProof);
 document.querySelector("#open").onclick = () => {
-  window.lastPopup = window.open("./event-popup.html", "_blank");
+  window.lastPopup = window.open("./popup.html", "_blank");
 };
 document.querySelector("#confirm").onclick = () => {
   window.dialogResult = confirm("Event model confirm");
@@ -20,14 +20,14 @@ window.childMode = "bubble";
 if (new URL(location.href).searchParams.has("iframe")) {
   const frame = document.createElement("iframe");
   frame.name = "event-frame";
-  frame.src = new URL("./event-fixture.html?frame", location.href).href;
+  frame.src = new URL("./events.html?frame", location.href).href;
   document.querySelector("#child").append(frame);
 }
 if (new URL(location.href).searchParams.has("nested")) {
   const child = document.createElement("explorer");
   child.id = "nested-child";
-  child.navigation = "allow";
-  child.dialogs = "emit";
+  child.behavior = "navigation: browser;";
+  child.behavior += " dialog: delegate;";
   child.style.cssText = "display:block;width:100%;height:220px";
   for (const type of ["newwindow", "dialog"])
     child.addEventListener(type, (event) => {
@@ -44,6 +44,6 @@ if (new URL(location.href).searchParams.has("nested")) {
         { targetOrigin: "*" },
       );
     });
-  child.src = new URL("./event-fixture.html?leaf", location.href).href;
+  child.src = new URL("./events.html?leaf", location.href).href;
   document.querySelector("#child").append(child);
 }

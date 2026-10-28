@@ -1,10 +1,12 @@
 //! Asynchronous native desktop remoting client. No application policy or transport.
+use crate::__private::mojom::Struct;
+use crate::ApplicationContext;
 use crate::shell_api::remoting;
 pub use crate::shell_api::{RemotingInputEvent, RemotingSignal, RemotingStartOptions};
-use crate::{ShellApiHost, ShellApiRequest};
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
+use tuffite_runtime::native_remoting::Host;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,21 +38,20 @@ pub struct RemotingNetworkStats {
 
 #[derive(Clone)]
 pub struct Remoting {
-    shell_api: Option<ShellApiHost>,
+    host: Host,
     supported: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 impl Remoting {
     #[must_use]
-    pub fn new(shell_api: Option<ShellApiHost>) -> Self {
+    pub fn new(context: &ApplicationContext) -> Self {
         Self {
-            shell_api,
+            host: context.remoting_host(),
             supported: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
+    #[must_use]
     pub fn is_supported(&self) -> bool {
-        self.shell_api
-            .as_ref()
-            .is_some_and(ShellApiHost::is_available)
+        self.host.is_available()
     }
     #[must_use]
     pub fn supports_control(&self) -> bool {
@@ -74,25 +75,19 @@ impl Remoting {
             .store(supported, std::sync::atomic::Ordering::Release);
     }
     pub async fn start(&self, options: RemotingStartOptions) -> Result<RemotingSession, String> {
-        let shell_api = self
-            .shell_api
-            .as_ref()
-            .ok_or("native Shell API is unavailable")?;
-        let cleanup_api = shell_api.clone();
+        let host = &self.host;
+        let cleanup_api = host.clone();
         let (tx, rx) = oneshot::channel();
-        shell_api
-            .invoke(&remoting::Start { options }, move |result| {
-                if let Err(Ok(session)) = tx.send(result) {
-                    // A timed-out/cancelled creator must not strand a native session.
-                    let _ = cleanup_api.invoke(&remoting::Stop { id: session.id }, |_| {});
-                }
-            })
-            .map_err(|error| error.to_string())?;
+        remoting::Start { options }.submit(host, move |result| {
+            if let Err(Ok(session)) = tx.send(result) {
+                // A timed-out/cancelled creator must not strand a native session.
+                let _ = remoting::Stop { id: session.id }.submit(&cleanup_api, |_| {});
+            }
+        })?;
         let session = tokio::time::timeout(std::time::Duration::from_secs(5), rx)
             .await
             .map_err(|_| "native remoting startup timed out")?
-            .map_err(|_| "native remoting startup was cancelled")?
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "native remoting startup was cancelled")??;
         let id = u64::try_from(session.id)
             .ok()
             .filter(|id| *id > 0)
@@ -163,14 +158,10 @@ impl Remoting {
     pub async fn inject_input(&self, event: RemotingInputEvent) -> Result<(), String> {
         self.invoke(remoting::InjectInput { event }).await
     }
-    async fn invoke<R: ShellApiRequest>(&self, request: R) -> Result<R::Response, String> {
-        let shell_api = self
-            .shell_api
-            .as_ref()
-            .ok_or_else(|| "native Shell API is unavailable".to_owned())?;
+    async fn invoke<R: Request>(&self, request: R) -> Result<R::Response, String> {
         let (tx, rx) = oneshot::channel();
-        shell_api
-            .invoke(&request, move |result| {
+        request
+            .submit(&self.host, move |result| {
                 let _ = tx.send(result);
             })
             .map_err(|error| format!("native CRD operation failed: {error}"))?;
@@ -194,4 +185,194 @@ fn dimension(value: f64) -> Result<u32, String> {
         return Err("native CRD returned an invalid snapshot dimension".to_owned());
     }
     Ok(value as u32)
+}
+
+// The request-to-operation mapping is private to the dedicated Remoting client.
+// There is no public channel-name invocation API.
+trait Request: Struct {
+    type Response: Send + 'static;
+    fn submit<F>(&self, host: &Host, reply: F) -> Result<(), String>
+    where
+        F: FnOnce(Result<Self::Response, String>) + Send + 'static;
+}
+impl Request for remoting::Capabilities {
+    type Response = crate::shell_api::RemotingCapabilities;
+    fn submit<F>(&self, host: &Host, reply: F) -> Result<(), String>
+    where
+        F: FnOnce(Result<Self::Response, String>) + Send + 'static,
+    {
+        let bytes = self
+            .encode_mojom()
+            .map_err(|_| "invalid remoting request")?;
+        host.capabilities(&bytes, move |result| {
+            reply(result.map_err(|e| e.to_string()).and_then(|bytes| {
+                let response = crate::shell_api::RemotingCapabilitiesResponse::decode_mojom(&bytes)
+                    .map_err(|_| "invalid remoting response".to_owned())?;
+                let _ = &response;
+                Ok(response.result)
+            }));
+        })
+        .map_err(|e| e.to_string())
+    }
+}
+impl Request for remoting::Start {
+    type Response = crate::shell_api::RemotingSession;
+    fn submit<F>(&self, host: &Host, reply: F) -> Result<(), String>
+    where
+        F: FnOnce(Result<Self::Response, String>) + Send + 'static,
+    {
+        let bytes = self
+            .encode_mojom()
+            .map_err(|_| "invalid remoting request")?;
+        host.start(&bytes, move |result| {
+            reply(result.map_err(|e| e.to_string()).and_then(|bytes| {
+                let response = crate::shell_api::RemotingStartResponse::decode_mojom(&bytes)
+                    .map_err(|_| "invalid remoting response".to_owned())?;
+                let _ = &response;
+                Ok(response.result)
+            }));
+        })
+        .map_err(|e| e.to_string())
+    }
+}
+impl Request for remoting::ProcessSignal {
+    type Response = ();
+    fn submit<F>(&self, host: &Host, reply: F) -> Result<(), String>
+    where
+        F: FnOnce(Result<Self::Response, String>) + Send + 'static,
+    {
+        let bytes = self
+            .encode_mojom()
+            .map_err(|_| "invalid remoting request")?;
+        host.process_signal(&bytes, move |result| {
+            reply(result.map_err(|e| e.to_string()).and_then(|bytes| {
+                let response =
+                    crate::shell_api::RemotingProcessSignalResponse::decode_mojom(&bytes)
+                        .map_err(|_| "invalid remoting response".to_owned())?;
+                let _ = &response;
+                Ok(())
+            }));
+        })
+        .map_err(|e| e.to_string())
+    }
+}
+impl Request for remoting::TakeSignals {
+    type Response = Vec<RemotingSignal>;
+    fn submit<F>(&self, host: &Host, reply: F) -> Result<(), String>
+    where
+        F: FnOnce(Result<Self::Response, String>) + Send + 'static,
+    {
+        let bytes = self
+            .encode_mojom()
+            .map_err(|_| "invalid remoting request")?;
+        host.take_signals(&bytes, move |result| {
+            reply(result.map_err(|e| e.to_string()).and_then(|bytes| {
+                let response = crate::shell_api::RemotingTakeSignalsResponse::decode_mojom(&bytes)
+                    .map_err(|_| "invalid remoting response".to_owned())?;
+                let _ = &response;
+                Ok(response.result)
+            }));
+        })
+        .map_err(|e| e.to_string())
+    }
+}
+impl Request for remoting::SendInput {
+    type Response = ();
+    fn submit<F>(&self, host: &Host, reply: F) -> Result<(), String>
+    where
+        F: FnOnce(Result<Self::Response, String>) + Send + 'static,
+    {
+        let bytes = self
+            .encode_mojom()
+            .map_err(|_| "invalid remoting request")?;
+        host.send_input(&bytes, move |result| {
+            reply(result.map_err(|e| e.to_string()).and_then(|bytes| {
+                let response = crate::shell_api::RemotingSendInputResponse::decode_mojom(&bytes)
+                    .map_err(|_| "invalid remoting response".to_owned())?;
+                let _ = &response;
+                Ok(())
+            }));
+        })
+        .map_err(|e| e.to_string())
+    }
+}
+impl Request for remoting::InjectInput {
+    type Response = ();
+    fn submit<F>(&self, host: &Host, reply: F) -> Result<(), String>
+    where
+        F: FnOnce(Result<Self::Response, String>) + Send + 'static,
+    {
+        let bytes = self
+            .encode_mojom()
+            .map_err(|_| "invalid remoting request")?;
+        host.inject_input(&bytes, move |result| {
+            reply(result.map_err(|e| e.to_string()).and_then(|bytes| {
+                let response = crate::shell_api::RemotingInjectInputResponse::decode_mojom(&bytes)
+                    .map_err(|_| "invalid remoting response".to_owned())?;
+                let _ = &response;
+                Ok(())
+            }));
+        })
+        .map_err(|e| e.to_string())
+    }
+}
+impl Request for remoting::Stop {
+    type Response = ();
+    fn submit<F>(&self, host: &Host, reply: F) -> Result<(), String>
+    where
+        F: FnOnce(Result<Self::Response, String>) + Send + 'static,
+    {
+        let bytes = self
+            .encode_mojom()
+            .map_err(|_| "invalid remoting request")?;
+        host.stop(&bytes, move |result| {
+            reply(result.map_err(|e| e.to_string()).and_then(|bytes| {
+                let response = crate::shell_api::RemotingStopResponse::decode_mojom(&bytes)
+                    .map_err(|_| "invalid remoting response".to_owned())?;
+                let _ = &response;
+                Ok(())
+            }));
+        })
+        .map_err(|e| e.to_string())
+    }
+}
+impl Request for remoting::Stats {
+    type Response = crate::shell_api::RemotingStats;
+    fn submit<F>(&self, host: &Host, reply: F) -> Result<(), String>
+    where
+        F: FnOnce(Result<Self::Response, String>) + Send + 'static,
+    {
+        let bytes = self
+            .encode_mojom()
+            .map_err(|_| "invalid remoting request")?;
+        host.stats(&bytes, move |result| {
+            reply(result.map_err(|e| e.to_string()).and_then(|bytes| {
+                let response = crate::shell_api::RemotingStatsResponse::decode_mojom(&bytes)
+                    .map_err(|_| "invalid remoting response".to_owned())?;
+                let _ = &response;
+                Ok(response.result)
+            }));
+        })
+        .map_err(|e| e.to_string())
+    }
+}
+impl Request for remoting::Capture {
+    type Response = crate::shell_api::RemotingSnapshot;
+    fn submit<F>(&self, host: &Host, reply: F) -> Result<(), String>
+    where
+        F: FnOnce(Result<Self::Response, String>) + Send + 'static,
+    {
+        let bytes = self
+            .encode_mojom()
+            .map_err(|_| "invalid remoting request")?;
+        host.capture(&bytes, move |result| {
+            reply(result.map_err(|e| e.to_string()).and_then(|bytes| {
+                let response = crate::shell_api::RemotingCaptureResponse::decode_mojom(&bytes)
+                    .map_err(|_| "invalid remoting response".to_owned())?;
+                let _ = &response;
+                Ok(response.result)
+            }));
+        })
+        .map_err(|e| e.to_string())
+    }
 }

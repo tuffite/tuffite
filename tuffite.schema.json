@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tuffite.org/schema/v2/tuffite.schema.json",
+  "title": "Tuffite development and build configuration v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "app",
+    "build"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "app": {
+      "$ref": "#/$defs/app"
+    },
+    "build": {
+      "$ref": "#/$defs/build"
+    },
+    "bundle": {
+      "$ref": "#/$defs/bundle"
+    },
+    "productName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Application display name and default bundle name. Defaults to the Cargo package name. Use a portable filename (up to 128 UTF-8 bytes); spaces and Unicode are supported."
+    }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identifier"
+      ],
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "framework": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "releaseTag": {
+              "type": "string",
+              "minLength": 1
+            },
+            "repository": {
+              "type": "string",
+              "pattern": "^[^/]+/[^/]+$"
+            }
+          }
+        },
+        "devPackage": {
+          "type": "string"
+        },
+        "devUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "beforeDevCommand": {
+          "$ref": "#/$defs/command",
+          "description": "Start the long-running web server once per dev session, after initial package preparation. Not run by --prepare-only."
+        },
+        "beforeBuildCommand": {
+          "$ref": "#/$defs/command",
+          "description": "Run once before Cargo in tuff build and production tuff package. Not run during tuff dev rebuilds."
+        },
+        "devtoolsPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "profile": {
+          "type": "string"
+        },
+        "mojomSources": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "beforePackageCommand": {
+          "$ref": "#/$defs/command",
+          "description": "Run after Cargo succeeds and before collecting resources in production packaging and each development package preparation, including --prepare-only. Not run by tuff build."
+        }
+      },
+      "required": [
+        "mojomSources"
+      ]
+    },
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "executable": {
+          "type": "string"
+        },
+        "resources": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "icons": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "macos": {
+              "type": "string",
+              "description": "Project-relative .icns icon; defaults to Tuffite."
+            },
+            "windows": {
+              "type": "string",
+              "description": "Project-relative .ico icon; defaults to Tuffite."
+            }
+          }
+        }
+      }
+    },
+    "command": {
+      "description": "Shell script, or a script with a working directory relative to the application manifest. Finite build/package commands must exit successfully.",
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "script"
+          ],
+          "properties": {
+            "script": {
+              "type": "string",
+              "pattern": "\\S"
+            },
+            "cwd": {
+              "type": "string",
+              "description": "Working directory resolved relative to the application manifest directory."
+            }
+          }
+        }
+      ]
+    }
+  },
+  "description": "Development, build and packaging settings. Declare runtime behavior in Rust Application::setup and Browser::setup."
+}

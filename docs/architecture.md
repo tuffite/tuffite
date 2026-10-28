@@ -224,83 +224,45 @@ one bounded V8 isolate per session; see
 
 ## 8. Application model
 
-The logical application main explicitly assembles process definitions:
-
-```text
-#[tuffite::main(browser = B, utilities(U1, U2))]
-└── tuffite::app::Builder<B>
-    ├── selected browser metadata from #[tuffite::browser]
-    ├── commands for B
-    ├── before_startup hook with process_kind and argv
-    └── named utility metadata from #[tuffite::utility]
-        └── tuffite_get_application(): immutable ABI table
-```
-
-There is no safe Rust Application trait or setup registration handle.
-The definition factory runs once in each process loading the business library;
-it must only assemble definitions. Browser startup creates `Browser` state,
-and utility startup creates only the selected `Utility` instance. Their
-states and globals live in independent address spaces.
+`#[tuffite::main]` exports a native embedding factory. The factory only selects
+implementation types; it does not configure a process or construct business state.
 
 ```rust
-use tuffite::{Browser, BrowserContext, ApplicationResult, CommandError};
-
-struct ProjectBrowser;
-
-#[tuffite::browser]
-impl Browser for ProjectBrowser {
-    fn new(context: BrowserContext) -> ApplicationResult<Self> {
-        let _manifest = context.configuration();
-        Ok(Self)
-    }
-}
-
-#[tuffite::command(shell_api::project::Open)]
-fn open_project(browser: &mut ProjectBrowser, path: String)
-    -> Result<(), CommandError> {
-    Ok(())
-}
-
-#[tuffite::main(browser = ProjectBrowser)]
-fn main() -> tuffite::app::Builder<ProjectBrowser> {
-    tuffite::app::Builder::new()
-        .commands(tuffite::generate_handler![open_project])
-        .before_startup(|launch| {
-            launch.argv_mut().retain(|arg| arg != "--business-debug");
-            Ok(())
-        })
+#[tuffite::main]
+fn main() -> tuffite::Embedding<App> {
+    tuffite::Embedding::new()
+        .browser::<Profile>()
+        .v8_utility::<Parser>()
 }
 ```
 
-Application crates emit a business runtime `cdylib`. The native launcher owns
-the OS main, loads the library and validates its ABI table. ABI 0.1.0 adds an
-optional startup hook for every process role before ContentMain. It exposes
-process_kind and argv; changing the executable or process role is rejected. Sandbox initialization
-remains native-owned. See the [ABI lifecycle guide](../crates/tuffite-abi/README.md).
+The generated `tuffite_get_application` caches and freezes the ABI registration
+per loaded library. `Application` has no associated Browser type: the embedding
+selects it. Process preparation later invokes `Application::setup(app::Builder<Self>)`
+with the native argv and fixed process role, before Chromium `ContentMain`.
+`builder.startup()` exposes the effective input and `builder.argv_mut()` submits
+changes; executable and process-role changes are rejected. `Startup::default()`
+is a snapshot, not an authority to create native contexts. Service builders see
+the effective snapshot after process setup.
 
-`BrowserContext` provides the validated manifest and trusted native capabilities.
-Generated commands take mutable browser state and execute serially on a Rust
-worker. Without a generated table, `app::Builder` uses `Browser::dispatch`.
-Rust utility declarations use `#[tuffite::utility(name = "stable_name")]` on a
-concrete Utility impl; only types listed in the main macro are exported.
+Application and Browser implementations register their own typed `.interfaces(...)`
+groups. Browser setup first runs without a profile to collect static metadata and
+native policy. It runs again with `builder.profile_id()` when a profile is created;
+interface descriptors and native denials must match the frozen definitions. No
+profile is opened merely to collect routes. Duplicate or cross-scope ownership,
+including Utility conflicts, fails before business dispatch.
 
-JavaScript uses a native V8 backend declared with `utility::V8` and the same
-`#[tuffite::utility(name = "parser")]` attribute. `V8::setup(builder)` selects a relative entry or HTTPS/file URL through `builder.entry(...)`; the Framework default is `entry.mjs`. `V8::resolve(request)`
-returns Result<Option<ModuleSource>, Error> on supervised Browser workers.
-Some overrides resources; None (the default) falls back to app.assets; Err
-fails creation. Relative paths use the app scheme and a service.utility host.
-Native asynchronously requests static imports over Mojo through ABI 0.1.0,
-caches compiled modules per session, then links synchronously. Both Rust and
-V8 types are listed in main. Browser opens the named entry through
-`context.utilities().create_v8(...)`, and the utility process selects its backend
-using `Application.utility_runtime(name)` before session creation.
+Rust Utility declarations use `Utility::setup` and typed Builder registration and are
+selected with `Embedding::utility::<T>()`. The child enters the same process setup,
+then Chromium UtilityMain. Only a subsequent Mojo `Start(name, configuration)`
+selects a service and invokes `Utility::setup -> new(context).await -> Ready`.
+Utility setup can inspect startup and service name but cannot edit argv already
+consumed by Chromium. Session init is independent from service configuration.
 
-`.before_startup` runs for every process role before Chromium ContentMain, after
-OS process creation. Native supplies read-only `ProcessKind` and editable argv,
-and rejects executable or role changes. The utility service name is selected
-later by Mojo Start(name). The browser-only hook remains a fallback when the
-process hook is absent.
-
+V8 setup/new constructs a Browser-side resource provider; actual JS sessions run
+in the supervised Utility child. Neither Utility nor V8 constructs Application
+or profile backends. See [embedding](embedding.md), [profiles](profiles.md), and
+[the ABI lifecycle guide](../crates/tuffite-abi/README.md).
 
 ## 9. WebContents roles
 
@@ -318,7 +280,7 @@ ShellAPI authorization requires a live primary document identity, an allowed
 committed origin, and a declared capability. The browser enforces this for each
 outer or Explorer `WebContents`; renderer-side injection is only an early
 visibility filter. No entry grant is implicit. Each origin needs a matching
-`app.security.capabilities` rule for the requested operation.
+`browser.rules` rule for the requested operation.
 
 ## 10. Application resources
 
@@ -349,7 +311,7 @@ silently replaced by ShellAPI.
 Top-level windows are browser-owned objects addressed by opaque process-local
 IDs. The `window.tuffite.window` facade is generated from the same builtin
 TypeScript contract as networking and utility calls, and every operation is
-checked against `app.security.capabilities[].shellApi`. An authorized Explorer resolves to its
+checked against `browser.rules[].shellApi`. An authorized Explorer resolves to its
 outermost application window when an ID is omitted. See
 [Window management](window-management.md).
 
@@ -365,7 +327,7 @@ crates/
   tuffite-abi/               internal C ABI bindings
 src/tuffite/                 Chromium-side customization root
   framework/
-    abi.h
+    public/                 flat C ABI headers
     explorer/               browser host, Mojo contract, and tests
     shell_api/              browser host, renderer binding, and Mojo contract
     utility/                host, client, service, and Mojo contract
@@ -416,12 +378,34 @@ Its GN arg is `tuffite_in_chromium`. Explorer is compiled as part of that
 integration and exposed per application through the `TuffiteExplorer` Blink
 runtime feature plus manifest origin policy.
 
+### Manifest and Rust configuration responsibilities
+
+Source `tuffite.json` contains identity/display metadata, development/build inputs,
+and `bundle.resources`, the explicit project-relative file inventory. It contains
+no runtime policy. `build::Builder` only resolves the Framework and generates
+bindings; it does not execute or export application configuration.
+
+Rust `Application::setup` supplies typed `app::Configuration`: schemes, URL resource
+maps, network settings, startup windows, isolated-world entries and origin policy.
+Resource maps reference paths in `bundle.resources`; packaging never executes the
+target application to discover those paths, including for cross-compilation.
+Missing mapped files are diagnosed by native loading. Runtime declarations are
+validated and enforced natively before documents and business IPC.
+
+After process preparation, native startup queries a bounded library-lifetime
+configuration callback and merges its declarations with generated package identity
+and ShellAPI command IDs. The package's `tuffite.json` is generated metadata, not
+a second runtime declaration source. Isolated policy tests may use a dedicated
+fixture and explicitly select `--tuffite-runtime-snapshot`; this diagnostic switch
+is only accepted by development Framework builds.
+
 ### Utility contexts and state ownership
 
-`Utility::new(UtilityContext)` constructs service state in the child. Only the
-selected `app.utilities.<name>.configuration` JSON crosses Mojo/ABI 0.1.0 (64 KiB
-maximum); request payloads and session init remain separate. Context clones own
-the configuration and observe service stopping. Restart reconstructs child state.
+`Utility::setup(builder)` sets service-local startup data in the child before
+`Utility::new(UtilityContext)` constructs state. Setup starts with empty bytes;
+its frozen result is limited to 64 KiB. Request payloads and session init remain
+separate. Context clones own the data and observe stopping. Restart reruns setup
+and reconstructs child state. The manifest has no utility configuration map.
 
 `V8::new(V8Context)` constructs one Browser-side resource provider lazily per
 name per Browser runtime. `setup(builder)` configures and freezes its entry before construction.
@@ -440,6 +424,10 @@ Implementations may use `async fn`; boxed futures and object-safe adapters are
 runtime internals. No separate lifecycle trait or public LifecycleFuture exists.
 Async hooks do not install an ambient Tokio runtime or a JS event loop; applications
 using runtime-specific I/O must own and schedule work on that runtime.
+
+Application bootstrap is `ABI embedding -> process setup -> frozen runtime declarations -> native startup ->
+new(ApplicationContext) -> initialize`. Profile creation then follows the Browser
+lifecycle below.
 
 Browser startup is `setup -> new -> native BrowserContext/task-runner binding ->
 initialize -> startup windows/business dispatch`. `new` constructs state but
@@ -490,14 +478,14 @@ ManifestServiceFactory::Create(configuration) -> read-only ManifestService
 The factory accepts no development URL or feature-specific policy parameters.
 Loader owns file I/O and schema validation; assembler owns development aliases and
 host restrictions. The immutable effective snapshot owns its values independently
-of caller options and package files. Original package bytes remain available to
-Rust unchanged; native queries use compiled effective window and policy data.
+of caller options and package files. The merged declaration bytes remain available to Rust; native queries use
+compiled effective window and policy data.
 See [Manifest ownership](../framework/app/services/README.md#manifest-ownership-and-browser-policy).
 
 ### Owned setup builders
 
-Browser, Rust Utility, and V8 providers receive an owned builder and return
-`ApplicationResult<Builder>` from their static synchronous `setup` hook. Framework
+Application, Browser, Rust Utility, and V8 providers receive an owned builder and return
+`Result<Builder>` from their static synchronous `setup` hook. Framework
 defaults are installed before the hook; Rust Utility and V8 builders also contain
 the selected manifest service configuration. Applications can compose setup
 functions by passing builder ownership. Framework validates the returned options

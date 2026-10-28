@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+  <title>Profile composition lab</title>
+  <link rel="stylesheet" href="/src/styles.css">
+  <script type="module" src="/src/profiles.js"></script>
+</head>
+<body><main>
+  <p><a href="./index.html">Capability lab</a></p>
+  <h1>Profiles in one window</h1>
+  <p>The native window stays open. Each profile has its own browsing data and Rust backend.</p>
+  <section class="card">
+    <h2>Current content</h2>
+    <pre id="identity">Loading…</pre>
+    <label>Saved value <input id="saved-value" aria-label="Saved value"></label>
+    <button id="save-value">Save in this profile</button>
+    <button id="increment">Increment profile counter</button>
+    <output id="counter">0</output>
+  </section>
+  <section class="card">
+    <h2>Available profiles</h2>
+    <div id="profiles"></div>
+    <button id="create-profile">Create work profile</button>
+    <p id="status" role="status"></p>
+  </section>
+</main></body>
+</html>

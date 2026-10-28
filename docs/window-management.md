@@ -57,7 +57,7 @@ later UI task.
 
 ## Manifest policy
 
-Window methods are granted by `app.security.capabilities[].shellApi` for the
+Window methods are granted by `browser.rules[].shellApi` for the
 caller's committed origin. Target methods default to the current window; use
 `allow: [{ "window": "others" }]` or `allow: [{ "window": "*" }]` to extend
 that scope. Explicit deny scopes override matching allows. Creating a window
@@ -80,31 +80,31 @@ No configurable maximum window count is exposed.
         "maxWidth": 1920,
         "maxHeight": 1200
       }
-    ],
-    "security": {
-      "capabilities": [
-        {
-          "identifier": "app-shell",
-          "origins": [
-            "demo://main"
-          ],
-          "shellApi": [
-            "tuffite.window.current",
-            "tuffite.window.list",
-            "tuffite.window.create",
-            "tuffite.window.getBounds",
-            "tuffite.window.focus",
-            "tuffite.window.minimize",
-            "tuffite.window.maximize",
-            "tuffite.window.restore",
-            "tuffite.window.setFullscreen",
-            "tuffite.window.close",
-            "tuffite.window.setTitle",
-            "tuffite.window.setBounds"
-          ]
-        }
-      ]
-    }
+    ]
+  },
+  "browser": {
+    "rules": [
+      {
+        "identifier": "app-shell",
+        "origins": [
+          "demo://main"
+        ],
+        "shellApi": [
+          "tuffite.window.current",
+          "tuffite.window.list",
+          "tuffite.window.create",
+          "tuffite.window.getBounds",
+          "tuffite.window.focus",
+          "tuffite.window.minimize",
+          "tuffite.window.maximize",
+          "tuffite.window.restore",
+          "tuffite.window.setFullscreen",
+          "tuffite.window.close",
+          "tuffite.window.setTitle",
+          "tuffite.window.setBounds"
+        ]
+      }
+    ]
   }
 }
 ```

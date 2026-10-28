@@ -78,7 +78,9 @@ unsafe impl Sync for NativeHost {}
 
 /// Copies only our known prefix after size/version validation. Provider pointers
 /// must be aligned, readable, immutable and valid through application stop.
-unsafe fn read_capability<T: Copy>(table: *const tuffite_abi::Header) -> Result<T, Status> {
+pub(crate) unsafe fn read_capability<T: Copy>(
+    table: *const tuffite_abi::Header,
+) -> Result<T, Status> {
     if table.is_null() {
         return Err(Status::InvalidArgument);
     }
@@ -123,7 +125,6 @@ unsafe fn discover_capabilities(
 ) -> Result<
     (
         tuffite_abi::UtilitySessionClient,
-        Option<tuffite_abi::ShellApi>,
         Option<tuffite_abi::Isolated>,
     ),
     Status,
@@ -133,7 +134,6 @@ unsafe fn discover_capabilities(
         unsafe { require_utility_interfaces(host) }?;
     }
     let mut session = tuffite_abi::UtilitySessionClient::default();
-    let mut shell_api = None;
     let mut isolated = None;
     if let Some(query) = host.query_extension {
         // SAFETY: Host supplies a valid thread-safe query and lifetime contract.
@@ -143,34 +143,19 @@ unsafe fn discover_capabilities(
             // SAFETY: Optional independently headed table obeys the query contract.
             isolated = Some(unsafe { read_capability(isolated_table) }?);
         }
-        // SAFETY: Browser table follows the same provider contract.
-        let table = unsafe { query(host.user_data, tuffite_abi::Capability::Browser as u32) };
+        // SAFETY: Each capability exposes its independently headed table.
+        let table = unsafe {
+            query(
+                host.user_data,
+                tuffite_abi::Capability::UtilitySession as u32,
+            )
+        };
         if !table.is_null() {
             // SAFETY: Query guarantees a readable independently headed prefix.
-            let browser: tuffite_abi::BrowserHost = unsafe { read_capability(table) }?;
-            if !browser
-                .header
-                .version
-                .is_compatible_with(tuffite_abi::Version::BASELINE)
-            {
-                return Err(Status::IncompatibleAbi);
-            }
-            if !browser.utility.is_null() {
-                // SAFETY: Browser supplies the borrowed-table lifetime contract.
-                let utility: tuffite_abi::Utility =
-                    unsafe { read_capability(browser.utility.cast()) }?;
-                if !utility.session.is_null() {
-                    // SAFETY: Utility supplies the same borrowed-table contract.
-                    session = unsafe { read_capability(utility.session.cast()) }?;
-                }
-            }
-            if !browser.shell_api.is_null() {
-                // SAFETY: Browser supplies the same borrowed-table contract.
-                shell_api = Some(unsafe { read_capability(browser.shell_api.cast()) }?);
-            }
+            session = unsafe { read_capability(table) }?;
         }
     }
-    Ok((session, shell_api, isolated))
+    Ok((session, isolated))
 }
 
 fn abandon_browser(providers: &crate::utility::V8Providers, executor: &ChromiumExecutor) {
@@ -182,9 +167,10 @@ fn abandon_browser(providers: &crate::utility::V8Providers, executor: &ChromiumE
 }
 
 struct RuntimeInstance {
+    context: BrowserContext,
     runtime: Runtime,
     providers: Arc<crate::utility::V8Providers>,
-    app_scheme: Option<String>,
+    app_schemes: Option<Vec<String>>,
     callbacks: NativeHost,
     runtime_identity: Arc<AtomicU64>,
     scheduler: DispatchScheduler,
@@ -195,6 +181,18 @@ struct RuntimeInstance {
 
 type RuntimeHandle = Handle<RuntimeTag>;
 type RuntimeTable = HandleTable<RuntimeInstance, RuntimeTag>;
+
+pub(crate) fn context_for_runtime(raw: u64) -> Result<BrowserContext, Status> {
+    let handle = parse_runtime_handle(raw)?;
+    let table = runtimes()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let instance = table.get(handle).map_err(map_handle_error)?;
+    if instance.stop.is_stopping() {
+        return Err(Status::InvalidState);
+    }
+    Ok(instance.context.clone())
+}
 
 fn runtimes() -> &'static Mutex<RuntimeTable> {
     static RUNTIMES: OnceLock<Mutex<RuntimeTable>> = OnceLock::new();
@@ -248,6 +246,18 @@ pub unsafe extern "C" fn start_browser<B: Browser>(
     config_len: usize,
     runtime_out: *mut FfiHandle,
 ) -> Status {
+    // SAFETY: The same startup contract is forwarded unchanged.
+    unsafe { start_context::<B>(host, config, config_len, runtime_out, None) }
+}
+
+#[allow(clippy::too_many_lines)] // One startup transaction keeps all rollback paths together.
+pub(crate) unsafe fn start_context<B: Browser>(
+    host: *const Host,
+    config: *const u8,
+    config_len: usize,
+    runtime_out: *mut FfiHandle,
+    parent: Option<(crate::ApplicationContext, crate::ProfileId)>,
+) -> Status {
     ffi_guard(|| {
         if host.is_null() || runtime_out.is_null() {
             return Status::InvalidArgument;
@@ -280,21 +290,26 @@ pub unsafe extern "C" fn start_browser<B: Browser>(
             Err(status) => return status,
         };
         // SAFETY: Host and its capability tables satisfy the startup contract.
-        let (session, shell_api, isolated) = match unsafe { discover_capabilities(&host) } {
+        let (session, isolated) = match unsafe { discover_capabilities(&host) } {
             Ok(capabilities) => capabilities,
             Err(status) => return status,
         };
         let callbacks = NativeHost(host);
         let runtime_identity = Arc::new(AtomicU64::new(0));
-        let app_scheme = crate::utility::v8::app_scheme(&config);
-        let context = BrowserContext::new(
+        let app_schemes = crate::utility::v8::app_schemes(&config);
+        let mut context = BrowserContext::new(
             config,
             Arc::clone(&runtime_identity),
             callbacks,
             session,
-            shell_api,
             isolated,
         );
+        if let Some((application, profile)) = parent {
+            context.application = Some(application);
+            context.profile_id = Some(profile);
+        }
+        let retained_context = context.clone();
+        let context_identity = context.context_identity.clone();
         let executor = context.executor();
         let providers = context.providers();
         let stop = context.stop_signal();
@@ -317,9 +332,10 @@ pub unsafe extern "C" fn start_browser<B: Browser>(
         let scheduler =
             DispatchScheduler::start(&runtime_identity, browser, callbacks, stop.clone());
         let instance = RuntimeInstance {
+            context: retained_context,
             runtime: Runtime::new(),
             providers,
-            app_scheme,
+            app_schemes,
             callbacks,
             runtime_identity: Arc::clone(&runtime_identity),
             scheduler,
@@ -337,6 +353,7 @@ pub unsafe extern "C" fn start_browser<B: Browser>(
         // Publish the handle so the scheduler worker can post responses. All
         // enqueue calls have to happen after this point.
         runtime_identity.store(handle.raw().as_u64(), Ordering::Release);
+        context_identity.store(handle.raw().as_u64(), Ordering::Release);
         let status = post_event(callbacks, handle, RuntimeEventKind::Started, &[]);
         if status != Status::Ok {
             // Extract under the handle-table lock; never join workers while
@@ -571,7 +588,13 @@ pub unsafe extern "C" fn resolve_v8(
         let Ok(instance) = table.get(handle) else {
             return Status::InvalidHandle;
         };
-        if crate::utility::v8::validate_url(name, url, instance.app_scheme.as_deref()).is_err() {
+        if crate::utility::v8::validate_application_url(
+            name,
+            url,
+            instance.app_schemes.as_deref().unwrap_or_default(),
+        )
+        .is_err()
+        {
             return Status::InvalidArgument;
         }
         if session_id == 0 {
@@ -646,6 +669,13 @@ fn stop_instance(instance: RuntimeInstance, handle: RuntimeHandle) -> Status {
 }
 
 fn finish_stop(mut instance: RuntimeInstance, handle: RuntimeHandle) -> Status {
+    // Exclude external-thread submissions before native callback tables can be
+    // retired. Client futures never retain this lock while waiting for replies.
+    *instance
+        .context
+        .native_calls
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = false;
     // Publish lifecycle control before waiting for application work. The
     // Framework can immediately reject new/pending requests even when a
     // business handler is slow. Clearing the worker-visible identity then
@@ -749,14 +779,14 @@ mod tests {
         struct Configured;
         impl Browser for Configured {
             fn setup(
-                builder: crate::browser::Builder,
-            ) -> crate::ApplicationResult<crate::browser::Builder> {
-                fn common(builder: crate::browser::Builder) -> crate::browser::Builder {
+                builder: crate::browser::Builder<Self>,
+            ) -> crate::Result<crate::browser::Builder<Self>> {
+                fn common<B>(builder: crate::browser::Builder<B>) -> crate::browser::Builder<B> {
                     builder.disable_devtools_for_origin("myapp://main")
                 }
                 Ok(common(builder).disable_devtools_for_origin("https://private.example.com"))
             }
-            fn new(_: BrowserContext) -> crate::ApplicationResult<Self> {
+            fn new(_: BrowserContext) -> crate::Result<Self> {
                 panic!("setup must not construct Browser state")
             }
         }
@@ -781,12 +811,12 @@ mod tests {
         struct Rejected;
         impl Browser for Rejected {
             fn setup(
-                builder: crate::browser::Builder,
-            ) -> crate::ApplicationResult<crate::browser::Builder> {
+                builder: crate::browser::Builder<Self>,
+            ) -> crate::Result<crate::browser::Builder<Self>> {
                 let _builder = builder.disable_devtools_for_origin("myapp://main");
-                Err(crate::ApplicationError::new("setup rejected"))
+                Err(crate::Error::new("setup rejected"))
             }
-            fn new(_: BrowserContext) -> crate::ApplicationResult<Self> {
+            fn new(_: BrowserContext) -> crate::Result<Self> {
                 unreachable!()
             }
         }
@@ -809,7 +839,7 @@ mod tests {
     }
 
     impl Browser for TestBrowser {
-        fn new(context: BrowserContext) -> crate::ApplicationResult<Self> {
+        fn new(context: BrowserContext) -> crate::Result<Self> {
             Ok(Self {
                 configuration: context.configuration().to_vec(),
                 dispatch_count: 0,
@@ -824,10 +854,7 @@ mod tests {
             Ok(response)
         }
 
-        async fn shutdown(
-            &mut self,
-            _context: crate::ShutdownContext,
-        ) -> crate::ApplicationResult<()> {
+        async fn shutdown(&mut self, _context: crate::ShutdownContext) -> crate::Result<()> {
             SHUTDOWN_CALLED.store(true, Ordering::Release);
             Ok(())
         }
@@ -917,6 +944,143 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)] // Exercise one complete parent/two-profile lifecycle.
+    fn application_and_profile_runtimes_keep_state_and_generations_separate() {
+        struct App;
+        struct Profile;
+        impl crate::Application for App {
+            fn setup(
+                builder: crate::app::Builder<Self>,
+            ) -> crate::Result<crate::app::Builder<Self>> {
+                Ok(builder.configuration(crate::app::Configuration::new(["test"])))
+            }
+            fn new(context: crate::ApplicationContext) -> crate::Result<Self> {
+                context.set_state(Arc::new(String::from("shared application")));
+                Ok(Self)
+            }
+        }
+        impl Browser for Profile {
+            fn new(context: BrowserContext) -> crate::Result<Self> {
+                assert_eq!(
+                    &**context.application().unwrap().state::<String>().unwrap(),
+                    "shared application"
+                );
+                assert!(context.profile_id().is_some());
+                assert!(context.state::<String>().is_none());
+                context.set_state(Arc::new(AtomicU64::new(0)));
+                Ok(Self)
+            }
+        }
+        unsafe extern "C" fn query_contexts(
+            data: *mut c_void,
+            id: u32,
+        ) -> *const tuffite_abi::Header {
+            if id == tuffite_abi::TUFFITE_CAPABILITY_CONTEXTS {
+                data.cast()
+            } else {
+                ptr::null()
+            }
+        }
+        unsafe extern "C" fn unavailable(
+            _: *mut c_void,
+            _: ByteSlice,
+            _: *mut c_void,
+            _: Option<tuffite_abi::UtilityReplyFn>,
+        ) -> Status {
+            Status::InvalidState
+        }
+        let mut capability = tuffite_abi::Contexts {
+            header: tuffite_abi::Header::for_type::<tuffite_abi::Contexts>(),
+            user_data: ptr::null_mut(),
+            apply: Some(unavailable),
+        };
+        let host = Host {
+            post_event: Some(quiet),
+            user_data: ptr::from_mut(&mut capability).cast(),
+            query_extension: Some(query_contexts),
+            ..host()
+        };
+        crate::embedding::prepare_for_test::<App, Profile>();
+        let mut parent = 0;
+        assert_eq!(
+            unsafe {
+                start_browser::<crate::embedding::ApplicationBackend<App, Profile>>(
+                    &raw const host,
+                    ptr::null(),
+                    0,
+                    &raw mut parent,
+                )
+            },
+            Status::Ok
+        );
+        initialize_and_wait(parent);
+        let open = |id: &str| {
+            let mut runtime = 0;
+            assert_eq!(
+                unsafe {
+                    crate::embedding::start_profile::<App, Profile>(
+                        parent,
+                        &raw const host,
+                        ByteSlice::from_slice(&[]),
+                        ByteSlice::from_slice(id.as_bytes()),
+                        &raw mut runtime,
+                    )
+                },
+                Status::Ok
+            );
+            initialize_and_wait(runtime);
+            runtime
+        };
+        let a = open("personal");
+        let b = open("work");
+        let context_a = context_for_runtime(a).unwrap();
+        let context_b = context_for_runtime(b).unwrap();
+        context_a
+            .state::<AtomicU64>()
+            .unwrap()
+            .store(42, Ordering::Release);
+        assert_eq!(
+            context_b
+                .state::<AtomicU64>()
+                .unwrap()
+                .load(Ordering::Acquire),
+            0
+        );
+        assert_eq!(stop_browser(a), Status::Ok);
+        assert!(context_a.stop_signal().is_stopping());
+        assert_eq!(context_a.handle().unwrap().as_u64(), a);
+        assert!(context_for_runtime(a).is_err());
+        assert!(!context_b.stop_signal().is_stopping());
+        let reopened = open("personal");
+        assert_ne!(reopened, a);
+        assert_eq!(
+            context_for_runtime(reopened)
+                .unwrap()
+                .state::<AtomicU64>()
+                .unwrap()
+                .load(Ordering::Acquire),
+            0
+        );
+        let mut invalid = 123;
+        assert_eq!(
+            unsafe {
+                crate::embedding::start_profile::<App, Profile>(
+                    b,
+                    &raw const host,
+                    ByteSlice::from_slice(&[]),
+                    ByteSlice::from_slice(b"nested"),
+                    &raw mut invalid,
+                )
+            },
+            Status::InvalidArgument
+        );
+        assert_eq!(invalid, 0);
+        assert_eq!(stop_browser(b), Status::Ok);
+        assert_eq!(stop_browser(reopened), Status::Ok);
+        assert_eq!(stop_browser(parent), Status::Ok);
+    }
+
+    #[test]
     fn failed_initialization_rejects_dispatch_and_cleanup_keeps_executor_alive() {
         static CLEANED: AtomicBool = AtomicBool::new(false);
         struct FailingBrowser {
@@ -924,13 +1088,13 @@ mod tests {
             created_on: std::thread::ThreadId,
         }
         impl Browser for FailingBrowser {
-            fn new(context: BrowserContext) -> crate::ApplicationResult<Self> {
+            fn new(context: BrowserContext) -> crate::Result<Self> {
                 Ok(Self {
                     context,
                     created_on: std::thread::current().id(),
                 })
             }
-            async fn initialize(&mut self) -> crate::ApplicationResult<()> {
+            async fn initialize(&mut self) -> crate::Result<()> {
                 // Exercise a future that yields, rather than a synchronous error.
                 let mut yielded = false;
                 std::future::poll_fn(|cx| {
@@ -943,12 +1107,9 @@ mod tests {
                     }
                 })
                 .await;
-                Err(crate::ApplicationError::new("fixture startup failure"))
+                Err(crate::Error::new("fixture startup failure"))
             }
-            async fn shutdown(
-                &mut self,
-                shutdown: crate::ShutdownContext,
-            ) -> crate::ApplicationResult<()> {
+            async fn shutdown(&mut self, shutdown: crate::ShutdownContext) -> crate::Result<()> {
                 assert_ne!(std::thread::current().id(), self.created_on);
                 assert_eq!(
                     shutdown.reason(),
@@ -1013,14 +1174,14 @@ mod tests {
     fn capability_validation_accepts_newer_prefix_and_rejects_malformed_tables() {
         #[repr(C)]
         struct Extended {
-            table: tuffite_abi::ShellApi,
+            table: tuffite_abi::Isolated,
             optional_tail: usize,
         }
         let mut provider = Extended {
-            table: tuffite_abi::ShellApi {
+            table: tuffite_abi::Isolated {
                 header: tuffite_abi::Header::for_type::<Extended>(),
                 user_data: ptr::null_mut(),
-                invoke: None,
+                apply: None,
             },
             optional_tail: 42,
         };
@@ -1028,13 +1189,13 @@ mod tests {
         table.header.version.minor += 1;
         // SAFETY: The known prefix is readable; unknown tail bytes are never read.
         assert!(
-            unsafe { read_capability::<tuffite_abi::ShellApi>(ptr::from_ref(&table.header)) }
+            unsafe { read_capability::<tuffite_abi::Isolated>(ptr::from_ref(&table.header)) }
                 .is_ok()
         );
         table.header.version.major += 1;
         // SAFETY: Test owns the complete aligned table.
         assert_eq!(
-            unsafe { read_capability::<tuffite_abi::ShellApi>(ptr::from_ref(&table.header)) }
+            unsafe { read_capability::<tuffite_abi::Isolated>(ptr::from_ref(&table.header)) }
                 .unwrap_err(),
             Status::IncompatibleAbi
         );
@@ -1042,7 +1203,7 @@ mod tests {
         table.header.reserved = 1;
         // SAFETY: Test owns the complete aligned table.
         assert_eq!(
-            unsafe { read_capability::<tuffite_abi::ShellApi>(ptr::from_ref(&table.header)) }
+            unsafe { read_capability::<tuffite_abi::Isolated>(ptr::from_ref(&table.header)) }
                 .unwrap_err(),
             Status::InvalidArgument
         );
@@ -1050,7 +1211,7 @@ mod tests {
         // SAFETY: The readable size prefix declares no further fields. Validation
         // must reject before reading a Header or capability body.
         assert_eq!(
-            unsafe { read_capability::<tuffite_abi::ShellApi>(ptr::from_ref(&size_prefix).cast()) }
+            unsafe { read_capability::<tuffite_abi::Isolated>(ptr::from_ref(&size_prefix).cast()) }
                 .unwrap_err(),
             Status::IncompatibleAbi
         );
@@ -1099,17 +1260,10 @@ mod tests {
     }
 
     #[test]
-    fn capability_discovery_handles_absence_nested_tables_and_independent_contexts() {
-        struct Tables {
-            browser: tuffite_abi::BrowserHost,
-            utility: tuffite_abi::Utility,
-            shell_api: tuffite_abi::ShellApi,
-        }
+    fn capability_discovery_reads_direct_session_tables_and_independent_contexts() {
         unsafe extern "C" fn query(context: *mut c_void, id: u32) -> *const tuffite_abi::Header {
-            // SAFETY: The test retains the provider tables throughout discovery.
-            let tables = unsafe { &*context.cast::<Tables>() };
-            if id == tuffite_abi::Capability::Browser as u32 {
-                ptr::from_ref(&tables.browser.header)
+            if id == tuffite_abi::Capability::UtilitySession as u32 {
+                context.cast()
             } else {
                 ptr::null()
             }
@@ -1118,79 +1272,37 @@ mod tests {
             ptr::null()
         }
         let mut host = host();
-        // SAFETY: No capability callback; no provider memory is accessed.
-        let (client, shell_api, _) = unsafe { discover_capabilities(&host) }.unwrap();
+        // SAFETY: No query callback means no provider memory is accessed.
+        let (client, _) = unsafe { discover_capabilities(&host) }.unwrap();
         assert!(client.create.is_none());
-        assert!(shell_api.is_none());
         host.query_extension = Some(unsupported);
-        // SAFETY: Query returns null without accessing caller memory.
-        let (client, shell_api, _) = unsafe { discover_capabilities(&host) }.unwrap();
-        assert!(client.send.is_none());
-        assert!(shell_api.is_none());
-        let mut client_context = 0_u8;
-        let mut shell_api_context = 0_u8;
-        let mut client = tuffite_abi::UtilitySessionClient {
-            user_data: ptr::from_mut(&mut client_context).cast(),
-            ..Default::default()
-        };
-        let mut tables = Tables {
-            browser: tuffite_abi::BrowserHost {
-                header: tuffite_abi::Header::for_type::<tuffite_abi::BrowserHost>(),
-                shell_api: ptr::null(),
-                utility: ptr::null(),
-            },
-            utility: tuffite_abi::Utility {
-                header: tuffite_abi::Header::for_type::<tuffite_abi::Utility>(),
-                session: ptr::from_ref(&client),
-            },
-            shell_api: tuffite_abi::ShellApi {
-                header: tuffite_abi::Header::for_type::<tuffite_abi::ShellApi>(),
-                user_data: ptr::from_mut(&mut shell_api_context).cast(),
-                invoke: None,
-            },
-        };
-        tables.browser.utility = ptr::from_ref(&tables.utility);
-        tables.browser.shell_api = ptr::from_ref(&tables.shell_api);
-        host.user_data = ptr::from_mut(&mut tables).cast();
-        host.query_extension = Some(query);
-        // SAFETY: Provider, nested table and both contexts remain alive.
-        let (snapshot, shell_api, _) = unsafe { discover_capabilities(&host) }.unwrap();
-        assert_eq!(snapshot.user_data, client.user_data);
-        assert_eq!(shell_api.unwrap().user_data, tables.shell_api.user_data);
-        tables.browser.header.version.major = tuffite_abi::Version::BASELINE.major.wrapping_add(1);
-        // SAFETY: Valid table memory advertises an incompatible major version.
-        assert!(matches!(
-            unsafe { discover_capabilities(&host) },
-            Err(Status::IncompatibleAbi)
-        ));
-        tables.browser.header.version = tuffite_abi::Version::CURRENT;
-        tables.browser.header.struct_size = mem::size_of::<usize>();
-        // SAFETY: Readable size prefix is intentionally too short.
-        assert!(matches!(
-            unsafe { discover_capabilities(&host) },
-            Err(Status::IncompatibleAbi)
-        ));
-        tables.browser.header = tuffite_abi::Header::for_type::<tuffite_abi::BrowserHost>();
-        tables.browser.shell_api = ptr::null();
-        tables.browser.utility = ptr::null();
-        // SAFETY: Both independently optional child tables are absent.
-        let (snapshot, shell_api, _) = unsafe { discover_capabilities(&host) }.unwrap();
-        assert!(snapshot.create.is_none());
-        assert!(shell_api.is_none());
-        tables.browser.shell_api = ptr::from_ref(&tables.shell_api);
-        tables.browser.utility = ptr::from_ref(&tables.utility);
-        tables.utility.session = ptr::null();
-        // SAFETY: Missing optional session is explicitly supported.
+        // SAFETY: Unsupported queries return null without reading provider state.
         assert!(
             unsafe { discover_capabilities(&host) }
                 .unwrap()
                 .0
-                .create
+                .send
                 .is_none()
         );
+        let mut client_context = 0_u8;
+        let mut client = tuffite_abi::UtilitySessionClient {
+            user_data: ptr::from_mut(&mut client_context).cast(),
+            ..Default::default()
+        };
+        host.user_data = ptr::from_mut(&mut client).cast();
+        host.query_extension = Some(query);
+        // SAFETY: Client table and its independent context remain alive.
+        let (snapshot, _) = unsafe { discover_capabilities(&host) }.unwrap();
+        assert_eq!(snapshot.user_data, client.user_data);
+        client.header.version.major = tuffite_abi::Version::BASELINE.major.wrapping_add(1);
+        // SAFETY: Readable table intentionally advertises an incompatible version.
+        assert!(matches!(
+            unsafe { discover_capabilities(&host) },
+            Err(Status::IncompatibleAbi)
+        ));
+        client.header = tuffite_abi::Header::for_type::<tuffite_abi::UtilitySessionClient>();
         client.header.struct_size = mem::size_of::<usize>();
-        tables.utility.session = ptr::from_ref(&client);
-        // SAFETY: Provider tables remain live; nested size is intentionally invalid.
+        // SAFETY: Readable size prefix intentionally declares an incomplete table.
         assert!(matches!(
             unsafe { discover_capabilities(&host) },
             Err(Status::IncompatibleAbi)
@@ -1215,8 +1327,7 @@ mod tests {
         host.user_data = ptr::from_mut(&mut table).cast();
         host.query_extension = Some(query);
         // SAFETY: Provider table is readable and remains alive for all queries.
-        let (_, shell_api, isolated) = unsafe { discover_capabilities(&host) }.unwrap();
-        assert!(shell_api.is_none());
+        let (_, isolated) = unsafe { discover_capabilities(&host) }.unwrap();
         assert!(isolated.is_some());
         table.header.struct_size = mem::size_of::<tuffite_abi::Header>();
         // SAFETY: A readable table deliberately advertises a short prefix.

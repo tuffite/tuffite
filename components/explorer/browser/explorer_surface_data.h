@@ -26,6 +26,9 @@ class ExplorerSurfaceData final
   static std::optional<uint32_t> NavigationDownload(
       const content::WebContents*);
   static void SetExplorerPolicy(content::WebContents*, ExplorerPolicy);
+  // Only interaction behavior may change after creation; grants stay immutable.
+  static void UpdateExplorerBehavior(content::WebContents*,
+                                     const ExplorerPolicy&);
   static const ExplorerPolicy* GetExplorerPolicy(const content::WebContents*);
   static void SetExplorerContextMenuEnabled(content::WebContents*, bool);
   static bool IsExplorerContextMenuEnabled(const content::WebContents*);

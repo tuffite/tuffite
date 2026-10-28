@@ -80,17 +80,17 @@ try {
 
   phase("navigation-api");
   await app.locator("#explorer-history-a").click();
-  await waitForState(app, "history-a.html");
+  await waitForState(app, "fixtures/history.html?page=a");
   await app.locator("#explorer-history-b").click();
-  await waitForState(app, "history-b.html");
+  await waitForState(app, "fixtures/history.html?page=b");
   await app.locator("#explorer-back").click();
-  await waitForState(app, "history-a.html");
+  await waitForState(app, "fixtures/history.html?page=a");
   await app.locator("#explorer-forward").click();
-  await waitForState(app, "history-b.html");
+  await waitForState(app, "fixtures/history.html?page=b");
   await app.locator("#explorer-go-back").click();
-  await waitForState(app, "history-a.html");
+  await waitForState(app, "fixtures/history.html?page=a");
   await app.locator("#explorer-forward").click();
-  await waitForState(app, "history-b.html");
+  await waitForState(app, "fixtures/history.html?page=b");
   await clickAndComplete(app, "#explorer-reload", "reload completed");
   await clickAndComplete(
     app,
@@ -231,9 +231,9 @@ try {
   phase("load-url-control");
   await app
     .locator("#explorer-url")
-    .fill("playground://main/ui/dist/history-a.html?from=url-control");
+    .fill("playground://main/ui/dist/fixtures/history.html?page=a&from=url-control");
   await app.locator("#explorer-load-url").click();
-  await waitForState(app, "history-a.html?from=url-control");
+  await waitForState(app, "fixtures/history.html?page=a&from=url-control");
 
   phase("baidu-native-context-menu");
   await app.locator("#explorer-baidu").click();

@@ -57,6 +57,13 @@ FIELDS = (
 )
 
 
+def with_runtime_fixture(metadata):
+    fixture = json.loads((PLAYGROUND / "scripts/fixtures/runtime.json").read_text(encoding="utf-8"))
+    metadata["app"].update(fixture["app"])
+    metadata["browser"] = fixture["browser"]
+    return metadata
+
+
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, _format: str, *args: object) -> None:
         pass
@@ -144,29 +151,48 @@ def run_explorer_demo(
     grant_sandbox_access(test_root)
     port = requested_port or free_port()
     fixture_port = None
-    if script in ("explorer-reload-smoke.mjs", "mojom-smoke.mjs"):
+    if script in ("explorer-reload-smoke.mjs", "mojom-smoke.mjs", "profiles-smoke.mjs", "explorer-behavior-smoke.mjs"):
         # Let sandboxed child processes read the disposable package through
         # test_root's inherited ACL, without changing workspace permissions.
         fixture_package = test_root / "application"
         shutil.copytree(package, fixture_package, symlinks=True)
-        if script == "explorer-reload-smoke.mjs":
+        if script == "explorer-behavior-smoke.mjs":
+            fixture_port = free_port()
+            manifest_path = fixture_package / "tuffite.json"
+            manifest = with_runtime_fixture(json.loads(manifest_path.read_text(encoding="utf-8")))
+            main = manifest["app"]["windows"][0]
+            main["url"] = "playground://main/ui/dist/behavior.html"
+            manifest["app"]["windows"] = [main]
+            manifest["browser"]["rules"].append({
+                "origins": [f"http://127.0.0.1:{fixture_port}"],
+                "csp": "img-src 'none'; connect-src 'none'",
+            })
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        elif script == "explorer-reload-smoke.mjs":
             # Grant only the two local nested-Explorer fixture origins.
             fixture_port = free_port()
             manifest_path = fixture_package / "tuffite.json"
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            manifest["app"]["security"]["capabilities"].append({
+            manifest = with_runtime_fixture(json.loads(manifest_path.read_text(encoding="utf-8")))
+            manifest["browser"]["rules"].append({
                 "identifier": "explorer-reload-fixture",
                 "origins": [f"http://127.0.0.1:{fixture_port}", f"http://localhost:{fixture_port}"],
                 "explorer": {"create": True},
             })
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        elif script == "profiles-smoke.mjs":
+            manifest_path = fixture_package / "tuffite.json"
+            manifest = with_runtime_fixture(json.loads(manifest_path.read_text(encoding="utf-8")))
+            main_window = manifest["app"]["windows"][0]
+            main_window["url"] = "playground://main/ui/dist/profiles.html"
+            manifest["app"]["windows"] = [main_window]
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         else:
             # Exercise the real Browser/Utility paths without starting the
             # unrelated Explorer demo. Keep the main origin and its grants.
             manifest_path = fixture_package / "tuffite.json"
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest = with_runtime_fixture(json.loads(manifest_path.read_text(encoding="utf-8")))
             main_window = manifest["app"]["windows"][0]
-            main_window["url"] = "playground://main/ui/dist/mojom-smoke.html"
+            main_window["url"] = "playground://main/ui/dist/fixtures/mojom.html"
             manifest["app"]["windows"] = [main_window]
             # These methods have no resource-scope API. Grant method access but
             # attach incompatible constraints; the actual service must reject it.
@@ -174,13 +200,13 @@ def run_explorer_demo(
                 "tuffite.Storage.Get", "tuffite.Window.List",
                 "playground.Commands.DoSomething", "playground.Echo.Restricted",
             }
-            for capability in manifest["app"]["security"]["capabilities"]:
+            for capability in manifest["browser"]["rules"]:
                 grants = capability.get("shellApi", [])
                 capability["shellApi"] = [
                     grant for grant in grants
                     if (grant if isinstance(grant, str) else grant["method"]) not in scoped_methods
                 ]
-            manifest["app"]["security"]["capabilities"][0]["shellApi"].extend(
+            manifest["browser"]["rules"][0]["shellApi"].extend(
                 {"method": method, "allow": [{"path": "data/*"}]}
                 for method in sorted(scoped_methods)
             )
@@ -190,6 +216,7 @@ def run_explorer_demo(
     command = [
         str(application),
         "--lang=en-US",
+        "--tuffite-runtime-snapshot",
         f"--remote-debugging-port={port}",
         f"--user-data-dir={profile}",
         f"--log-file={test_root / 'tuffite.log'}",
@@ -197,6 +224,8 @@ def run_explorer_demo(
         "--disable-features=CalculateNativeWinOcclusion",
         "--disable-backgrounding-occluded-windows",
     ]
+    if script not in ("explorer-reload-smoke.mjs", "mojom-smoke.mjs", "profiles-smoke.mjs", "explorer-behavior-smoke.mjs"):
+        command.remove("--tuffite-runtime-snapshot")
     process = None
     try:
         with stdout_log.open("wb") as stdout, stderr_log.open("wb") as stderr:
@@ -210,6 +239,7 @@ def run_explorer_demo(
             wait_for_cdp(port, process, timeout)
             environment = os.environ.copy()
             environment["TUFFITE_PLAYGROUND_CDP_PORT"] = str(port)
+            environment["TUFFITE_PLAYGROUND_PID"] = str(process.pid)
             if fixture_port is not None:
                 environment["TUFFITE_EXPLORER_RELOAD_HTTP_PORT"] = str(fixture_port)
             environment["TUFFITE_PLAYGROUND_COMMAND"] = json.dumps(command)
@@ -223,6 +253,13 @@ def run_explorer_demo(
                 check=True,
                 timeout=max(timeout, 180),
             )
+            if script == "profiles-smoke.mjs":
+                databases = list(profile.rglob("Cookies"))
+                if not any(not database.is_relative_to(profile / "profiles") for database in databases):
+                    raise RuntimeError("Default profile did not preserve the legacy browsing-data directory")
+                if not any(database.is_relative_to(profile / "profiles" / "profile-work") for database in databases):
+                    raise RuntimeError("Work profile did not use its own browsing-data directory")
+                print("Profile storage layout verified: legacy default and independent work directory")
             if script == "explorer-reload-smoke.mjs":
                 diagnostic = stderr_log.read_text(encoding="utf-8", errors="replace")
                 if "restricted_cookie_manager.cc" in diagnostic:
@@ -269,6 +306,8 @@ def main() -> int:
     )
     parser.add_argument("--timeout", type=int, default=90)
     parser.add_argument("--keep-files", action="store_true")
+    parser.add_argument("--profiles", action="store_true", help="Verify profile isolation, view composition and context retirement.")
+    parser.add_argument("--browser-behavior", action="store_true", help="Verify origin rules, CSS-style behavior, delegated protocols and CSP composition.")
     parser.add_argument("--mojom", action="store_true", help="Verify generated Mojom Browser/Utility round trips through CDP.")
     parser.add_argument(
         "--explorer-demo",
@@ -350,7 +389,7 @@ def main() -> int:
         if public
         else Path(tempfile.gettempdir())
     )
-    if args.isolated_worlds or args.mojom or args.explorer_isolated or args.explorer_reload or args.explorer_ancestry or args.explorer_events or args.explorer_tabs or args.browser_compatibility or args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
+    if args.browser_behavior or args.profiles or args.isolated_worlds or args.mojom or args.explorer_isolated or args.explorer_reload or args.explorer_ancestry or args.explorer_events or args.explorer_tabs or args.browser_compatibility or args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
         return run_explorer_demo(
             package,
             application,
@@ -358,6 +397,8 @@ def main() -> int:
             args.timeout,
             args.keep_files,
             args.cdp_port,
+            "explorer-behavior-smoke.mjs" if args.browser_behavior else
+            "profiles-smoke.mjs" if args.profiles else
             "isolated-worlds-smoke.mjs" if args.isolated_worlds else
             "mojom-smoke.mjs" if args.mojom else
             "explorer-isolated-smoke.mjs" if args.explorer_isolated else
@@ -405,8 +446,8 @@ def main() -> int:
 
     port = free_port()
     config_path = deployed / "tuffite.json"
-    config = json.loads(config_path.read_text())
-    config["app"]["security"]["capabilities"][0]["shellApi"].append({
+    config = with_runtime_fixture(json.loads(config_path.read_text()))
+    config["browser"]["rules"][0]["shellApi"].append({
         "method": "tuffite.Net.Request",
         "allow": [{"url": f"http://127.0.0.1:{port}/*"}],
     })
@@ -436,6 +477,7 @@ def main() -> int:
                 "--disable-background-timer-throttling",
                 "--disable-renderer-backgrounding",
                 "--no-first-run",
+                "--tuffite-runtime-snapshot",
             ]
             if args.cdp_port:
                 command.append(f"--remote-debugging-port={args.cdp_port}")

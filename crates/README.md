@@ -8,13 +8,15 @@ This workspace contains the Rust side of the runnable Tuffite vertical slice:
 - `tuffite-macros`: typed `#[tuffite::command(endpoint)]` handler bindings;
 - `tuffite`: the safe application-facing Rust facade.
 
-The canonical C header is `framework/public/abi.h`. Static assertions in the
+The canonical C headers are `framework/public/c_api/`. Static assertions in the
 Framework bridge check the public table layout and version; the packaged
 Playground exercises the complete host-to-Rust-runtime boundary.
 
-Application crates depend only on `tuffite`, declare `#[tuffite::browser]` and named `#[tuffite::utility(name = ...)]` implementations, and
-construct `app::Builder::<Browser>`. The crate emits its single Cargo `[lib]` target as a
-cdylib through `#[tuffite::main(browser = BrowserType, utilities(UtilityTypes...))]`. The
+Application crates depend only on `tuffite`, implement `Application` and `Browser`,
+and construct `app::Builder::<Application>` with `application_interfaces` and
+`browser_interfaces` registration groups. Named utilities retain their utility
+attribute. The crate emits its single Cargo `[lib]` target as a cdylib through
+`#[tuffite::main(utilities(UtilityTypes...))]`. The
 application-named executable loads the resulting library and passes
 its versioned callback table to Framework. Applications neither write unsafe FFI
 functions nor depend directly on `tuffite-abi`. The current

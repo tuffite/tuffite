@@ -86,7 +86,7 @@ try {
       const explorer = document.createElement('explorer');
       explorer.isolated=isolated;
       explorer.allow="camera 'none'; microphone 'none'";
-      explorer.navigation='allow';
+      explorer.behavior = "navigation: browser;";
       explorer.style.cssText='display:block;width:800px;height:500px';
       explorer.src=url;
       window.oauthExplorer=explorer;
@@ -138,21 +138,21 @@ try {
   await until(async () => (await page.evaluate(() => window.reports))?.length, 'Missing cross-origin navigation rejection');
   assert.deepEqual(await page.evaluate(() => reports[0]),{oauth:true,topIsParent:true,activated:false,error:'SecurityError'});
   assert.equal(app.url(),appUrl);
-  const rootUrl = new URL('history-a.html?isolated-nested-root',appUrl).href;
+  const rootUrl = new URL('fixtures/history.html?page=a&isolated-nested-root',appUrl).href;
   await app.evaluate(url => {
     oauthExplorer.remove();
     const explorer=document.createElement('explorer');explorer.isolated=true;
     explorer.allow="camera 'none'";
     explorer.style.cssText="display:block;width:800px;height:500px";
-    explorer.navigation='allow';explorer.src=url;
+    explorer.behavior = "navigation: browser;";explorer.src=url;
     window.oauthExplorer=explorer;document.body.append(explorer);
   },rootUrl);
   const root = await until(()=>pages().find(page=>page.url()===rootUrl),'Missing isolated app fixture');
   await until(async()=>!(await evaluate(rootUrl,"(document.permissionsPolicy||document.featurePolicy).allowsFeature('camera')")),'Initial root camera denial did not apply');
   assert.deepEqual(await evaluate(rootUrl,"({topSelf:top===self,camera:(document.permissionsPolicy||document.featurePolicy).allowsFeature('camera')})"),
     {topSelf:true,camera:false},'Isolated app root must retain its owner permissions');
-  const nestedUrl = new URL('history-b.html?isolated-nested-child',appUrl).href;
-  await evaluate(rootUrl,`{const child=document.createElement('explorer');child.style.cssText='display:block;width:600px;height:300px';child.navigation='allow';child.src=${JSON.stringify(nestedUrl)};document.body.append(child);}`);
+  const nestedUrl = new URL('fixtures/history.html?page=b&isolated-nested-child',appUrl).href;
+  await evaluate(rootUrl,`{const child=document.createElement('explorer');child.style.cssText='display:block;width:600px;height:300px';child.behavior = "navigation: browser;";child.src=${JSON.stringify(nestedUrl)};document.body.append(child);}`);
   const nested = await until(()=>pages().find(page=>page.url()===nestedUrl),'Missing nested composed Explorer');
   await until(async()=>await evaluate(nestedUrl,"top.parent===top && !(document.permissionsPolicy||document.featurePolicy).allowsFeature('camera')"),'Nested isolated boundary or permissions did not initialize');
   assert.deepEqual(await evaluate(nestedUrl,"({parentTop:parent===top,topParentSelf:top.parent===top,topSelf:top===self,ancestors:location.ancestorOrigins.length,camera:(document.permissionsPolicy||document.featurePolicy).allowsFeature('camera')})"),

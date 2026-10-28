@@ -12,7 +12,7 @@
 #include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/browser/browser_context.h"
 #include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
-#include "tuffite/framework/public/abi.h"
+#include "tuffite/framework/public/c_api/types.h"
 
 namespace tuffite::shell_api::utility {
 
@@ -49,7 +49,7 @@ rpc::Status ToRpcStatus(tuffite_status_t status) {
 
 }  // namespace
 
-void UtilityImpl::Invoke(const dispatch::Context& context,
+void UtilityImpl::Invoke(const dispatch::RendererRequestContext& context,
                          InvokeRequestPtr request,
                          InvokeCallback callback) {
   if (!IsUnscopedAllowed(context, generated::Utility::kInvoke)) {
@@ -60,21 +60,15 @@ void UtilityImpl::Invoke(const dispatch::Context& context,
     rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  auto& application =
-      (context.is_application()
-           ? *context.native_application
-           : BrowserContext::GetFrom(context.frame()).application_context());
-  if (!context.is_application() &&
-      (application.GetService<ManifestService>()->IsApplicationInterface(
-           request->name) ||
-       !application.GetService<UtilityService>()
-            ->ResolveUtilityInterface(request->name)
-            .empty())) {
+  auto& browser = BrowserContext::GetFrom(context.frame());
+  auto& utility = browser.utility_service();
+  if (browser.manifest_service().IsApplicationInterface(request->name) ||
+      !utility.ResolveUtilityInterface(request->name).empty()) {
     rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
-  application.GetService<UtilityService>()->InvokeUtilityService(
-      context.document, static_cast<uint64_t>(request->request_id),
+  utility.InvokeUtilityService(
+      context.connection(), static_cast<uint64_t>(request->request_id),
       request->name,
       std::move(request->payload).value_or(std::vector<uint8_t>()),
       base::BindOnce(
@@ -85,7 +79,7 @@ void UtilityImpl::Invoke(const dispatch::Context& context,
           std::move(callback)));
 }
 
-void UtilityImpl::Cancel(const dispatch::Context& context,
+void UtilityImpl::Cancel(const dispatch::RendererRequestContext& context,
                          CancelRequestPtr request,
                          CancelCallback callback) {
   if (!IsUnscopedAllowed(context, generated::Utility::kCancel)) {
@@ -96,22 +90,15 @@ void UtilityImpl::Cancel(const dispatch::Context& context,
     rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return;
   }
-  auto& application =
-      (context.is_application()
-           ? *context.native_application
-           : BrowserContext::GetFrom(context.frame()).application_context());
-  if (!context.is_application() &&
-      (application.GetService<ManifestService>()->IsApplicationInterface(
-           request->name) ||
-       !application.GetService<UtilityService>()
-            ->ResolveUtilityInterface(request->name)
-            .empty())) {
+  auto& browser = BrowserContext::GetFrom(context.frame());
+  auto& utility = browser.utility_service();
+  if (browser.manifest_service().IsApplicationInterface(request->name) ||
+      !utility.ResolveUtilityInterface(request->name).empty()) {
     rpc::Reject(callback, rpc::Status::kAccessDenied);
     return;
   }
-  application.GetService<UtilityService>()->CancelUtilityService(
-      context.document, request->name,
-      static_cast<uint64_t>(request->request_id));
+  utility.CancelUtilityService(context.connection(), request->name,
+                               static_cast<uint64_t>(request->request_id));
   std::move(callback).Run(rpc::Status::kOk);
 }
 

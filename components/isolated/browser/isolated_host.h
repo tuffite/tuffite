@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #ifndef TUFFITE_COMPONENTS_ISOLATED_BROWSER_ISOLATED_HOST_H_
 #define TUFFITE_COMPONENTS_ISOLATED_BROWSER_ISOLATED_HOST_H_
+#include <set>
+
 #include "base/memory/weak_ptr.h"
 #include "content/public/browser/document_service.h"
 #include "tuffite/components/isolated/common/isolated.mojom.h"
@@ -18,6 +20,7 @@ class IsolatedHost final
                      mojo::PendingReceiver<mojom::IsolatedHost> receiver);
   // Generated Mojo dispatch calls this for renderer IsolatedBindings::Load.
   void Load(const std::string& name, LoadCallback callback) override;
+  void Release(const std::string& entry_url) override;
 
  private:
   IsolatedHost(base::WeakPtr<IsolatedSourceProvider> provider,
@@ -25,6 +28,7 @@ class IsolatedHost final
                mojo::PendingReceiver<mojom::IsolatedHost> receiver);
   ~IsolatedHost() override;
   base::WeakPtr<IsolatedSourceProvider> provider_;
+  std::set<std::string> entries_;
 };
 }  // namespace tuffite
 #endif

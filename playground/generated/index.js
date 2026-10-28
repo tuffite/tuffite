@@ -174,6 +174,32 @@ export const mojomTypes = {
     ]],
     'size': 16
   },
+  'BrowserDiagnosticsIdentityRequest': {
+    'fields': [],
+    'size': 8
+  },
+  'BrowserDiagnosticsIdentityResponse': {
+    'fields': [[
+      'result',
+      8,
+      0,
+      'string'
+    ]],
+    'size': 16
+  },
+  'BrowserDiagnosticsIncrementRequest': {
+    'fields': [],
+    'size': 8
+  },
+  'BrowserDiagnosticsIncrementResponse': {
+    'fields': [[
+      'result',
+      8,
+      0,
+      'u32'
+    ]],
+    'size': 16
+  },
   'CommandsCheckJavascriptExtensionRequest': {
     'fields': [],
     'size': 8
@@ -754,6 +780,148 @@ export const mojomTypes = {
       ]
     ],
     'size': 40
+  },
+  'ProfilesApplicationStateRequest': {
+    'fields': [],
+    'size': 8
+  },
+  'ProfilesApplicationStateResponse': {
+    'fields': [[
+      'result',
+      8,
+      0,
+      'u32'
+    ]],
+    'size': 16
+  },
+  'ProfilesAttachRequest': {
+    'fields': [[
+      'windowId',
+      8,
+      0,
+      'i64'
+    ], [
+      'view',
+      16,
+      0,
+      'string'
+    ]],
+    'size': 24
+  },
+  'ProfilesAttachResponse': {
+    'fields': [[
+      'result',
+      8,
+      0,
+      'string'
+    ]],
+    'size': 16
+  },
+  'ProfilesCloseRequest': {
+    'fields': [[
+      'context',
+      8,
+      0,
+      'string'
+    ]],
+    'size': 16
+  },
+  'ProfilesCloseResponse': {
+    'fields': [],
+    'size': 8
+  },
+  'ProfilesCloseWindowRequest': {
+    'fields': [[
+      'windowId',
+      8,
+      0,
+      'i64'
+    ]],
+    'size': 16
+  },
+  'ProfilesCloseWindowResponse': {
+    'fields': [],
+    'size': 8
+  },
+  'ProfilesCreateRequest': {
+    'fields': [[
+      'id',
+      8,
+      0,
+      'string'
+    ], [
+      'name',
+      16,
+      0,
+      'string'
+    ]],
+    'size': 24
+  },
+  'ProfilesCreateResponse': {
+    'fields': [],
+    'size': 8
+  },
+  'ProfilesCreateWindowRequest': {
+    'fields': [],
+    'size': 8
+  },
+  'ProfilesCreateWindowResponse': {
+    'fields': [[
+      'result',
+      8,
+      0,
+      'i64'
+    ]],
+    'size': 16
+  },
+  'ProfilesListRequest': {
+    'fields': [],
+    'size': 8
+  },
+  'ProfilesListResponse': {
+    'fields': [[
+      'result',
+      8,
+      0,
+      'string'
+    ]],
+    'size': 16
+  },
+  'ProfilesPrepareRequest': {
+    'fields': [[
+      'id',
+      8,
+      0,
+      'string'
+    ], [
+      'url',
+      16,
+      0,
+      'string'
+    ]],
+    'size': 24
+  },
+  'ProfilesPrepareResponse': {
+    'fields': [[
+      'result',
+      8,
+      0,
+      'string'
+    ]],
+    'size': 16
+  },
+  'ProfilesReleaseViewRequest': {
+    'fields': [[
+      'view',
+      8,
+      0,
+      'string'
+    ]],
+    'size': 16
+  },
+  'ProfilesReleaseViewResponse': {
+    'fields': [],
+    'size': 8
   }
 };
 export const mojomMethods = [
@@ -948,6 +1116,44 @@ export const mojomMethods = [
       'size': 16
     },
     'playground.Aux.ProcessId'
+  ],
+  [
+    'browserDiagnostics.identity',
+    '0x58f4c53e02c8f05d',
+    '0x9ad89e2d1099976c',
+    {
+      'fields': [],
+      'size': 8
+    },
+    {
+      'fields': [[
+        'result',
+        8,
+        0,
+        'string'
+      ]],
+      'size': 16
+    },
+    'playground.BrowserDiagnostics.Identity'
+  ],
+  [
+    'browserDiagnostics.increment',
+    '0x902e376bc585b70d',
+    '0xa8f9759d8049db8e',
+    {
+      'fields': [],
+      'size': 8
+    },
+    {
+      'fields': [[
+        'result',
+        8,
+        0,
+        'u32'
+      ]],
+      'size': 16
+    },
+    'playground.BrowserDiagnostics.Increment'
   ],
   [
     'commands.doSomething',
@@ -1491,10 +1697,206 @@ export const mojomMethods = [
       'size': 16
     },
     'playground.Echo.Restricted'
+  ],
+  [
+    'profiles.list',
+    '0x6fef76834bd415be',
+    '0x9ad89e2d1099976c',
+    {
+      'fields': [],
+      'size': 8
+    },
+    {
+      'fields': [[
+        'result',
+        8,
+        0,
+        'string'
+      ]],
+      'size': 16
+    },
+    'playground.Profiles.List'
+  ],
+  [
+    'profiles.create',
+    '0xb691e42765a2ab02',
+    '0x24abbf5509a26ced',
+    {
+      'fields': [[
+        'id',
+        8,
+        0,
+        'string'
+      ], [
+        'name',
+        16,
+        0,
+        'string'
+      ]],
+      'size': 24
+    },
+    {
+      'fields': [],
+      'size': 8
+    },
+    'playground.Profiles.Create'
+  ],
+  [
+    'profiles.prepare',
+    '0x37cc2b2ea0c4226e',
+    '0x21f48f427f6833a5',
+    {
+      'fields': [[
+        'id',
+        8,
+        0,
+        'string'
+      ], [
+        'url',
+        16,
+        0,
+        'string'
+      ]],
+      'size': 24
+    },
+    {
+      'fields': [[
+        'result',
+        8,
+        0,
+        'string'
+      ]],
+      'size': 16
+    },
+    'playground.Profiles.Prepare'
+  ],
+  [
+    'profiles.attach',
+    '0x93d6a32b82429b9b',
+    '0x8e17797eb4ceef74',
+    {
+      'fields': [[
+        'windowId',
+        8,
+        0,
+        'i64'
+      ], [
+        'view',
+        16,
+        0,
+        'string'
+      ]],
+      'size': 24
+    },
+    {
+      'fields': [[
+        'result',
+        8,
+        0,
+        'string'
+      ]],
+      'size': 16
+    },
+    'playground.Profiles.Attach'
+  ],
+  [
+    'profiles.releaseView',
+    '0x635cd6d2c39d37e7',
+    '0x4324574ebaf451d5',
+    {
+      'fields': [[
+        'view',
+        8,
+        0,
+        'string'
+      ]],
+      'size': 16
+    },
+    {
+      'fields': [],
+      'size': 8
+    },
+    'playground.Profiles.ReleaseView'
+  ],
+  [
+    'profiles.close',
+    '0x0c4cb572c1aea249',
+    '0x54046f993e6dd968',
+    {
+      'fields': [[
+        'context',
+        8,
+        0,
+        'string'
+      ]],
+      'size': 16
+    },
+    {
+      'fields': [],
+      'size': 8
+    },
+    'playground.Profiles.Close'
+  ],
+  [
+    'profiles.applicationState',
+    '0x216bd68c91e2d7b1',
+    '0x35935a08b94ad2b6',
+    {
+      'fields': [],
+      'size': 8
+    },
+    {
+      'fields': [[
+        'result',
+        8,
+        0,
+        'u32'
+      ]],
+      'size': 16
+    },
+    'playground.Profiles.ApplicationState'
+  ],
+  [
+    'profiles.createWindow',
+    '0x71e729b5b1afad66',
+    '0x3b5dacf6c469b9a8',
+    {
+      'fields': [],
+      'size': 8
+    },
+    {
+      'fields': [[
+        'result',
+        8,
+        0,
+        'i64'
+      ]],
+      'size': 16
+    },
+    'playground.Profiles.CreateWindow'
+  ],
+  [
+    'profiles.closeWindow',
+    '0x9949081edfe9825b',
+    '0xf2991096defc8c85',
+    {
+      'fields': [[
+        'windowId',
+        8,
+        0,
+        'i64'
+      ]],
+      'size': 16
+    },
+    {
+      'fields': [],
+      'size': 8
+    },
+    'playground.Profiles.CloseWindow'
   ]
 ];
 import { createMojomCommandApi, invokeBinary } from '/tuffite.js';
 export function createPlaygroundApi(transport = invokeBinary) {
   return createMojomCommandApi(mojomMethods, 'playground', transport);
 }
-export const { aux, commands, diagnostics, echo } = createPlaygroundApi();
+export const { aux, browserDiagnostics, commands, diagnostics, echo, profiles } = createPlaygroundApi();

@@ -22,3 +22,20 @@ interface Aux {
 interface Diagnostics {
   ProcessId@0() => (uint32 result);
 };
+
+// Application-scoped orchestration. Profile content uses BrowserDiagnostics.
+interface Profiles {
+  List@0() => (string result);
+  Create@1(string id, string name) => ();
+  Prepare@2(string id, string url) => (string result);
+  Attach@3(int64 windowId, string view) => (string result);
+  ReleaseView@4(string view) => ();
+  Close@5(string context) => ();
+  ApplicationState@6() => (uint32 result);
+  CreateWindow@7() => (int64 result);
+  CloseWindow@8(int64 windowId) => ();
+};
+interface BrowserDiagnostics {
+  Identity@0() => (string result);
+  Increment@1() => (uint32 result);
+};

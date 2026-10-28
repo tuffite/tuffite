@@ -5,10 +5,10 @@
 #include <string_view>
 
 #include "content/public/browser/render_frame_host.h"
-#include "tuffite/components/dispatch/browser/context.h"
+#include "tuffite/components/dispatch/browser/renderer_request_context.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/browser_context.h"
-#include "tuffite/framework/shell_api/common.mojom.h"
+#include "tuffite/framework/public/shell_api/common.mojom.h"
 namespace tuffite::shell_api {
 inline std::string_view BaseDirectoryName(generated::BaseDirectory value) {
   switch (value) {
@@ -29,9 +29,9 @@ inline const ManifestService* ManifestFor(content::RenderFrameHost& frame) {
 }
 // APIs without resource scopes must reject scoped grants, rather than ignore
 // them.
-inline bool IsUnscopedAllowed(const dispatch::Context& context,
+inline bool IsUnscopedAllowed(const dispatch::RendererRequestContext& context,
                               std::string_view method) {
-  return context.is_application() ||
+  return context.is_valid() &&
          ManifestFor(context.frame())
              ->IsShellApiScopeAllowed(context.frame().GetLastCommittedOrigin(),
                                       method, "", "");

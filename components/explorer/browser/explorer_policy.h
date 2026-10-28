@@ -5,19 +5,24 @@
 #define TUFFITE_COMPONENTS_EXPLORER_BROWSER_EXPLORER_POLICY_H_
 #include <string>
 #include <vector>
+
+#include "tuffite/components/explorer/common/explorer_behavior.h"
 namespace tuffite {
 enum class ExplorerNavigationPolicy {
   kEmit,
   kAllow,
+  kBlock,
 };
 
 enum class ExplorerDialogPolicy {
   kEmit,
   kSuppress,
+  kBrowser,
 };
 
 struct ExplorerPolicy {
   bool operator==(const ExplorerPolicy&) const = default;
+  ExplorerBehavior behavior;
   std::string partition;
   bool isolated_browsing_context = false;
   ExplorerNavigationPolicy navigation = ExplorerNavigationPolicy::kEmit;

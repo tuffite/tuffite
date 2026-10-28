@@ -12,8 +12,8 @@ let before;
 const events = [];
 const create = () => {
   const element = document.createElement("explorer");
-  element.navigation = "allow";
-  element.dialogs = "emit";
+  element.behavior = "navigation: browser;";
+  element.behavior += " dialog: delegate;";
   element.contextMenuEnabled = true;
   element.style.cssText =
     "display:block;flex:1;min-width:0;height:100%;border:1px solid #888";
@@ -47,7 +47,7 @@ async function load() {
     active.addEventListener("loadstop", resolve, { once: true });
     active.addEventListener("error", reject, { once: true });
   });
-  active.load(new URL("./transfer-sample.html", document.baseURI).href);
+  active.load(new URL("./fixtures/transfer.html", document.baseURI).href);
   await loaded;
   await active.executeJavaScript(
     "globalThis.transferMarker = 'unsaved-' + Math.random(); document.querySelector('#draft').value = 'unsaved form input'; history.pushState({}, '', '?edited')",

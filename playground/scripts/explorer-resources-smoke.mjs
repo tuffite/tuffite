@@ -44,9 +44,9 @@ try {
     host.style.cssText = "position:fixed;inset:0;background:#184a70;z-index:10000";
     document.body.append(host);
     const source = document.createElement("explorer");
-    source.navigation = "allow";
+    source.behavior = "navigation: browser;";
     source.allow = "fullscreen *; picture-in-picture *";
-    source.dialogs = "emit";
+    source.behavior += " dialog: delegate;";
     source.contextMenuEnabled = true;
     source.style.cssText = "display:block;width:100%;height:100%";
     window.resourceEvents = [];
@@ -76,7 +76,7 @@ try {
   // An unrelated receiver must not be able to read or cancel another page's item.
   const unowned = await app.evaluate(async ({ url, id }) => {
     const other = document.createElement("explorer");
-    other.navigation = "allow";
+    other.behavior = "navigation: browser;";
     other.src = url;
     document.body.append(other);
     await new Promise((resolve) => other.addEventListener("loadstop", resolve, { once: true }));
@@ -90,9 +90,9 @@ try {
   const transferred = await app.evaluate(async (id) => {
     const source = resourceSource;
     const target = document.createElement("explorer");
-    target.navigation = "allow";
+    target.behavior = "navigation: browser;";
     target.allow = source.allow;
-    target.dialogs = "emit";
+    target.behavior += " dialog: delegate;";
     target.style.cssText = source.style.cssText;
     source.parentElement.append(target);
     const transfer = await source.detach();
@@ -109,6 +109,10 @@ try {
   console.log("Download ownership and transfer replay passed");
   assert.equal(await app.evaluate((url) => resourceSource.download(`${url}/slow.bin`), url), true);
   const slow = await until(() => app.evaluate(() => resourceEvents.find((item) => item.url.endsWith("slow.bin") && item.receivedBytes > 0)), "Missing download progress");
+  assert.equal(await app.evaluate((id) => resourceSource.pauseDownload(id), slow.id), true);
+  await until(() => app.evaluate(async (id) => (await resourceSource.getDownloads()).some(item => item.id === id && item.paused && item.canResume), slow.id), "Pause state missing");
+  assert.equal(await app.evaluate((id) => resourceSource.resumeDownload(id), slow.id), true);
+  await until(() => app.evaluate(async (id) => (await resourceSource.getDownloads()).some(item => item.id === id && !item.paused), slow.id), "Resume state missing");
   assert.equal(await app.evaluate((id) => resourceSource.cancelDownload(id), slow.id), true);
   await until(() => app.evaluate((id) => resourceEvents.some((item) => item.id === id && item.state === "cancelled"), slow.id), "Cancel did not emit a terminal state");
   console.log("Download progress and cancellation passed");
@@ -156,7 +160,7 @@ try {
   await app.evaluate(() => resourceSource.remove());
   await app.evaluate((url) => {
     const direct = document.createElement("explorer");
-    direct.navigation = "allow";
+    direct.behavior = "navigation: browser;";
     direct.style.cssText = "display:block;width:600px;height:400px";
     direct.src = `${url}/document.pdf`;
     document.body.append(direct);

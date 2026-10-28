@@ -55,7 +55,7 @@ void WriteLog(Level level, Request&& request, Callback&& callback) {
 
 }  // namespace
 
-void LogImpl::Trace(const dispatch::Context& context,
+void LogImpl::Trace(const dispatch::RendererRequestContext& context,
                     TraceRequestPtr request,
                     TraceCallback callback) {
   if (!IsUnscopedAllowed(context, generated::Log::kTrace)) {
@@ -64,7 +64,7 @@ void LogImpl::Trace(const dispatch::Context& context,
   }
   WriteLog(Level::kTrace, std::move(request), std::move(callback));
 }
-void LogImpl::Debug(const dispatch::Context& context,
+void LogImpl::Debug(const dispatch::RendererRequestContext& context,
                     DebugRequestPtr request,
                     DebugCallback callback) {
   if (!IsUnscopedAllowed(context, generated::Log::kDebug)) {
@@ -73,7 +73,7 @@ void LogImpl::Debug(const dispatch::Context& context,
   }
   WriteLog(Level::kDebug, std::move(request), std::move(callback));
 }
-void LogImpl::Info(const dispatch::Context& context,
+void LogImpl::Info(const dispatch::RendererRequestContext& context,
                    InfoRequestPtr request,
                    InfoCallback callback) {
   if (!IsUnscopedAllowed(context, generated::Log::kInfo)) {
@@ -82,7 +82,7 @@ void LogImpl::Info(const dispatch::Context& context,
   }
   WriteLog(Level::kInfo, std::move(request), std::move(callback));
 }
-void LogImpl::Warn(const dispatch::Context& context,
+void LogImpl::Warn(const dispatch::RendererRequestContext& context,
                    WarnRequestPtr request,
                    WarnCallback callback) {
   if (!IsUnscopedAllowed(context, generated::Log::kWarn)) {
@@ -91,7 +91,7 @@ void LogImpl::Warn(const dispatch::Context& context,
   }
   WriteLog(Level::kWarn, std::move(request), std::move(callback));
 }
-void LogImpl::Error(const dispatch::Context& context,
+void LogImpl::Error(const dispatch::RendererRequestContext& context,
                     ErrorRequestPtr request,
                     ErrorCallback callback) {
   if (!IsUnscopedAllowed(context, generated::Log::kError)) {

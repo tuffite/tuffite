@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 // dialogs; enabling every target through Playwright is unnecessary here.
 const port = process.env.TUFFITE_PLAYGROUND_CDP_PORT;
 const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-const target = targets.find(item => item.type === 'page' && item.url.includes('/mojom-smoke.html'));
+const target = targets.find(item => item.type === 'page' && item.url.includes('/fixtures/mojom.html'));
 assert.ok(target?.webSocketDebuggerUrl, 'Playground main document exists');
 const socket = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((resolve, reject) => {

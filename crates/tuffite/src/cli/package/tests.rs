@@ -1,7 +1,7 @@
 use super::{
-    AppManifest, PackageApp, PackageManifest, application_build_command, configure_assets,
-    copy_resources, default_package_name, executable_name, package_target, publish_development,
-    publish_release, remove_dir_all_with_retry, safe_relative_path, validate_executable_name,
+    AppManifest, PackageManifest, application_build_command, configure_resources, copy_resources,
+    default_package_name, executable_name, package_target, publish_development, publish_release,
+    remove_dir_all_with_retry, safe_relative_path, validate_executable_name,
     validate_internal_asset_root, validate_package_name,
 };
 use std::fs;
@@ -259,7 +259,7 @@ fn reads_product_name_without_source_schema_version() {
     let manifest: AppManifest = serde_json::from_str(
         r#"{
               "productName": "Demo App",
-              "app": {
+              "app": {"schemes":["myapp"],
                 "identifier": "com.example.demo"
               },
               "bundle": {
@@ -274,42 +274,19 @@ fn reads_product_name_without_source_schema_version() {
 }
 
 #[test]
-fn assets_include_only_explicit_sources_without_implicit_routes() {
-    let project = std::env::temp_dir().join(format!("tuffite-assets-{}", std::process::id()));
+fn packaging_uses_only_explicit_file_inventory_and_deduplicates_children() {
+    let project = std::env::temp_dir().join(format!("tuffite-inventory-{}", std::process::id()));
     let _ = fs::remove_dir_all(&project);
     fs::create_dir_all(project.join("ui/assets")).unwrap();
     fs::write(project.join("ui/index.html"), "demo").unwrap();
-    let mut manifest = serde_json::json!({"app": {
-        "identifier": "com.example.demo",
-        "assets": [
-            {"origins": ["demo://main"], "paths": ["/main"], "file": "ui/index.html"},
-            {"origins": ["demo://*.artifact"], "paths": ["/assets/*"], "directory": "ui/assets"}
-        ]
-    }});
-    let app: PackageApp = serde_json::from_value(manifest["app"].clone()).unwrap();
-    let before = manifest.clone();
-    let resources = configure_assets(&project, &app, &[], &mut manifest).unwrap();
-    assert_eq!(resources, ["ui/index.html", "ui/assets"]);
-    assert_eq!(manifest, before);
-    assert!(manifest["app"].get("assetRoutes").is_none());
-    fs::remove_dir_all(project).unwrap();
-}
-
-#[test]
-fn isolated_entries_are_packaged_without_public_asset_routes() {
-    let project =
-        std::env::temp_dir().join(format!("tuffite-isolated-assets-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&project);
-    fs::create_dir_all(project.join("worlds")).unwrap();
-    fs::write(project.join("worlds/card.js"), "fixture").unwrap();
-    let mut manifest = serde_json::json!({"app": {
-        "identifier": "com.example.demo",
-        "isolatedWorlds": {"card": {"entry":"worlds/card.js","origins":["demo://main"]}}
-    }});
-    let app: PackageApp = serde_json::from_value(manifest["app"].clone()).unwrap();
-    let resources = configure_assets(&project, &app, &[], &mut manifest).unwrap();
-    assert_eq!(resources, ["worlds/card.js"]);
-    assert!(manifest["app"].get("assets").is_none());
+    let resources = configure_resources(
+        &project,
+        &["ui".into(), "ui/index.html".into(), "ui".into()],
+    )
+    .unwrap();
+    assert_eq!(resources, ["ui"]);
+    assert!(configure_resources(&project, &["../escape".into()]).is_err());
+    assert!(configure_resources(&project, &["missing.js".into()]).is_err());
     fs::remove_dir_all(project).unwrap();
 }
 

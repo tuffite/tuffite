@@ -63,7 +63,7 @@ base::FilePath StorageFile(const base::FilePath& root, std::string_view key) {
 
 }  // namespace
 
-void StorageImpl::Get(const dispatch::Context& context,
+void StorageImpl::Get(const dispatch::RendererRequestContext& context,
                       GetRequestPtr request,
                       GetCallback callback) {
   if (!context.sender()) {
@@ -116,7 +116,7 @@ void StorageImpl::Get(const dispatch::Context& context,
           std::move(callback)));
 }
 
-void StorageImpl::Set(const dispatch::Context& context,
+void StorageImpl::Set(const dispatch::RendererRequestContext& context,
                       SetRequestPtr request,
                       SetCallback callback) {
   if (!context.sender()) {
@@ -156,7 +156,7 @@ void StorageImpl::Set(const dispatch::Context& context,
           std::move(callback)));
 }
 
-void StorageImpl::Remove(const dispatch::Context& context,
+void StorageImpl::Remove(const dispatch::RendererRequestContext& context,
                          RemoveRequestPtr request,
                          RemoveCallback callback) {
   if (!context.sender()) {
@@ -193,7 +193,7 @@ void StorageImpl::Remove(const dispatch::Context& context,
           std::move(callback)));
 }
 
-void StorageImpl::Clear(const dispatch::Context& context,
+void StorageImpl::Clear(const dispatch::RendererRequestContext& context,
                         ClearRequestPtr,
                         ClearCallback callback) {
   if (!context.sender()) {

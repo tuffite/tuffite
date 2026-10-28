@@ -165,7 +165,8 @@ void ShellApiServiceImpl::DispatchRequest(
                     operation);
     return;
   }
-  if (!router_.Dispatch(frame, channel, payload, document, &reply)) {
+  if (!router_.Dispatch(dispatch::RendererRequestContext(frame, document, id),
+                        channel, payload, &reply)) {
     std::move(reply).Run(static_cast<int32_t>(rpc::Status::kInvalidArgument),
                          {});
   }

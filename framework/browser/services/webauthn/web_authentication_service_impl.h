@@ -9,6 +9,7 @@
 namespace views {
 class Widget;
 }
+class PrefService;
 
 namespace tuffite {
 
@@ -18,6 +19,12 @@ views::Widget* WebAuthnWindow(content::WebContents* contents);
 
 class WebAuthenticationServiceImpl final : public WebAuthenticationService {
  public:
+  explicit WebAuthenticationServiceImpl(content::BrowserContext* context);
+  ~WebAuthenticationServiceImpl() override;
+#if BUILDFLAG(IS_MAC)
+  std::optional<TouchIdAuthenticatorConfig> GetTouchIdAuthenticatorConfig(
+      content::BrowserContext* context) override;
+#endif
   bool IsSecurityLevelAcceptable(content::RenderFrameHost* frame) override;
   std::unique_ptr<content::AuthenticatorRequestClientDelegate> CreateRequest(
       content::RenderFrameHost* frame) override;
@@ -26,12 +33,18 @@ class WebAuthenticationServiceImpl final : public WebAuthenticationService {
   void IsUserVerifyingPlatformAuthenticatorAvailableOverride(
       content::RenderFrameHost* frame,
       base::OnceCallback<void(std::optional<bool>)> callback) override;
+
+ private:
+#if BUILDFLAG(IS_MAC)
+  std::unique_ptr<PrefService> preferences_;
+#endif
 };
 
 #if BUILDFLAG(IS_MAC)
 // Bare development executables have no Info.plist Bluetooth usage declaration.
 // Do not invoke CoreBluetooth in them: macOS terminates such processes.
 bool WebAuthnBluetoothAllowed();
+std::optional<std::string> WebAuthnKeychainAccessGroup();
 #endif
 
 }  // namespace tuffite

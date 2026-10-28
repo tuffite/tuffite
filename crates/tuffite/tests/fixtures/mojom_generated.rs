@@ -324,6 +324,212 @@ impl ::tuffite::__private::mojom::Struct for AuxRoundTripResponse {
     ::tuffite::__private::serde::Deserialize
 )]
 #[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct BrowserDiagnosticsIdentityRequest {}
+impl ::tuffite::__private::mojom::Value for BrowserDiagnosticsIdentityRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for BrowserDiagnosticsIdentityRequest {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct BrowserDiagnosticsIdentityResponse {
+    pub r#result: String,
+}
+impl ::tuffite::__private::mojom::Value for BrowserDiagnosticsIdentityResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for BrowserDiagnosticsIdentityResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct BrowserDiagnosticsIncrementRequest {}
+impl ::tuffite::__private::mojom::Value for BrowserDiagnosticsIncrementRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for BrowserDiagnosticsIncrementRequest {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct BrowserDiagnosticsIncrementResponse {
+    pub r#result: u32,
+}
+impl ::tuffite::__private::mojom::Value for BrowserDiagnosticsIncrementResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for BrowserDiagnosticsIncrementResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <u32 as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
 pub struct CommandsCheckJavascriptExtensionRequest {}
 impl ::tuffite::__private::mojom::Value for CommandsCheckJavascriptExtensionRequest {
     const WIDTH: usize = 8;
@@ -1238,7 +1444,959 @@ impl ::tuffite::__private::mojom::Struct for MojomSample {
         Ok(value)
     }
 }
-#[allow(dead_code)]
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesApplicationStateRequest {}
+impl ::tuffite::__private::mojom::Value for ProfilesApplicationStateRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesApplicationStateRequest {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesApplicationStateResponse {
+    pub r#result: u32,
+}
+impl ::tuffite::__private::mojom::Value for ProfilesApplicationStateResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesApplicationStateResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <u32 as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesAttachRequest {
+    pub r#window_id: i64,
+    pub r#view: String,
+}
+impl ::tuffite::__private::mojom::Value for ProfilesAttachRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesAttachRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#window_id, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#view, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#window_id: <i64 as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+            r#view: <String as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesAttachResponse {
+    pub r#result: String,
+}
+impl ::tuffite::__private::mojom::Value for ProfilesAttachResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesAttachResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesCloseRequest {
+    pub r#context: String,
+}
+impl ::tuffite::__private::mojom::Value for ProfilesCloseRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesCloseRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#context, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#context: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesCloseResponse {}
+impl ::tuffite::__private::mojom::Value for ProfilesCloseResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesCloseResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesCloseWindowRequest {
+    pub r#window_id: i64,
+}
+impl ::tuffite::__private::mojom::Value for ProfilesCloseWindowRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesCloseWindowRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#window_id, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#window_id: <i64 as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesCloseWindowResponse {}
+impl ::tuffite::__private::mojom::Value for ProfilesCloseWindowResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesCloseWindowResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesCreateRequest {
+    pub r#id: String,
+    pub r#name: String,
+}
+impl ::tuffite::__private::mojom::Value for ProfilesCreateRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesCreateRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#id, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#name, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#id: <String as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#name: <String as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesCreateResponse {}
+impl ::tuffite::__private::mojom::Value for ProfilesCreateResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesCreateResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesCreateWindowRequest {}
+impl ::tuffite::__private::mojom::Value for ProfilesCreateWindowRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesCreateWindowRequest {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesCreateWindowResponse {
+    pub r#result: i64,
+}
+impl ::tuffite::__private::mojom::Value for ProfilesCreateWindowResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesCreateWindowResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <i64 as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesListRequest {}
+impl ::tuffite::__private::mojom::Value for ProfilesListRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesListRequest {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesListResponse {
+    pub r#result: String,
+}
+impl ::tuffite::__private::mojom::Value for ProfilesListResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesListResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesPrepareRequest {
+    pub r#id: String,
+    pub r#url: String,
+}
+impl ::tuffite::__private::mojom::Value for ProfilesPrepareRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesPrepareRequest {
+    const SIZE: usize = 24;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#id, w, base + 8, 0)?;
+        ::tuffite::__private::mojom::Value::put(&self.r#url, w, base + 16, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#id: <String as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+            r#url: <String as ::tuffite::__private::mojom::Value>::get(r, base + 16, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesPrepareResponse {
+    pub r#result: String,
+}
+impl ::tuffite::__private::mojom::Value for ProfilesPrepareResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesPrepareResponse {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#result, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#result: <String as ::tuffite::__private::mojom::Value>::get(
+                r,
+                base + 8,
+                0,
+            )?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesReleaseViewRequest {
+    pub r#view: String,
+}
+impl ::tuffite::__private::mojom::Value for ProfilesReleaseViewRequest {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesReleaseViewRequest {
+    const SIZE: usize = 16;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        ::tuffite::__private::mojom::Value::put(&self.r#view, w, base + 8, 0)?;
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {
+            r#view: <String as ::tuffite::__private::mojom::Value>::get(r, base + 8, 0)?,
+        };
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    ::tuffite::__private::serde::Serialize,
+    ::tuffite::__private::serde::Deserialize
+)]
+#[serde(crate = "::tuffite::__private::serde", rename_all = "camelCase")]
+pub struct ProfilesReleaseViewResponse {}
+impl ::tuffite::__private::mojom::Value for ProfilesReleaseViewResponse {
+    const WIDTH: usize = 8;
+    const REFERENCE: bool = true;
+    fn put(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        at: usize,
+        _: u8,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        w.structure(at, self)
+    }
+    fn get(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        at: usize,
+        _: u8,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        r.structure(at)
+    }
+}
+impl ::tuffite::__private::mojom::Struct for ProfilesReleaseViewResponse {
+    const SIZE: usize = 8;
+    fn write(
+        &self,
+        w: &mut ::tuffite::__private::mojom::Encoder,
+        base: usize,
+    ) -> Result<(), ::tuffite::__private::codec::CodecError> {
+        let _ = (w, base);
+        Ok(())
+    }
+    fn read(
+        r: &mut ::tuffite::__private::mojom::Decoder<'_>,
+        base: usize,
+    ) -> Result<Self, ::tuffite::__private::codec::CodecError> {
+        let value = Self {};
+        let _ = (r, base);
+        Ok(value)
+    }
+}
+#[allow(dead_code, non_snake_case)]
 pub mod aux {
     pub type RoundTrip = super::AuxRoundTripRequest;
     impl super::AuxRoundTripRequest {
@@ -1271,7 +2429,6 @@ pub mod aux {
             result: Result<super::MojomSample, ::tuffite::CommandError>,
         ) -> ::tuffite::CommandResult {
             let result = result?;
-            let _ = &result;
             <super::AuxRoundTripResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
                     &super::AuxRoundTripResponse {
                         r#result,
@@ -1325,7 +2482,6 @@ pub mod aux {
             result: Result<u64, ::tuffite::CommandError>,
         ) -> ::tuffite::CommandResult {
             let result = result?;
-            let _ = &result;
             <super::AuxReadStateResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
                     &super::AuxReadStateResponse {
                         r#result,
@@ -1376,7 +2532,6 @@ pub mod aux {
             result: Result<u32, ::tuffite::CommandError>,
         ) -> ::tuffite::CommandResult {
             let result = result?;
-            let _ = &result;
             <super::AuxProcessIdResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
                     &super::AuxProcessIdResponse {
                         r#result,
@@ -1396,17 +2551,130 @@ pub mod aux {
             Self::respond(handler(app))
         }
     }
-    /// Registers this interface on the Browser backend.
-    pub fn registry<B: super::Aux + ::tuffite::Browser>() -> ::tuffite::__private::CommandRegistry<
-        B,
-    > {
+    /// Registers this interface on an Application or Browser backend.
+    pub fn registry<B: super::Aux>() -> ::tuffite::__private::CommandRegistry<B> {
         ::tuffite::__private::CommandRegistry::new(
             |browser, command| <B as super::Aux>::__tuffite_dispatch(browser, command),
             <B as super::Aux>::__TUFFITE_COMMANDS,
         )
     }
 }
-#[allow(dead_code)]
+#[allow(dead_code, non_snake_case)]
+pub mod browserDiagnostics {
+    pub type Identity = super::BrowserDiagnosticsIdentityRequest;
+    impl super::BrowserDiagnosticsIdentityRequest {
+        pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
+            "playground.BrowserDiagnostics.Identity",
+            0x58f4_c53e_02c8_f05d,
+            0x9ad8_9e2d_1099_976c,
+        );
+        pub fn __tuffite_decode(
+            command: ::tuffite::Command<'_>,
+        ) -> Result<Self, ::tuffite::CommandError> {
+            if command.id() != Self::COMMAND.id() {
+                return Err(::tuffite::CommandError::UnknownCommand);
+            }
+            if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
+                return Err(
+                    ::tuffite::CommandError::SchemaMismatch(
+                        "Mojom schema mismatch".into(),
+                    ),
+                );
+            }
+            <Self as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                    command.payload(),
+                )
+                .map_err(|_| ::tuffite::CommandError::InvalidArgument(
+                    "invalid Mojom payload".into(),
+                ))
+        }
+        pub fn respond(
+            result: Result<String, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let result = result?;
+            <super::BrowserDiagnosticsIdentityResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
+                    &super::BrowserDiagnosticsIdentityResponse {
+                        r#result,
+                    },
+                )
+                .map_err(|_| ::tuffite::CommandError::Failed(
+                    "Mojom encode failed".into(),
+                ))
+        }
+        pub fn __tuffite_dispatch<A>(
+            command: ::tuffite::Command<'_>,
+            app: &mut A,
+            handler: fn(&mut A) -> Result<String, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let request = Self::__tuffite_decode(command)?;
+            let _ = &request;
+            Self::respond(handler(app))
+        }
+    }
+    pub type Increment = super::BrowserDiagnosticsIncrementRequest;
+    impl super::BrowserDiagnosticsIncrementRequest {
+        pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
+            "playground.BrowserDiagnostics.Increment",
+            0x902e_376b_c585_b70d,
+            0xa8f9_759d_8049_db8e,
+        );
+        pub fn __tuffite_decode(
+            command: ::tuffite::Command<'_>,
+        ) -> Result<Self, ::tuffite::CommandError> {
+            if command.id() != Self::COMMAND.id() {
+                return Err(::tuffite::CommandError::UnknownCommand);
+            }
+            if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
+                return Err(
+                    ::tuffite::CommandError::SchemaMismatch(
+                        "Mojom schema mismatch".into(),
+                    ),
+                );
+            }
+            <Self as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                    command.payload(),
+                )
+                .map_err(|_| ::tuffite::CommandError::InvalidArgument(
+                    "invalid Mojom payload".into(),
+                ))
+        }
+        pub fn respond(
+            result: Result<u32, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let result = result?;
+            <super::BrowserDiagnosticsIncrementResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
+                    &super::BrowserDiagnosticsIncrementResponse {
+                        r#result,
+                    },
+                )
+                .map_err(|_| ::tuffite::CommandError::Failed(
+                    "Mojom encode failed".into(),
+                ))
+        }
+        pub fn __tuffite_dispatch<A>(
+            command: ::tuffite::Command<'_>,
+            app: &mut A,
+            handler: fn(&mut A) -> Result<u32, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let request = Self::__tuffite_decode(command)?;
+            let _ = &request;
+            Self::respond(handler(app))
+        }
+    }
+    /// Registers this interface on an Application or Browser backend.
+    pub fn registry<B: super::BrowserDiagnostics>() -> ::tuffite::__private::CommandRegistry<
+        B,
+    > {
+        ::tuffite::__private::CommandRegistry::new(
+            |browser, command| <B as super::BrowserDiagnostics>::__tuffite_dispatch(
+                browser,
+                command,
+            ),
+            <B as super::BrowserDiagnostics>::__TUFFITE_COMMANDS,
+        )
+    }
+}
+#[allow(dead_code, non_snake_case)]
 pub mod commands {
     pub type DoSomething = super::CommandsDoSomethingRequest;
     impl super::CommandsDoSomethingRequest {
@@ -1439,7 +2707,6 @@ pub mod commands {
             result: Result<String, ::tuffite::CommandError>,
         ) -> ::tuffite::CommandResult {
             let result = result?;
-            let _ = &result;
             <super::CommandsDoSomethingResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
                     &super::CommandsDoSomethingResponse {
                         r#result,
@@ -1490,7 +2757,6 @@ pub mod commands {
             result: Result<String, ::tuffite::CommandError>,
         ) -> ::tuffite::CommandResult {
             let result = result?;
-            let _ = &result;
             <super::CommandsCheckUtilitySessionResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
                     &super::CommandsCheckUtilitySessionResponse {
                         r#result,
@@ -1541,7 +2807,6 @@ pub mod commands {
             result: Result<String, ::tuffite::CommandError>,
         ) -> ::tuffite::CommandResult {
             let result = result?;
-            let _ = &result;
             <super::CommandsCheckJavascriptExtensionResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
                     &super::CommandsCheckJavascriptExtensionResponse {
                         r#result,
@@ -1592,7 +2857,6 @@ pub mod commands {
             result: Result<super::MojomSample, ::tuffite::CommandError>,
         ) -> ::tuffite::CommandResult {
             let result = result?;
-            let _ = &result;
             <super::CommandsEchoMojomResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
                     &super::CommandsEchoMojomResponse {
                         r#result,
@@ -1615,10 +2879,8 @@ pub mod commands {
             Self::respond(handler(app, request.r#value))
         }
     }
-    /// Registers this interface on the Browser backend.
-    pub fn registry<B: super::Commands + ::tuffite::Browser>() -> ::tuffite::__private::CommandRegistry<
-        B,
-    > {
+    /// Registers this interface on an Application or Browser backend.
+    pub fn registry<B: super::Commands>() -> ::tuffite::__private::CommandRegistry<B> {
         ::tuffite::__private::CommandRegistry::new(
             |browser, command| <B as super::Commands>::__tuffite_dispatch(
                 browser,
@@ -1628,7 +2890,7 @@ pub mod commands {
         )
     }
 }
-#[allow(dead_code)]
+#[allow(dead_code, non_snake_case)]
 pub mod diagnostics {
     pub type ProcessId = super::DiagnosticsProcessIdRequest;
     impl super::DiagnosticsProcessIdRequest {
@@ -1661,7 +2923,6 @@ pub mod diagnostics {
             result: Result<u32, ::tuffite::CommandError>,
         ) -> ::tuffite::CommandResult {
             let result = result?;
-            let _ = &result;
             <super::DiagnosticsProcessIdResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
                     &super::DiagnosticsProcessIdResponse {
                         r#result,
@@ -1681,8 +2942,8 @@ pub mod diagnostics {
             Self::respond(handler(app))
         }
     }
-    /// Registers this interface on the Browser backend.
-    pub fn registry<B: super::Diagnostics + ::tuffite::Browser>() -> ::tuffite::__private::CommandRegistry<
+    /// Registers this interface on an Application or Browser backend.
+    pub fn registry<B: super::Diagnostics>() -> ::tuffite::__private::CommandRegistry<
         B,
     > {
         ::tuffite::__private::CommandRegistry::new(
@@ -1694,7 +2955,7 @@ pub mod diagnostics {
         )
     }
 }
-#[allow(dead_code)]
+#[allow(dead_code, non_snake_case)]
 pub mod echo {
     pub type RoundTrip = super::EchoRoundTripRequest;
     impl super::EchoRoundTripRequest {
@@ -1727,7 +2988,6 @@ pub mod echo {
             result: Result<super::MojomSample, ::tuffite::CommandError>,
         ) -> ::tuffite::CommandResult {
             let result = result?;
-            let _ = &result;
             <super::EchoRoundTripResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
                     &super::EchoRoundTripResponse {
                         r#result,
@@ -1781,7 +3041,6 @@ pub mod echo {
             result: Result<super::MojomSample, ::tuffite::CommandError>,
         ) -> ::tuffite::CommandResult {
             let result = result?;
-            let _ = &result;
             <super::EchoRestrictedResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
                     &super::EchoRestrictedResponse {
                         r#result,
@@ -1804,13 +3063,472 @@ pub mod echo {
             Self::respond(handler(app, request.r#value))
         }
     }
-    /// Registers this interface on the Browser backend.
-    pub fn registry<B: super::Echo + ::tuffite::Browser>() -> ::tuffite::__private::CommandRegistry<
-        B,
-    > {
+    /// Registers this interface on an Application or Browser backend.
+    pub fn registry<B: super::Echo>() -> ::tuffite::__private::CommandRegistry<B> {
         ::tuffite::__private::CommandRegistry::new(
             |browser, command| <B as super::Echo>::__tuffite_dispatch(browser, command),
             <B as super::Echo>::__TUFFITE_COMMANDS,
+        )
+    }
+}
+#[allow(dead_code, non_snake_case)]
+pub mod profiles {
+    pub type List = super::ProfilesListRequest;
+    impl super::ProfilesListRequest {
+        pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
+            "playground.Profiles.List",
+            0x6fef_7683_4bd4_15be,
+            0x9ad8_9e2d_1099_976c,
+        );
+        pub fn __tuffite_decode(
+            command: ::tuffite::Command<'_>,
+        ) -> Result<Self, ::tuffite::CommandError> {
+            if command.id() != Self::COMMAND.id() {
+                return Err(::tuffite::CommandError::UnknownCommand);
+            }
+            if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
+                return Err(
+                    ::tuffite::CommandError::SchemaMismatch(
+                        "Mojom schema mismatch".into(),
+                    ),
+                );
+            }
+            <Self as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                    command.payload(),
+                )
+                .map_err(|_| ::tuffite::CommandError::InvalidArgument(
+                    "invalid Mojom payload".into(),
+                ))
+        }
+        pub fn respond(
+            result: Result<String, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let result = result?;
+            <super::ProfilesListResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
+                    &super::ProfilesListResponse {
+                        r#result,
+                    },
+                )
+                .map_err(|_| ::tuffite::CommandError::Failed(
+                    "Mojom encode failed".into(),
+                ))
+        }
+        pub fn __tuffite_dispatch<A>(
+            command: ::tuffite::Command<'_>,
+            app: &mut A,
+            handler: fn(&mut A) -> Result<String, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let request = Self::__tuffite_decode(command)?;
+            let _ = &request;
+            Self::respond(handler(app))
+        }
+    }
+    pub type Create = super::ProfilesCreateRequest;
+    impl super::ProfilesCreateRequest {
+        pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
+            "playground.Profiles.Create",
+            0xb691_e427_65a2_ab02,
+            0x24ab_bf55_09a2_6ced,
+        );
+        pub fn __tuffite_decode(
+            command: ::tuffite::Command<'_>,
+        ) -> Result<Self, ::tuffite::CommandError> {
+            if command.id() != Self::COMMAND.id() {
+                return Err(::tuffite::CommandError::UnknownCommand);
+            }
+            if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
+                return Err(
+                    ::tuffite::CommandError::SchemaMismatch(
+                        "Mojom schema mismatch".into(),
+                    ),
+                );
+            }
+            <Self as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                    command.payload(),
+                )
+                .map_err(|_| ::tuffite::CommandError::InvalidArgument(
+                    "invalid Mojom payload".into(),
+                ))
+        }
+        pub fn respond(
+            result: Result<(), ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            result?;
+            <super::ProfilesCreateResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
+                    &super::ProfilesCreateResponse {},
+                )
+                .map_err(|_| ::tuffite::CommandError::Failed(
+                    "Mojom encode failed".into(),
+                ))
+        }
+        pub fn __tuffite_dispatch<A>(
+            command: ::tuffite::Command<'_>,
+            app: &mut A,
+            handler: fn(&mut A, String, String) -> Result<(), ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let request = Self::__tuffite_decode(command)?;
+            let _ = &request;
+            Self::respond(handler(app, request.r#id, request.r#name))
+        }
+    }
+    pub type Prepare = super::ProfilesPrepareRequest;
+    impl super::ProfilesPrepareRequest {
+        pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
+            "playground.Profiles.Prepare",
+            0x37cc_2b2e_a0c4_226e,
+            0x21f4_8f42_7f68_33a5,
+        );
+        pub fn __tuffite_decode(
+            command: ::tuffite::Command<'_>,
+        ) -> Result<Self, ::tuffite::CommandError> {
+            if command.id() != Self::COMMAND.id() {
+                return Err(::tuffite::CommandError::UnknownCommand);
+            }
+            if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
+                return Err(
+                    ::tuffite::CommandError::SchemaMismatch(
+                        "Mojom schema mismatch".into(),
+                    ),
+                );
+            }
+            <Self as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                    command.payload(),
+                )
+                .map_err(|_| ::tuffite::CommandError::InvalidArgument(
+                    "invalid Mojom payload".into(),
+                ))
+        }
+        pub fn respond(
+            result: Result<String, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let result = result?;
+            <super::ProfilesPrepareResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
+                    &super::ProfilesPrepareResponse {
+                        r#result,
+                    },
+                )
+                .map_err(|_| ::tuffite::CommandError::Failed(
+                    "Mojom encode failed".into(),
+                ))
+        }
+        pub fn __tuffite_dispatch<A>(
+            command: ::tuffite::Command<'_>,
+            app: &mut A,
+            handler: fn(
+                &mut A,
+                String,
+                String,
+            ) -> Result<String, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let request = Self::__tuffite_decode(command)?;
+            let _ = &request;
+            Self::respond(handler(app, request.r#id, request.r#url))
+        }
+    }
+    pub type Attach = super::ProfilesAttachRequest;
+    impl super::ProfilesAttachRequest {
+        pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
+            "playground.Profiles.Attach",
+            0x93d6_a32b_8242_9b9b,
+            0x8e17_797e_b4ce_ef74,
+        );
+        pub fn __tuffite_decode(
+            command: ::tuffite::Command<'_>,
+        ) -> Result<Self, ::tuffite::CommandError> {
+            if command.id() != Self::COMMAND.id() {
+                return Err(::tuffite::CommandError::UnknownCommand);
+            }
+            if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
+                return Err(
+                    ::tuffite::CommandError::SchemaMismatch(
+                        "Mojom schema mismatch".into(),
+                    ),
+                );
+            }
+            <Self as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                    command.payload(),
+                )
+                .map_err(|_| ::tuffite::CommandError::InvalidArgument(
+                    "invalid Mojom payload".into(),
+                ))
+        }
+        pub fn respond(
+            result: Result<String, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let result = result?;
+            <super::ProfilesAttachResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
+                    &super::ProfilesAttachResponse {
+                        r#result,
+                    },
+                )
+                .map_err(|_| ::tuffite::CommandError::Failed(
+                    "Mojom encode failed".into(),
+                ))
+        }
+        pub fn __tuffite_dispatch<A>(
+            command: ::tuffite::Command<'_>,
+            app: &mut A,
+            handler: fn(&mut A, i64, String) -> Result<String, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let request = Self::__tuffite_decode(command)?;
+            let _ = &request;
+            Self::respond(handler(app, request.r#window_id, request.r#view))
+        }
+    }
+    pub type ReleaseView = super::ProfilesReleaseViewRequest;
+    impl super::ProfilesReleaseViewRequest {
+        pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
+            "playground.Profiles.ReleaseView",
+            0x635c_d6d2_c39d_37e7,
+            0x4324_574e_baf4_51d5,
+        );
+        pub fn __tuffite_decode(
+            command: ::tuffite::Command<'_>,
+        ) -> Result<Self, ::tuffite::CommandError> {
+            if command.id() != Self::COMMAND.id() {
+                return Err(::tuffite::CommandError::UnknownCommand);
+            }
+            if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
+                return Err(
+                    ::tuffite::CommandError::SchemaMismatch(
+                        "Mojom schema mismatch".into(),
+                    ),
+                );
+            }
+            <Self as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                    command.payload(),
+                )
+                .map_err(|_| ::tuffite::CommandError::InvalidArgument(
+                    "invalid Mojom payload".into(),
+                ))
+        }
+        pub fn respond(
+            result: Result<(), ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            result?;
+            <super::ProfilesReleaseViewResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
+                    &super::ProfilesReleaseViewResponse {
+                    },
+                )
+                .map_err(|_| ::tuffite::CommandError::Failed(
+                    "Mojom encode failed".into(),
+                ))
+        }
+        pub fn __tuffite_dispatch<A>(
+            command: ::tuffite::Command<'_>,
+            app: &mut A,
+            handler: fn(&mut A, String) -> Result<(), ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let request = Self::__tuffite_decode(command)?;
+            let _ = &request;
+            Self::respond(handler(app, request.r#view))
+        }
+    }
+    pub type Close = super::ProfilesCloseRequest;
+    impl super::ProfilesCloseRequest {
+        pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
+            "playground.Profiles.Close",
+            0x0c4c_b572_c1ae_a249,
+            0x5404_6f99_3e6d_d968,
+        );
+        pub fn __tuffite_decode(
+            command: ::tuffite::Command<'_>,
+        ) -> Result<Self, ::tuffite::CommandError> {
+            if command.id() != Self::COMMAND.id() {
+                return Err(::tuffite::CommandError::UnknownCommand);
+            }
+            if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
+                return Err(
+                    ::tuffite::CommandError::SchemaMismatch(
+                        "Mojom schema mismatch".into(),
+                    ),
+                );
+            }
+            <Self as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                    command.payload(),
+                )
+                .map_err(|_| ::tuffite::CommandError::InvalidArgument(
+                    "invalid Mojom payload".into(),
+                ))
+        }
+        pub fn respond(
+            result: Result<(), ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            result?;
+            <super::ProfilesCloseResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
+                    &super::ProfilesCloseResponse {},
+                )
+                .map_err(|_| ::tuffite::CommandError::Failed(
+                    "Mojom encode failed".into(),
+                ))
+        }
+        pub fn __tuffite_dispatch<A>(
+            command: ::tuffite::Command<'_>,
+            app: &mut A,
+            handler: fn(&mut A, String) -> Result<(), ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let request = Self::__tuffite_decode(command)?;
+            let _ = &request;
+            Self::respond(handler(app, request.r#context))
+        }
+    }
+    pub type ApplicationState = super::ProfilesApplicationStateRequest;
+    impl super::ProfilesApplicationStateRequest {
+        pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
+            "playground.Profiles.ApplicationState",
+            0x216b_d68c_91e2_d7b1,
+            0x3593_5a08_b94a_d2b6,
+        );
+        pub fn __tuffite_decode(
+            command: ::tuffite::Command<'_>,
+        ) -> Result<Self, ::tuffite::CommandError> {
+            if command.id() != Self::COMMAND.id() {
+                return Err(::tuffite::CommandError::UnknownCommand);
+            }
+            if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
+                return Err(
+                    ::tuffite::CommandError::SchemaMismatch(
+                        "Mojom schema mismatch".into(),
+                    ),
+                );
+            }
+            <Self as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                    command.payload(),
+                )
+                .map_err(|_| ::tuffite::CommandError::InvalidArgument(
+                    "invalid Mojom payload".into(),
+                ))
+        }
+        pub fn respond(
+            result: Result<u32, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let result = result?;
+            <super::ProfilesApplicationStateResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
+                    &super::ProfilesApplicationStateResponse {
+                        r#result,
+                    },
+                )
+                .map_err(|_| ::tuffite::CommandError::Failed(
+                    "Mojom encode failed".into(),
+                ))
+        }
+        pub fn __tuffite_dispatch<A>(
+            command: ::tuffite::Command<'_>,
+            app: &mut A,
+            handler: fn(&mut A) -> Result<u32, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let request = Self::__tuffite_decode(command)?;
+            let _ = &request;
+            Self::respond(handler(app))
+        }
+    }
+    pub type CreateWindow = super::ProfilesCreateWindowRequest;
+    impl super::ProfilesCreateWindowRequest {
+        pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
+            "playground.Profiles.CreateWindow",
+            0x71e7_29b5_b1af_ad66,
+            0x3b5d_acf6_c469_b9a8,
+        );
+        pub fn __tuffite_decode(
+            command: ::tuffite::Command<'_>,
+        ) -> Result<Self, ::tuffite::CommandError> {
+            if command.id() != Self::COMMAND.id() {
+                return Err(::tuffite::CommandError::UnknownCommand);
+            }
+            if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
+                return Err(
+                    ::tuffite::CommandError::SchemaMismatch(
+                        "Mojom schema mismatch".into(),
+                    ),
+                );
+            }
+            <Self as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                    command.payload(),
+                )
+                .map_err(|_| ::tuffite::CommandError::InvalidArgument(
+                    "invalid Mojom payload".into(),
+                ))
+        }
+        pub fn respond(
+            result: Result<i64, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let result = result?;
+            <super::ProfilesCreateWindowResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
+                    &super::ProfilesCreateWindowResponse {
+                        r#result,
+                    },
+                )
+                .map_err(|_| ::tuffite::CommandError::Failed(
+                    "Mojom encode failed".into(),
+                ))
+        }
+        pub fn __tuffite_dispatch<A>(
+            command: ::tuffite::Command<'_>,
+            app: &mut A,
+            handler: fn(&mut A) -> Result<i64, ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let request = Self::__tuffite_decode(command)?;
+            let _ = &request;
+            Self::respond(handler(app))
+        }
+    }
+    pub type CloseWindow = super::ProfilesCloseWindowRequest;
+    impl super::ProfilesCloseWindowRequest {
+        pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
+            "playground.Profiles.CloseWindow",
+            0x9949_081e_dfe9_825b,
+            0xf299_1096_defc_8c85,
+        );
+        pub fn __tuffite_decode(
+            command: ::tuffite::Command<'_>,
+        ) -> Result<Self, ::tuffite::CommandError> {
+            if command.id() != Self::COMMAND.id() {
+                return Err(::tuffite::CommandError::UnknownCommand);
+            }
+            if command.schema_fingerprint() != Self::COMMAND.schema_fingerprint() {
+                return Err(
+                    ::tuffite::CommandError::SchemaMismatch(
+                        "Mojom schema mismatch".into(),
+                    ),
+                );
+            }
+            <Self as ::tuffite::__private::mojom::Struct>::decode_mojom(
+                    command.payload(),
+                )
+                .map_err(|_| ::tuffite::CommandError::InvalidArgument(
+                    "invalid Mojom payload".into(),
+                ))
+        }
+        pub fn respond(
+            result: Result<(), ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            result?;
+            <super::ProfilesCloseWindowResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
+                    &super::ProfilesCloseWindowResponse {
+                    },
+                )
+                .map_err(|_| ::tuffite::CommandError::Failed(
+                    "Mojom encode failed".into(),
+                ))
+        }
+        pub fn __tuffite_dispatch<A>(
+            command: ::tuffite::Command<'_>,
+            app: &mut A,
+            handler: fn(&mut A, i64) -> Result<(), ::tuffite::CommandError>,
+        ) -> ::tuffite::CommandResult {
+            let request = Self::__tuffite_decode(command)?;
+            let _ = &request;
+            Self::respond(handler(app, request.r#window_id))
+        }
+    }
+    /// Registers this interface on an Application or Browser backend.
+    pub fn registry<B: super::Profiles>() -> ::tuffite::__private::CommandRegistry<B> {
+        ::tuffite::__private::CommandRegistry::new(
+            |browser, command| <B as super::Profiles>::__tuffite_dispatch(
+                browser,
+                command,
+            ),
+            <B as super::Profiles>::__TUFFITE_COMMANDS,
         )
     }
 }
@@ -1849,6 +3567,35 @@ pub trait Aux {
             let request = AuxProcessIdRequest::__tuffite_decode(command)?;
             let _ = &request;
             return AuxProcessIdRequest::respond(self.r#process_id());
+        }
+        Err(::tuffite::CommandError::UnknownCommand)
+    }
+}
+pub trait BrowserDiagnostics {
+    fn r#identity(&self) -> Result<String, ::tuffite::CommandError>;
+    fn r#increment(&self) -> Result<u32, ::tuffite::CommandError>;
+    #[doc(hidden)]
+    const __TUFFITE_INTERFACE: &'static str = "playground.BrowserDiagnostics";
+    #[doc(hidden)]
+    const __TUFFITE_COMMANDS: &'static [::tuffite::CommandDescriptor] = &[
+        browserDiagnostics::Identity::COMMAND,
+        browserDiagnostics::Increment::COMMAND,
+    ];
+    #[doc(hidden)]
+    #[allow(clippy::too_many_lines)]
+    fn __tuffite_dispatch(
+        &self,
+        command: ::tuffite::Command<'_>,
+    ) -> ::tuffite::CommandResult {
+        if command.id() == BrowserDiagnosticsIdentityRequest::COMMAND.id() {
+            let request = BrowserDiagnosticsIdentityRequest::__tuffite_decode(command)?;
+            let _ = &request;
+            return BrowserDiagnosticsIdentityRequest::respond(self.r#identity());
+        }
+        if command.id() == BrowserDiagnosticsIncrementRequest::COMMAND.id() {
+            let request = BrowserDiagnosticsIncrementRequest::__tuffite_decode(command)?;
+            let _ = &request;
+            return BrowserDiagnosticsIncrementRequest::respond(self.r#increment());
         }
         Err(::tuffite::CommandError::UnknownCommand)
     }
@@ -1965,5 +3712,206 @@ pub trait Echo {
             return EchoRestrictedRequest::respond(self.r#restricted(request.r#value));
         }
         Err(::tuffite::CommandError::UnknownCommand)
+    }
+}
+pub trait Profiles {
+    fn r#list(&self) -> Result<String, ::tuffite::CommandError>;
+    fn r#create(
+        &self,
+        r#id: String,
+        r#name: String,
+    ) -> Result<(), ::tuffite::CommandError>;
+    fn r#prepare(
+        &self,
+        r#id: String,
+        r#url: String,
+    ) -> Result<String, ::tuffite::CommandError>;
+    fn r#attach(
+        &self,
+        r#window_id: i64,
+        r#view: String,
+    ) -> Result<String, ::tuffite::CommandError>;
+    fn r#release_view(&self, r#view: String) -> Result<(), ::tuffite::CommandError>;
+    fn r#close(&self, r#context: String) -> Result<(), ::tuffite::CommandError>;
+    fn r#application_state(&self) -> Result<u32, ::tuffite::CommandError>;
+    fn r#create_window(&self) -> Result<i64, ::tuffite::CommandError>;
+    fn r#close_window(&self, r#window_id: i64) -> Result<(), ::tuffite::CommandError>;
+    #[doc(hidden)]
+    const __TUFFITE_INTERFACE: &'static str = "playground.Profiles";
+    #[doc(hidden)]
+    const __TUFFITE_COMMANDS: &'static [::tuffite::CommandDescriptor] = &[
+        profiles::List::COMMAND,
+        profiles::Create::COMMAND,
+        profiles::Prepare::COMMAND,
+        profiles::Attach::COMMAND,
+        profiles::ReleaseView::COMMAND,
+        profiles::Close::COMMAND,
+        profiles::ApplicationState::COMMAND,
+        profiles::CreateWindow::COMMAND,
+        profiles::CloseWindow::COMMAND,
+    ];
+    #[doc(hidden)]
+    #[allow(clippy::too_many_lines)]
+    fn __tuffite_dispatch(
+        &self,
+        command: ::tuffite::Command<'_>,
+    ) -> ::tuffite::CommandResult {
+        if command.id() == ProfilesListRequest::COMMAND.id() {
+            let request = ProfilesListRequest::__tuffite_decode(command)?;
+            let _ = &request;
+            return ProfilesListRequest::respond(self.r#list());
+        }
+        if command.id() == ProfilesCreateRequest::COMMAND.id() {
+            let request = ProfilesCreateRequest::__tuffite_decode(command)?;
+            let _ = &request;
+            return ProfilesCreateRequest::respond(
+                self.r#create(request.r#id, request.r#name),
+            );
+        }
+        if command.id() == ProfilesPrepareRequest::COMMAND.id() {
+            let request = ProfilesPrepareRequest::__tuffite_decode(command)?;
+            let _ = &request;
+            return ProfilesPrepareRequest::respond(
+                self.r#prepare(request.r#id, request.r#url),
+            );
+        }
+        if command.id() == ProfilesAttachRequest::COMMAND.id() {
+            let request = ProfilesAttachRequest::__tuffite_decode(command)?;
+            let _ = &request;
+            return ProfilesAttachRequest::respond(
+                self.r#attach(request.r#window_id, request.r#view),
+            );
+        }
+        if command.id() == ProfilesReleaseViewRequest::COMMAND.id() {
+            let request = ProfilesReleaseViewRequest::__tuffite_decode(command)?;
+            let _ = &request;
+            return ProfilesReleaseViewRequest::respond(
+                self.r#release_view(request.r#view),
+            );
+        }
+        if command.id() == ProfilesCloseRequest::COMMAND.id() {
+            let request = ProfilesCloseRequest::__tuffite_decode(command)?;
+            let _ = &request;
+            return ProfilesCloseRequest::respond(self.r#close(request.r#context));
+        }
+        if command.id() == ProfilesApplicationStateRequest::COMMAND.id() {
+            let request = ProfilesApplicationStateRequest::__tuffite_decode(command)?;
+            let _ = &request;
+            return ProfilesApplicationStateRequest::respond(self.r#application_state());
+        }
+        if command.id() == ProfilesCreateWindowRequest::COMMAND.id() {
+            let request = ProfilesCreateWindowRequest::__tuffite_decode(command)?;
+            let _ = &request;
+            return ProfilesCreateWindowRequest::respond(self.r#create_window());
+        }
+        if command.id() == ProfilesCloseWindowRequest::COMMAND.id() {
+            let request = ProfilesCloseWindowRequest::__tuffite_decode(command)?;
+            let _ = &request;
+            return ProfilesCloseWindowRequest::respond(
+                self.r#close_window(request.r#window_id),
+            );
+        }
+        Err(::tuffite::CommandError::UnknownCommand)
+    }
+}
+#[allow(dead_code)]
+pub mod interfaces {
+    /// Type-level interface registration for application and browser scopes.
+    pub struct Aux;
+    impl<T: super::Aux> ::tuffite::utility::InterfaceFor<T> for Aux {
+        fn interface() -> ::tuffite::utility::Interface<T> {
+            ::tuffite::utility::Interface::new(
+                <T as super::Aux>::__TUFFITE_INTERFACE,
+                <T as super::Aux>::__tuffite_dispatch,
+                <T as super::Aux>::__TUFFITE_COMMANDS,
+            )
+        }
+    }
+    impl<T: super::Aux> ::tuffite::app::InterfaceFor<T> for Aux {
+        fn registry() -> ::tuffite::__private::CommandRegistry<T> {
+            super::aux::registry::<T>()
+        }
+    }
+    /// Type-level interface registration for application and browser scopes.
+    pub struct BrowserDiagnostics;
+    impl<T: super::BrowserDiagnostics> ::tuffite::utility::InterfaceFor<T>
+    for BrowserDiagnostics {
+        fn interface() -> ::tuffite::utility::Interface<T> {
+            ::tuffite::utility::Interface::new(
+                <T as super::BrowserDiagnostics>::__TUFFITE_INTERFACE,
+                <T as super::BrowserDiagnostics>::__tuffite_dispatch,
+                <T as super::BrowserDiagnostics>::__TUFFITE_COMMANDS,
+            )
+        }
+    }
+    impl<T: super::BrowserDiagnostics> ::tuffite::app::InterfaceFor<T>
+    for BrowserDiagnostics {
+        fn registry() -> ::tuffite::__private::CommandRegistry<T> {
+            super::browserDiagnostics::registry::<T>()
+        }
+    }
+    /// Type-level interface registration for application and browser scopes.
+    pub struct Commands;
+    impl<T: super::Commands> ::tuffite::utility::InterfaceFor<T> for Commands {
+        fn interface() -> ::tuffite::utility::Interface<T> {
+            ::tuffite::utility::Interface::new(
+                <T as super::Commands>::__TUFFITE_INTERFACE,
+                <T as super::Commands>::__tuffite_dispatch,
+                <T as super::Commands>::__TUFFITE_COMMANDS,
+            )
+        }
+    }
+    impl<T: super::Commands> ::tuffite::app::InterfaceFor<T> for Commands {
+        fn registry() -> ::tuffite::__private::CommandRegistry<T> {
+            super::commands::registry::<T>()
+        }
+    }
+    /// Type-level interface registration for application and browser scopes.
+    pub struct Diagnostics;
+    impl<T: super::Diagnostics> ::tuffite::utility::InterfaceFor<T> for Diagnostics {
+        fn interface() -> ::tuffite::utility::Interface<T> {
+            ::tuffite::utility::Interface::new(
+                <T as super::Diagnostics>::__TUFFITE_INTERFACE,
+                <T as super::Diagnostics>::__tuffite_dispatch,
+                <T as super::Diagnostics>::__TUFFITE_COMMANDS,
+            )
+        }
+    }
+    impl<T: super::Diagnostics> ::tuffite::app::InterfaceFor<T> for Diagnostics {
+        fn registry() -> ::tuffite::__private::CommandRegistry<T> {
+            super::diagnostics::registry::<T>()
+        }
+    }
+    /// Type-level interface registration for application and browser scopes.
+    pub struct Echo;
+    impl<T: super::Echo> ::tuffite::utility::InterfaceFor<T> for Echo {
+        fn interface() -> ::tuffite::utility::Interface<T> {
+            ::tuffite::utility::Interface::new(
+                <T as super::Echo>::__TUFFITE_INTERFACE,
+                <T as super::Echo>::__tuffite_dispatch,
+                <T as super::Echo>::__TUFFITE_COMMANDS,
+            )
+        }
+    }
+    impl<T: super::Echo> ::tuffite::app::InterfaceFor<T> for Echo {
+        fn registry() -> ::tuffite::__private::CommandRegistry<T> {
+            super::echo::registry::<T>()
+        }
+    }
+    /// Type-level interface registration for application and browser scopes.
+    pub struct Profiles;
+    impl<T: super::Profiles> ::tuffite::utility::InterfaceFor<T> for Profiles {
+        fn interface() -> ::tuffite::utility::Interface<T> {
+            ::tuffite::utility::Interface::new(
+                <T as super::Profiles>::__TUFFITE_INTERFACE,
+                <T as super::Profiles>::__tuffite_dispatch,
+                <T as super::Profiles>::__TUFFITE_COMMANDS,
+            )
+        }
+    }
+    impl<T: super::Profiles> ::tuffite::app::InterfaceFor<T> for Profiles {
+        fn registry() -> ::tuffite::__private::CommandRegistry<T> {
+            super::profiles::registry::<T>()
+        }
     }
 }

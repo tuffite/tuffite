@@ -15,7 +15,7 @@
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "tuffite/framework/app/services/utility/utility_process_launcher.h"
-#include "tuffite/framework/public/abi.h"
+#include "tuffite/framework/public/c_api/types.h"
 namespace tuffite {
 namespace {
 class FakeProcess final : public mojom::UtilityService {
@@ -104,12 +104,10 @@ class UtilityServiceTest : public testing::Test {
   }
 };
 TEST_F(UtilityServiceTest, ServiceStartupConfigurationIsIndependentOfRequests) {
-  service->SetUtilityStartupConfigurations({{"demo", {7, 8, 9}}});
   service->InvokeUtilityService(owner, 1, "demo", {1, 2}, base::DoNothing());
   launcher->process.WaitForRequests(1);
   ASSERT_EQ(launcher->launches, 1u);
-  EXPECT_EQ(launcher->process.startup_configuration,
-            (std::vector<uint8_t>{7, 8, 9}));
+  EXPECT_TRUE(launcher->process.startup_configuration.empty());
 }
 TEST_F(UtilityServiceTest, RegistrationQueryDoesNotLaunchUtility) {
   EXPECT_TRUE(service->IsRegisteredUtility("demo"));

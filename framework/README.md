@@ -74,7 +74,8 @@ Chromium's `content::ContentBrowserClient`; there is no separate
 
 | Class | Owner / lifetime | Responsibility | Placement |
 | --- | --- | --- | --- |
-| `AbiHostBridge` | `MainDelegate`; created before service startup, stopped before service destruction | Validate the host callback table and ABI extensions; start/stop the host runtime; dispatch and cancel document requests; marshal asynchronous replies onto the browser sequence | `app/abi_host_bridge.*` |
+| `abi::Application` | MainDelegate; runtime and outbound requests | Validate the Rust callback table, start/initialize/stop Rust, implement HostDispatch and correlate responses | `app/abi/application.*` |
+| `abi::Host` | MainDelegate; lives through Rust stop | Own native callback tables, adapt Rust calls to services, marshal and cancel accepted native calls | `app/abi/host.*` |
 | `MainDelegate` | Runtime entry point; all native process roles | Implement ContentMain startup, logging/resources, sandbox preparation and process-client creation; start the application in the browser role and shut it down on exit | `app/main_delegate.*` |
 | `ContentBrowserClient` | `MainDelegate`; browser process | Implement Chromium browser callbacks, create BrowserMainParts and WebContents adapters, register frame binders, and forward asset/policy/authentication/debugging requests to service interfaces | `browser/content_browser_client.*` |
 | `BrowserMainParts` | Chromium; browser startup through message-loop teardown | Create native UI infrastructure and the BrowserContext; bind the ABI browser runner; invoke service startup; shut down browser-dependent work before profile/UI teardown | `browser/browser_main_parts.*` |
@@ -82,8 +83,7 @@ Chromium's `content::ContentBrowserClient`; there is no separate
 | `ContextMenuService` | BrowserContext keyed factory | Inject policy and debugging dependencies; create independent menu sessions | `browser/services/context_menu/context_menu_service.*` |
 | `ContextMenuSession` | View delegate; one per WebContents | Construct menus, execute commands, convert coordinates and own native menu runner state | `browser/services/context_menu/context_menu_session.*` |
 
-`MainDelegate` is the composition root. It owns the bridge, manifest, application
-context and the common, browser,
+`MainDelegate` is the composition root. It directly owns abi::Application, abi::Host, ApplicationContext and the common, browser,
 renderer and utility clients; Chromium owns the BrowserMainParts returned by the
 browser client. BrowserMainParts owns the BrowserContext and native UI helpers.
 ContentBrowserClient injects ContextMenuService into the view adapter factory.
@@ -93,7 +93,8 @@ menu runners are never shared between views.
 
 ```mermaid
 flowchart TD
-  Main[MainDelegate] -->|owns| Bridge[AbiHostBridge]
+  Main[MainDelegate] -->|owns| Application[abi::Application]
+  Main -->|owns| Host[abi::Host]
   Main -->|owns| Context[ApplicationContext]
   Main -->|owns| Client[ContentBrowserClient]
   Main -->|owns| Other[ContentClient / renderer / utility clients]
@@ -105,8 +106,9 @@ flowchart TD
   Menus -->|creates| Session[ContextMenuSession]
   View -->|owns| Session
   Client -.->|resolves interfaces| Context
-  Parts -.->|startup and shutdown| Context
-  Bridge -.->|host API dispatch| Context
+  Parts -.->|lifecycle callbacks| Main
+  Host -.->|native API dispatch| Context
+  Profile -.->|HostDispatch| Application
   Profile -.->|borrows application scope| Context
   Context -->|keyed factories resolve| AppServices[Policy / Assets / Utility / Remoting]
   Profile -->|BrowserContext keyed factories| ProfileServices[Window / Download / Permission / ClientHints / NetworkContext / JavaScriptDialog / FileChooser / DevTools / ContextMenu / WebAuthn / ShellAPI]
@@ -120,12 +122,13 @@ The services README describes factory registration and dependency ordering.
 
 ### Why these adapters are not keyed services
 
-The bridge exists before `ApplicationContext` and is one of its inputs.
-Turning it into a context-created service would invert startup dependencies.
-Its request transport, ABI validation and reply ownership remain at the ABI
-boundary. Feature operations reached through that boundary resolve service
-interfaces; the bridge must not acquire another feature registry or become a
-second service manager.
+MainDelegate directly owns ApplicationContext, abi::Application and abi::Host.
+Application owns the Rust runtime and native-to-Rust request correlation; Host
+owns the native callback tables and Rust-to-native pending calls. Neither ABI
+object owns the other or the service scope. Host forwards runtime events through
+an immutable callback into Application; Application publishes copied application
+events through a weak Host callback on the browser sequence. BrowserContext
+receives Application as the narrow HostDispatch interface.
 
 MainDelegate and BrowserMainParts are Chromium lifecycle entry points. Their
 callbacks run before services exist and after browser threads or profiles begin
@@ -154,14 +157,14 @@ itself an application-wide keyed instance.
 | --- | --- |
 | `app/` / `app:app` | Application composition, host ABI boundary and startup shared across native process roles; depends on the browser/renderer/utility adapters and service registration |
 | `app:context` | ApplicationContext public interface; implementation and factory registration belong to `app:app` |
-| `app:host_headers` | The bridge declaration used by browser integration without depending on `app:app` implementations |
-| `browser/` / `browser:browser` | Browser-process Content adapters and profile composition; depends on service interfaces and the bridge declaration |
+| `app:abi_headers` | The ABI object declarations used by browser integration without depending on `app:app` implementations |
+| `browser/` / `browser:browser` | Browser-process Content adapters and profile composition; depends on service interfaces and the host declaration |
 | `browser:support` | Lower-level BrowserContext declarations and WebContents role tagging, available to services without a dependency on browser composition |
 | `app/services/` | Application keyed factories and dependency graph, plus application-scoped feature services; independent of `app:app` and `browser:browser` |
 | `browser/services/` | Browser/profile feature APIs and keyed factories, including BrowserContext-scoped DevTools and context menus; may depend on application interfaces and `browser:support`, never composition targets |
 | `browser/test_support/` | Browser observers activated by explicit native smoke switches; compiled with browser integration and independent of Chromium test-only targets |
 | `renderer/`, `utility/` | Their respective process adapters and implementations; browser keyed services do not move into these processes |
-| `common/`, `public/` | Cross-process data/protocol support and the stable public ABI, respectively |
+| `common/`, `public/c_api/` | Cross-process data/protocol support and the stable public ABI, respectively |
 
 BrowserMainParts and ContentBrowserClient now live beside the browser target that
 compiles them. MainDelegate keeps the cross-process meaning of
@@ -169,7 +172,7 @@ compiles them. MainDelegate keeps the cross-process meaning of
 that scope. No `embedder/` wrapper directory or service wrapper is needed for
 these entry points.
 
-The browser target may use `app:host_headers`; it must not depend on
+The browser target may use `app:abi_headers`; it must not depend on
 `app:app`. The latter already depends on the browser target. This
 separate declaration target prevents a GN cycle while keeping ownership in
 MainDelegate. Service implementations must use interface dependencies and must
@@ -177,23 +180,35 @@ not reach upward into these composition targets.
 
 ### Startup and shutdown order
 
-1. Create AbiHostBridge and transfer ownership to MainDelegate.
-2. MainDelegate prepares the selected native role and creates its Content client.
-3. In the browser role, load the manifest, register application service factories,
-   and create ApplicationContext;
-   bind the bridge and browser client to that context.
-4. BrowserMainParts initializes native UI, creates BrowserContext, starts
-   explicitly requested debugging and asks WindowService for configured windows.
-   It binds the bridge's browser task runner before loading the primary URL.
-5. Browser callbacks resolve feature interfaces from the owning application or
-   BrowserContext. Per-document requests retain document identity and cancellation.
-6. Before browser teardown, stop DevTools and Utility work and close windows;
-   detach download observers and shut down storage partitions before destroying
-   BrowserContext services. Then release UI infrastructure.
-7. MainDelegate quiesces and stops the host runtime, clears borrowed context
-   bindings, destroys application services, and finally releases the context.
+1. Validate the Rust callback table and create abi::Application; MainDelegate
+   owns it and constructs abi::Host with an event callback into Application.
+2. MainDelegate prepares the selected process role and creates Content clients.
+3. In the browser role, MainDelegate loads the manifest and creates
+   ApplicationContext. It binds Host to that scope and starts Application with
+   Host's C table. Application installs utility callbacks using Rust's functions.
+4. BrowserMainParts creates BrowserContext, borrowing the application scope and
+   Application's HostDispatch interface. Its prepare callback asks MainDelegate
+   to bind both ABI objects to the browser runner and connect application events.
+5. Application initializes Rust browser services before startup windows load.
+6. At message-loop teardown, BrowserMainParts invokes MainDelegate::BeginShutdown.
+   Host closes native-call admission and completes pending native replies;
+   Application quiesces outbound requests. Scheduling remains available.
+7. BrowserMainParts closes windows and destroys BrowserContext, then invokes
+   MainDelegate::Shutdown before releasing native UI infrastructure.
+8. MainDelegate releases ApplicationContext and its complete service graph,
+   stops Application's Rust runtime, then disables Host scheduling. Accepted
+   service-owned replies complete while Rust is still alive. Both ABI objects
+   remain allocated until their consumers are destroyed.
+9. Startup failure and process exit use the same idempotent MainDelegate cleanup;
+   BrowserMainParts never shuts down application services or Rust directly.
 
-Shutdown is idempotent. Asynchronous service work releases borrowed dependencies
+Shutdown is idempotent and guards callback reentry. A shutdown requested while
+Host or Application drains accepted replies is deferred until both batches
+finish; service teardown and Rust stop cannot overtake those replies. Runtime
+events are admitted from startup until stop begins, so a late Started event
+cannot republish a stopped runtime handle.
+
+Asynchronous service work releases borrowed dependencies
 in `Shutdown()`; destructors do not look up other services. Application services
 outlive their BrowserContexts. New feature behavior should follow these
 boundaries and the [service architecture](app/services/README.md), rather
@@ -280,19 +295,31 @@ Framework bindings and application package assembly; mise composes them.
 
 ## Application directory review
 
-`MainDelegate` owns the manifest, ABI bridge and application context, starts/stops
-the application service scope, establishes Chromium process clients and performs callbacks
-before service startup and after teardown. `process_launch` validates and adapts
+`MainDelegate` owns the application scope and both ABI directions, orchestrates startup/shutdown,
+establishes Chromium process clients and handles Content callbacks before
+service startup and after teardown. `process_launch` validates and adapts
 host process arguments for every process role. These remain composition/lifecycle
 adapters rather than keyed services. `main_delegate_mac` installs the process-wide
 NSApplication subclass and native event dispatch before profiles exist; a second
 per-Application instance would duplicate a process-global AppKit object.
 
-AbiHostBridge owns the stable ABI transport, pending callbacks and host reply
-lifetime. Its utility and ShellAPI feature calls already delegate to service
-interfaces. Making the bridge a context-created service would invert startup:
-the bridge is an input to ApplicationContext. Keep feature logic in
-services, and keep transport validation/cancellation at the ABI boundary.
+`app/abi/application.{h,cc}` implements the C++-to-Rust connection, runtime
+handle, initialization, response correlation and Rust module callbacks.
+`app/abi/host.{h,cc}` implements the Rust-to-C++ capabilities, thread switching,
+input validation and native pending-call ownership. MainDelegate owns both
+alongside ApplicationContext; neither ABI object owns feature services.
+
+Public contracts are under `public/c_api/` and `public/shell_api/`. C headers
+remain split by interface; Rust bindgen uses `crates/tuffite-abi/wrapper.h`.
+Shell API Mojom sources and generated native binding paths share the
+`framework/public/shell_api/` prefix. No old-path forwarding targets exist.
+
+A non-OK immediate ABI return retains reply ownership without invoking it;
+OK transfers ownership until one completion. Host tracks queued native calls
+and native Shell API replies; Application tracks calls sent into Rust.
+UtilityService owns accepted utility operations until completion or shutdown.
+MainDelegate destroys the service graph before Rust stop. During stop, business
+calls are rejected while Host's tables and scheduling remain valid.
 
 `ApplicationContext` lives in `app/` beside `MainDelegate`; its constructor
 registers application factories. ApplicationDependencyManager, ApplicationDependency,
@@ -338,11 +365,9 @@ Authenticator request delegates keep their document/request lifetimes. The
 process adapter owns neither profile credentials nor active requests.
 
 The utility runtime setup, host module resolution, asset fallback and registration
-checker live in `app/services/utility/host_runtime`. AbiHostBridge calls this helper
-after the host runtime starts; the bridge keeps ABI validation and transport/reply
-ownership. Complete bridge service ownership is possible with a redesigned,
-eager startup graph; its current status as a context input is an architectural
-choice, not a prohibition imposed by Chromium's keyed-service framework.
+checker live in abi::Application. It installs native callbacks after Rust starts.
+UtilityService does not interpret the application ABI table. ApplicationContext
+teardown closes utility work through the service graph before Rust stops.
 
 
 ShellApiService stays BrowserContext-scoped. Its factory injects the owning

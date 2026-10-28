@@ -556,7 +556,7 @@ pub unsafe extern "C" fn create_utility_session(
                 if status == Status::Ok {
                     Ok(())
                 } else {
-                    Err(crate::ApplicationError::new(format!(
+                    Err(crate::Error::new(format!(
                         "Utility session event sink rejected event: {status:?}"
                     )))
                 }
@@ -918,9 +918,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::{
-        ApplicationResult, CommandResult, UtilityServiceRegistration, UtilitySessionFuture,
-    };
+    use crate::{CommandResult, Result, UtilityServiceRegistration, UtilitySessionFuture};
 
     static REPLY: Mutex<Option<(Status, Vec<u8>)>> = Mutex::new(None);
     type SessionEventRecord = (u64, u64, u32, Vec<u8>);
@@ -931,7 +929,7 @@ mod tests {
     fn v8_names_cannot_collide_after_host_canonicalization() {
         struct Assets;
         impl crate::utility::V8 for Assets {
-            fn new(_: crate::V8Context) -> ApplicationResult<Self> {
+            fn new(_: crate::V8Context) -> Result<Self> {
                 Ok(Self)
             }
         }
@@ -987,7 +985,10 @@ mod tests {
     fn utility_stop_closes_admission_before_waiting_for_active_operations() {
         let _test = TEST_LOCK.lock().unwrap();
         let instance = Arc::new(UtilityInstance {
-            implementation: Box::new(EchoService),
+            implementation: Box::new(crate::utility::ConfiguredUtility {
+                implementation: EchoService,
+                interfaces: crate::utility::InterfaceRegistry::default(),
+            }),
             activity: RwLock::new(()),
             closing: AtomicBool::new(false),
             cancellation: CancellationToken::new(),
@@ -1083,7 +1084,7 @@ mod tests {
     }
 
     impl Utility for EchoService {
-        async fn new(context: crate::UtilityContext) -> ApplicationResult<Self> {
+        async fn new(context: crate::UtilityContext) -> Result<Self> {
             *STARTUP_CONTEXT.lock().unwrap() = Some(context);
             Ok(Self)
         }
@@ -1097,7 +1098,7 @@ mod tests {
         fn create_session(
             &self,
             request: UtilitySessionRequest,
-        ) -> ApplicationResult<Box<dyn UtilitySession>> {
+        ) -> Result<Box<dyn UtilitySession>> {
             assert_ne!(request.id(), 0);
             assert_eq!(request.init(), b"init");
             Ok(Box::new(EchoSession {

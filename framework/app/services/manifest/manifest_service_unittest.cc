@@ -5,6 +5,7 @@
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "tuffite/components/explorer/common/external_protocol.h"
 #include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
 #include "tuffite/framework/browser/services/isolated/isolated_registry.h"
 #include "url/url_util.h"
@@ -28,149 +29,8 @@ std::unique_ptr<ManifestService> LoadManifest(
 }
 
 constexpr char kManifest[] = R"({
-  "app": {
+  "app": {"schemes":["originlab"],
     "identifier": "com.example.originlab",
-    "security": {
-      "capabilities": [
-        {
-          "identifier": "app",
-          "origins": [
-            "originlab://main"
-          ],
-          "explorer": {
-            "create": true,
-            "executeJavaScript": true
-          },
-          "shellApi": [
-            "originlab.*",
-            {
-              "method": "tuffite.Fs.ReadFile",
-              "allow": [
-                {
-                  "path": "resource/allowed/*"
-                }
-              ]
-            },
-            {
-              "method": "tuffite.Fs.Exists",
-              "allow": [
-                {
-                  "path": "resource/allowed/*"
-                }
-              ]
-            },
-            {
-              "method": "tuffite.Fs.WriteFile",
-              "allow": [
-                {
-                  "path": "data/safe/*"
-                }
-              ]
-            },
-            {
-              "method": "tuffite.Fs.CreateDir",
-              "allow": [
-                {
-                  "path": "data/safe/*"
-                }
-              ]
-            },
-            {
-              "method": "tuffite.Fs.RemoveFile",
-              "allow": [
-                {
-                  "path": "data/safe/*"
-                }
-              ]
-            },
-            {
-              "method": "tuffite.Net.Request",
-              "allow": [
-                {
-                  "url": "https://example.com/api/*"
-                }
-              ]
-            },
-            {
-              "method": "tuffite.Fs.ReadFile",
-              "allow": [
-                {
-                  "path": "data/**"
-                }
-              ]
-            },
-            "tuffite.Window.Focus",
-            "tuffite.Window.Close",
-            {
-              "method": "tuffite.Window.Close",
-              "allow": [
-                {
-                  "window": "others"
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "identifier": "readonly",
-          "origins": [
-            "originlab://*.artifact",
-            "originlab://*.preview"
-          ],
-          "shellApi": [
-            "tuffite.Path.Directories"
-          ]
-        },
-        {
-          "identifier": "artifact",
-          "origins": [
-            "originlab://demo.artifact"
-          ],
-          "shellApi": [
-            "originlab.commands.allowed"
-          ]
-        },
-        {
-          "identifier": "no-grant",
-          "origins": [
-            "originlab://*.artifact"
-          ],
-          "shellApi": []
-        },
-        {
-          "identifier": "denials",
-          "origins": [
-            "originlab://main"
-          ],
-          "shellApi": [
-            {
-              "method": "tuffite.Fs.ReadFile",
-              "deny": [
-                {
-                  "path": "data/secrets/**"
-                }
-              ]
-            },
-            {
-              "method": "tuffite.Window.Close",
-              "deny": [
-                {
-                  "window": "others"
-                }
-              ]
-            },
-            {
-              "method": "tuffite.Net.Request",
-              "deny": [
-                {
-                  "url": "https://example.com/api/private/**"
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    },
     "windows": [
       {
         "label": "main",
@@ -180,7 +40,6 @@ constexpr char kManifest[] = R"({
       }
     ],
     "shellApi": {
-
       "commandIds": {
         "tuffite.Path.Directories": "0000000000000000",
         "originlab.commands.allowed": "0000000000000001",
@@ -229,12 +88,154 @@ constexpr char kManifest[] = R"({
         "file": "ui/index.html"
       }
     ]
+  },
+  "browser": {
+    "rules": [
+      {
+        "identifier": "app",
+        "origins": [
+          "originlab://main"
+        ],
+        "explorer": {
+          "create": true,
+          "executeJavaScript": true
+        },
+        "shellApi": [
+          "originlab.*",
+          {
+            "method": "tuffite.Fs.ReadFile",
+            "allow": [
+              {
+                "path": "resource/allowed/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Fs.Exists",
+            "allow": [
+              {
+                "path": "resource/allowed/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Fs.WriteFile",
+            "allow": [
+              {
+                "path": "data/safe/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Fs.CreateDir",
+            "allow": [
+              {
+                "path": "data/safe/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Fs.RemoveFile",
+            "allow": [
+              {
+                "path": "data/safe/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Net.Request",
+            "allow": [
+              {
+                "url": "https://example.com/api/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Fs.ReadFile",
+            "allow": [
+              {
+                "path": "data/**"
+              }
+            ]
+          },
+          "tuffite.Window.Focus",
+          "tuffite.Window.Close",
+          {
+            "method": "tuffite.Window.Close",
+            "allow": [
+              {
+                "window": "others"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "identifier": "readonly",
+        "origins": [
+          "originlab://*.artifact",
+          "originlab://*.preview"
+        ],
+        "shellApi": [
+          "tuffite.Path.Directories"
+        ]
+      },
+      {
+        "identifier": "artifact",
+        "origins": [
+          "originlab://demo.artifact"
+        ],
+        "shellApi": [
+          "originlab.commands.allowed"
+        ]
+      },
+      {
+        "identifier": "no-grant",
+        "origins": [
+          "originlab://*.artifact"
+        ],
+        "shellApi": []
+      },
+      {
+        "identifier": "denials",
+        "origins": [
+          "originlab://main"
+        ],
+        "shellApi": [
+          {
+            "method": "tuffite.Fs.ReadFile",
+            "deny": [
+              {
+                "path": "data/secrets/**"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Window.Close",
+            "deny": [
+              {
+                "window": "others"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Net.Request",
+            "deny": [
+              {
+                "url": "https://example.com/api/private/**"
+              }
+            ]
+          }
+        ]
+      }
+    ]
   }
 })";
 class OriginCapabilityTest : public testing::Test {
  public:
   void SetUp() override {
     url::AddStandardScheme("originlab", url::SCHEME_WITH_HOST);
+    url::AddStandardScheme("originlab-resource", url::SCHEME_WITH_HOST);
     ASSERT_TRUE(root_.CreateUniqueTempDir());
     ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
                                 kManifest));
@@ -251,6 +252,91 @@ class OriginCapabilityTest : public testing::Test {
   std::unique_ptr<ManifestService> manifest_;
   std::string error_;
 };
+TEST(ExplorerBehaviorTest, ParsesAtomicDeclarationsAndDurations) {
+  auto parsed = ParseExplorerBehavior(
+      " navigation: delegate; dialog: block; external-protocol: delegate "
+      "timeout(15s); new-window: browser; ");
+  ASSERT_TRUE(parsed);
+  ExplorerBehavior behavior;
+  behavior.Apply(*parsed);
+  EXPECT_EQ(behavior[ExplorerAction::kNavigation].mode,
+            ExplorerMode::kDelegate);
+  EXPECT_EQ(behavior[ExplorerAction::kExternalProtocol].timeout_ms, 15000);
+  EXPECT_EQ(behavior[ExplorerAction::kNewWindow].mode, ExplorerMode::kBrowser);
+  EXPECT_FALSE(
+      ParseExplorerBehavior("external-protocol: browser timeout(15s)"));
+  EXPECT_FALSE(ParseExplorerBehavior("dialog: delegate timeout(300001ms)"));
+  EXPECT_FALSE(ParseExplorerBehavior("unknown: browser"));
+  EXPECT_FALSE(ParseExplorerBehavior("navigation: allow"));
+  EXPECT_FALSE(ParseExplorerBehavior("dialog: delegate, timeout=15"));
+  parsed = ParseExplorerBehavior("navigation: block; navigation: browser;");
+  ASSERT_TRUE(parsed);
+  behavior.Apply(*parsed);
+  EXPECT_EQ(behavior[ExplorerAction::kNavigation].mode, ExplorerMode::kBrowser);
+}
+
+TEST_F(OriginCapabilityTest, OriginRulesComposeBehaviorAndCspIndependently) {
+  auto text = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+  auto* rules = text->FindDict("browser")->FindList("rules");
+  rules->Append(
+      base::DictValue()
+          .Set("origins", base::ListValue().Append("originlab://main"))
+          .Set("csp", "img-src 'none'")
+          .Set("explorer",
+               base::DictValue().Set(
+                   "behavior", base::DictValue()
+                                   .Set("navigation", base::DictValue().Set(
+                                                          "mode", "delegate"))
+                                   .Set("externalProtocol",
+                                        base::DictValue()
+                                            .Set("mode", "delegate")
+                                            .Set("timeoutMs", 15000)))));
+  rules->Append(
+      base::DictValue()
+          .Set("origins", base::ListValue().Append("originlab://main"))
+          .Set("csp", "font-src 'none'")
+          .Set("explorer",
+               base::DictValue().Set(
+                   "behavior",
+                   base::DictValue().Set(
+                       "navigation", base::DictValue().Set("mode", "block")))));
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(*text)));
+  auto manifest = LoadManifest(root_.GetPath(), &error_);
+  ASSERT_TRUE(manifest) << error_;
+  auto behavior = manifest->ExplorerDefaults(Origin("originlab://main/path"));
+  EXPECT_EQ(behavior[ExplorerAction::kNavigation].mode, ExplorerMode::kBlock);
+  EXPECT_EQ(behavior[ExplorerAction::kExternalProtocol].timeout_ms, 15000);
+  EXPECT_EQ(manifest
+                ->ExplorerDefaults(
+                    Origin("https://example.com"))[ExplorerAction::kNavigation]
+                .mode,
+            ExplorerMode::kBrowser);
+  auto assets = manifest->assets();
+  EXPECT_NE(assets.ContentSecurityPolicy(GURL("originlab://main/path"))
+                .find("img-src 'none', font-src 'none'"),
+            std::string::npos);
+  EXPECT_EQ(assets.ContentSecurityPolicy(GURL("https://example.com"), false),
+            "");
+  EXPECT_TRUE(
+      manifest->IsExplorerOriginAllowed(Origin("originlab://main/path")));
+}
+
+TEST_F(OriginCapabilityTest,
+       InvalidOriginRulesRejectWithoutDereferencingMissingFields) {
+  for (auto invalid :
+       {"42", "null", "[]",
+        "{\"identifier\":42,\"origins\":[\"originlab://main\"]}"}) {
+    auto config = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+    auto entry = base::JSONReader::Read(invalid, base::JSON_PARSE_RFC);
+    ASSERT_TRUE(entry);
+    config->FindDict("browser")->FindList("rules")->Append(std::move(*entry));
+    ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                                *base::WriteJson(*config)));
+    EXPECT_FALSE(LoadManifest(root_.GetPath(), &error_));
+  }
+}
+
 TEST_F(OriginCapabilityTest, IsolatedPackagesAreImmutableAndOriginScoped) {
   const auto assets = root_.GetPath().AppendASCII("assets");
   ASSERT_TRUE(base::CreateDirectory(assets));
@@ -275,9 +361,11 @@ TEST_F(OriginCapabilityTest, IsolatedPackagesAreImmutableAndOriginScoped) {
   for (const auto& [name, snapshot] : manifest->IsolatedWorldDefinitions()) {
     registry.AddBundled(name, snapshot);
   }
-  EXPECT_EQ(registry.Source("io.example.visual-blocks", Origin("originlab://main")),
-            "globalThis.fixture = 1;");
-  EXPECT_FALSE(registry.Source("io.example.visual-blocks", Origin("originlab://public")));
+  EXPECT_EQ(
+      registry.Source("io.example.visual-blocks", Origin("originlab://main")),
+      "globalThis.fixture = 1;");
+  EXPECT_FALSE(registry.Source("io.example.visual-blocks",
+                               Origin("originlab://public")));
   EXPECT_FALSE(registry.Source("unknown", Origin("originlab://main")));
   parsed->GetDict()
       .FindDict("app")
@@ -306,7 +394,8 @@ TEST_F(OriginCapabilityTest, MojomModulesDoNotDependOnTheAssetScheme) {
       base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), text));
   auto manifest = LoadManifest(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
-  EXPECT_EQ(manifest->app_info().scheme, "originlab");
+  EXPECT_EQ(manifest->app_info().schemes,
+            (std::vector<std::string>{"originlab"}));
   EXPECT_EQ(manifest->ApplicationInterface("other.files.Fs.Read"),
             "other.files.Fs");
   EXPECT_TRUE(manifest->IsApplicationCommandRequest("other.files.Fs.Read", 17));
@@ -339,27 +428,6 @@ TEST_F(OriginCapabilityTest, InvalidProductNamesAreRejected) {
   }
 }
 
-TEST_F(OriginCapabilityTest,
-       UtilityStartupConfigurationIsServiceScopedAndBounded) {
-  std::string configured(kManifest);
-  configured.replace(configured.find("\"identifier\""), 0,
-                     "\"utilities\": {\"indexer\": {\"configuration\": "
-                     "{\"mode\": 7}}, \"parser\": {}},");
-  ASSERT_TRUE(
-      base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), configured));
-  auto manifest = LoadManifest(root_.GetPath(), &error_);
-  ASSERT_TRUE(manifest) << error_;
-  auto configurations = manifest->UtilityConfigurations();
-  ASSERT_EQ(configurations.size(), 1u);
-  EXPECT_EQ(std::string(configurations.at("indexer").begin(),
-                        configurations.at("indexer").end()),
-            "{\"mode\":7}");
-  configured.replace(configured.find("{\"mode\": 7}"), 11,
-                     "\"" + std::string(64 * 1024, 'x') + "\"");
-  ASSERT_TRUE(
-      base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), configured));
-  EXPECT_FALSE(LoadManifest(root_.GetPath(), &error_));
-}
 TEST_F(OriginCapabilityTest, UnionGrantsRemainOriginScoped) {
   auto artifact = Origin("originlab://demo.artifact/page");
   auto preview = Origin("originlab://demo.preview/page");
@@ -454,6 +522,16 @@ TEST_F(OriginCapabilityTest, PackagedModulePathsReuseOriginAndRouteChecks) {
 
 TEST_F(OriginCapabilityTest, OwnerNavigationDoesNotInheritAssetAuthority) {
   const auto owner = Origin("originlab://main/");
+  EXPECT_TRUE(manifest_->IsExplorerNavigationAllowed(
+      owner, GURL("lark://client/open")));
+  EXPECT_TRUE(manifest_->IsExplorerNavigationAllowed(
+      owner, GURL("mailto:test@example.com")));
+  EXPECT_FALSE(manifest_->IsExplorerNavigationAllowed(
+      Origin("https://untrusted.test"), GURL("lark://client/open")));
+  EXPECT_FALSE(manifest_->IsExplorerNavigationAllowed(
+      owner, GURL("javascript:alert(1)")));
+  EXPECT_FALSE(manifest_->IsExplorerNavigationAllowed(
+      owner, GURL("lark://user:pass@client/open")));
   EXPECT_TRUE(
       manifest_->assets().IsAppUrl(GURL("originlab://public/index.html")));
   EXPECT_TRUE(manifest_->IsExplorerNavigationAllowed(
@@ -509,16 +587,29 @@ TEST_F(OriginCapabilityTest,
 }
 
 TEST_F(OriginCapabilityTest, NamespaceGroupScopesAreValidatedByTheApi) {
-  auto contents = std::string(kManifest);
-  auto pos = contents.find("\"tuffite.Window.Focus\"");
-  ASSERT_NE(pos, std::string::npos);
-  contents.replace(pos, std::string("\"tuffite.Window.Focus\"").size(),
-                   R"({"method":"tuffite.Window.*","allow":[{"window":"*"}]})");
-  pos = contents.find("\"tuffite.Window.Focus\":");
-  ASSERT_NE(pos, std::string::npos);
-  contents.insert(pos, R"("tuffite.Window.Current":"0000000000000000",)");
-  ASSERT_TRUE(
-      base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), contents));
+  auto config = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+  auto* grants = config->FindDict("browser")
+                     ->FindList("rules")
+                     ->front()
+                     .GetDict()
+                     .FindList("shellApi");
+  size_t group_index = 0;
+  for (size_t i = 0; i < grants->size(); ++i) {
+    if ((*grants)[i].is_string() &&
+        (*grants)[i].GetString() == "tuffite.Window.Focus") {
+      group_index = i;
+      (*grants)[i] = base::Value(
+          base::DictValue()
+              .Set("method", "tuffite.Window.*")
+              .Set("allow", base::ListValue().Append(
+                                base::DictValue().Set("window", "*"))));
+      break;
+    }
+  }
+  config->FindDictByDottedPath("app.shellApi.commandIds")
+      ->Set("tuffite.Window.Current", "0000000000000000");
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(*config)));
   auto manifest = LoadManifest(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
   const auto owner = Origin("originlab://main/");
@@ -531,12 +622,11 @@ TEST_F(OriginCapabilityTest, NamespaceGroupScopesAreValidatedByTheApi) {
   // Existing deny scopes retain precedence over the group grant.
   EXPECT_FALSE(manifest->IsShellApiScopeAllowed(owner, "tuffite.Window.Close",
                                                 "others", "window"));
-  pos = contents.find(R"({"window":"*"})");
-  ASSERT_NE(pos, std::string::npos);
-  contents.replace(pos, std::string(R"({"window":"*"})").size(),
-                   R"({"path":"data/*"})");
-  ASSERT_TRUE(
-      base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"), contents));
+  (*grants)[group_index].GetDict().Set(
+      "allow",
+      base::ListValue().Append(base::DictValue().Set("path", "data/*")));
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(*config)));
   manifest = LoadManifest(root_.GetPath(), &error_);
   ASSERT_TRUE(manifest) << error_;
   EXPECT_FALSE(manifest->IsShellApiScopeAllowed(owner, "tuffite.Window.Focus",
@@ -584,8 +674,8 @@ TEST_F(OriginCapabilityTest, RejectsLegacyRouteAndServiceGrants) {
   config->SetByDottedPath("app.shellApi.utilityRoutes", base::DictValue());
   EXPECT_FALSE(load());
   config->FindDictByDottedPath("app.shellApi")->Remove("utilityRoutes");
-  auto& grants = *config->FindDictByDottedPath("app.security")
-                      ->FindList("capabilities")
+  auto& grants = *config->FindDict("browser")
+                      ->FindList("rules")
                       ->front()
                       .GetDict()
                       .FindList("shellApi");
@@ -628,23 +718,104 @@ TEST(ManifestBootstrapTest, ReadsBeforeApplicationSchemeRegistration) {
   ASSERT_TRUE(root.CreateUniqueTempDir());
   ASSERT_TRUE(base::WriteFile(
       root.GetPath().AppendASCII("tuffite.json"),
-      R"({"app":{"windows":[{"url":"bootstraponly://main/index.html"}],"network":{"disableHttp2":true}}})"));
+      R"({"app":{"schemes":["bootstraponly"],"windows":[{"url":"bootstraponly://main/index.html"}],"network":{"disableHttp2":true}}})"));
   std::string error;
-  EXPECT_EQ(app::ManifestLoader::ReadApplicationScheme(root.GetPath(), &error),
-            std::make_optional(std::string("bootstraponly")));
+  EXPECT_EQ(app::ManifestLoader::ReadApplicationSchemes(root.GetPath(), &error),
+            std::make_optional(std::vector<std::string>{"bootstraponly"}));
   EXPECT_TRUE(app::ManifestLoader::ReadNetworkDisableHttp2(root.GetPath()));
   ASSERT_TRUE(base::WriteFile(
       root.GetPath().AppendASCII("tuffite.json"),
       R"({"app":{"windows":[{"url":"https://example.com/"}]}})"));
   EXPECT_FALSE(
-      app::ManifestLoader::ReadApplicationScheme(root.GetPath(), &error));
+      app::ManifestLoader::ReadApplicationSchemes(root.GetPath(), &error));
   EXPECT_FALSE(app::ManifestLoader::ReadNetworkDisableHttp2(root.GetPath()));
 }
+TEST_F(OriginCapabilityTest, MultipleSchemesRemainInternalAndOriginScoped) {
+  auto document = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+  ASSERT_TRUE(document);
+  document->FindDict("app")->FindList("schemes")->Append("originlab-resource");
+  auto* assets = document->FindDict("app")->FindList("assets");
+  assets->Append(base::DictValue()
+                     .Set("origins", base::ListValue().Append(
+                                         "originlab-resource://static"))
+                     .Set("paths", base::ListValue().Append("/*"))
+                     .Set("directory", "secondary"));
+  document->FindDict("app")->FindList("windows")->front().GetDict().Set(
+      "url", "originlab-resource://static/index.html");
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(*document)));
+  auto service = LoadManifest(root_.GetPath(), &error_);
+  ASSERT_TRUE(service) << error_;
+  EXPECT_EQ(service->app_info().schemes.size(), 2u);
+  const auto configuration = service->assets();
+  EXPECT_TRUE(
+      configuration.IsAppUrl(GURL("originlab-resource://static/index.html")));
+  EXPECT_FALSE(
+      configuration.IsAppUrl(GURL("originlab-resource://other/index.html")));
+  EXPECT_EQ(configuration.ResolveAssetRoute(
+                GURL("originlab-resource://static/index.html")),
+            "/secondary/index.html");
+  EXPECT_FALSE(IsExternalProtocol(
+      GURL("originlab-resource://static/index.html"), configuration.schemes));
+  EXPECT_FALSE(IsExternalProtocol(GURL("originlab://main/index.html"),
+                                  configuration.schemes));
+  EXPECT_TRUE(
+      IsExternalProtocol(GURL("lark://open/fixture"), configuration.schemes));
+  EXPECT_FALSE(
+      service->IsExplorerOriginAllowed(Origin("originlab-resource://static")));
+}
+
+TEST_F(OriginCapabilityTest, InvalidSchemeDeclarationsAreRejected) {
+  for (const auto* value :
+       {"[]", "[\"originlab\",\"originlab\"]", "[\"https\"]", "[\"chrome\"]",
+        "[\"OVULE\"]", "[7]", "null"}) {
+    auto document = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+    ASSERT_TRUE(document);
+    document->FindDict("app")->Set(
+        "schemes",
+        std::move(*base::JSONReader::Read(value, base::JSON_PARSE_RFC)));
+    ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                                *base::WriteJson(*document)));
+    EXPECT_FALSE(
+        app::ManifestLoader::ReadApplicationSchemes(root_.GetPath(), &error_));
+    EXPECT_FALSE(LoadManifest(root_.GetPath(), &error_));
+  }
+}
+
+TEST_F(OriginCapabilityTest, FrozenRustDeclarationsPrecedePackagedSnapshot) {
+  auto runtime = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+  ASSERT_TRUE(runtime);
+  auto* app = runtime->FindDict("app");
+  auto metadata_app = base::DictValue()
+                          .Set("identifier", *app->FindString("identifier"))
+                          .Set("shellApi", app->FindDict("shellApi")->Clone());
+  app->Remove("identifier");
+  app->Remove("shellApi");
+  runtime->FindDict("browser")->Set("devtools", false);
+  auto metadata = base::DictValue()
+                      .Set("app", std::move(metadata_app))
+                      .Set("browser", base::DictValue().Set("devtools", true));
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(metadata)));
+  const auto bytes = *base::WriteJson(*runtime);
+  EXPECT_TRUE(app::ManifestLoader::ReadApplicationSchemes(root_.GetPath(),
+                                                          &error_, bytes));
+  auto definition = app::ManifestLoader::Load(root_.GetPath(), &error_, bytes);
+  ASSERT_TRUE(definition) << error_;
+  auto configuration = app::ConfigurationAssembler::Build(
+      std::move(*definition), {}, {}, &error_);
+  ASSERT_TRUE(configuration) << error_;
+  auto service = ManifestServiceFactory::Create(std::move(*configuration));
+  EXPECT_FALSE(service->IsDevToolsEnabled());
+  EXPECT_EQ(service->startup_windows().front().url,
+            GURL("originlab://main/index.html"));
+  EXPECT_TRUE(service->assets().IsAppUrl(GURL("originlab://main/index.html")));
+}
+
 TEST_F(OriginCapabilityTest, DevToolsDenialsAreOriginScopedAndOverrideAllows) {
   auto text = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
   ASSERT_TRUE(text);
-  auto* capabilities =
-      text->FindDict("app")->FindDict("security")->FindList("capabilities");
+  auto* capabilities = text->FindDict("browser")->FindList("rules");
   capabilities->Append(
       base::DictValue()
           .Set("identifier", "deny-inspection")
@@ -669,6 +840,54 @@ TEST_F(OriginCapabilityTest, DevToolsDenialsAreOriginScopedAndOverrideAllows) {
       development->IsDevToolsAllowed(Origin("http://127.0.0.1:5173/")));
 }
 
+TEST_F(OriginCapabilityTest, DevToolsMasterSwitchCannotBeOverridden) {
+  EXPECT_TRUE(manifest_->IsDevToolsEnabled());
+  auto document = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+  ASSERT_TRUE(document);
+  document->SetByDottedPath("browser.devtools", false);
+  document->FindDict("browser")->FindList("rules")->Append(
+      base::DictValue()
+          .Set("origins", base::ListValue().Append("originlab://main"))
+          .Set("devtools", true));
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(*document)));
+  auto service =
+      LoadManifest(root_.GetPath(), &error_,
+                   {.development_url = GURL("http://127.0.0.1:5173/main")});
+  ASSERT_TRUE(service) << error_;
+  EXPECT_FALSE(service->IsDevToolsEnabled());
+  for (const auto* origin :
+       {"originlab://main", "https://example.com", "http://127.0.0.1:5173"}) {
+    EXPECT_FALSE(service->IsDevToolsAllowed(Origin(origin)));
+  }
+  document->SetByDottedPath("browser.devtools", true);
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(*document)));
+  service = LoadManifest(root_.GetPath(), &error_);
+  ASSERT_TRUE(service) << error_;
+  EXPECT_TRUE(service->IsDevToolsEnabled());
+  EXPECT_TRUE(service->IsDevToolsAllowed(Origin("originlab://main")));
+}
+
+TEST_F(OriginCapabilityTest, RemovedUtilitiesAndMalformedDevToolsAreRejected) {
+  for (const auto* value : {"null", "7", "\"false\"", "{}"}) {
+    auto document = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+    ASSERT_TRUE(document);
+    document->FindDict("browser")->Set(
+        "devtools",
+        std::move(*base::JSONReader::Read(value, base::JSON_PARSE_RFC)));
+    ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                                *base::WriteJson(*document)));
+    EXPECT_FALSE(LoadManifest(root_.GetPath(), &error_)) << value;
+  }
+  auto document = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+  ASSERT_TRUE(document);
+  document->FindDict("app")->Set("utilities", base::DictValue());
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(*document)));
+  EXPECT_FALSE(LoadManifest(root_.GetPath(), &error_));
+}
+
 TEST_F(OriginCapabilityTest, BrowserSetupAddsDenialsAndRejectsInvalidPatterns) {
   std::string error;
   app::BrowserOptions options;
@@ -691,7 +910,6 @@ TEST_F(OriginCapabilityTest,
        EffectiveConfigurationOwnsInputsBeforeServiceCreation) {
   auto document = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
   ASSERT_TRUE(document);
-  document->SetByDottedPath("app.utilities.echo.configuration.mode", "local");
   ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
                               *base::WriteJson(*document)));
   auto definition = app::ManifestLoader::Load(root_.GetPath(), &error_);
@@ -724,10 +942,6 @@ TEST_F(OriginCapabilityTest,
                  .GetDict()
                  .FindString("url"),
             "originlab://main/index.html");
-  const auto utilities = service->UtilityConfigurations();
-  ASSERT_TRUE(utilities.contains("echo"));
-  const auto& bytes = utilities.at("echo");
-  EXPECT_EQ(std::string(bytes.begin(), bytes.end()), R"({"mode":"local"})");
 }
 
 TEST_F(OriginCapabilityTest, HostRestrictionsDoNotIntroduceCapabilityGrants) {
@@ -791,6 +1005,35 @@ TEST(IsolatedRegistryTest, GenerationAndOriginAuthorization) {
   auto third = registry.Apply(request);
   ASSERT_TRUE(third);
   EXPECT_NE(second, third);
+}
+TEST(IsolatedRegistryTest, PackageVersionsPinTheirCompleteResourceSnapshot) {
+  IsolatedRegistry registry;
+  auto request = RegistryRequest(R"({"op":"register","name":"modules",
+      "source":"","entry":"entry.js","resources":{"entry.js":"ZXhwb3J0IHt9Ow==","lazy.js":"b2xk"},
+      "origins":["https://main.example"]})");
+  auto first = registry.Apply(request);
+  ASSERT_TRUE(first);
+  const auto origin = url::Origin::Create(GURL("https://main.example"));
+  auto pinned = registry.Find("modules", origin);
+  ASSERT_TRUE(pinned);
+  request.Set("op", "replace");
+  request.Set("generation", *first);
+  request.FindDict("resources")->Set("lazy.js", "bmV3");
+  auto second = registry.Apply(request);
+  ASSERT_TRUE(second);
+  EXPECT_EQ(pinned->resources.at("lazy.js"), "old");
+  EXPECT_EQ(registry.Find("modules", origin)->resources.at("lazy.js"), "new");
+  request.Set("op", "unregister");
+  request.Set("generation", *second);
+  ASSERT_TRUE(registry.Apply(request));
+  EXPECT_FALSE(registry.Find("modules", origin));
+  EXPECT_EQ(pinned->resources.at("lazy.js"), "old");
+  request.Set("op", "register");
+  request.FindDict("resources")->Set("../escape.js", "eA==");
+  EXPECT_FALSE(registry.Apply(request));
+  request.FindDict("resources")->Remove("../escape.js");
+  request.FindDict("resources")->Set("lazy.js", "!not-base64!");
+  EXPECT_FALSE(registry.Apply(request));
 }
 TEST(IsolatedRegistryTest, ValidationQuotaAndBundledProtection) {
   IsolatedRegistry registry;

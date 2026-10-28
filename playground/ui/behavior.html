@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Explorer behavior</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <script type="module" src="/src/behavior.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Explorer behavior and origin rules</h1>
+      <a href="./index.html">Back to capability lab</a>
+      <p>
+        Use browser defaults, delegate a request to this page, or block an
+        action. Source documents retain their own CSP and capability grants.
+      </p>
+      <label
+        >Behavior declarations
+        <textarea id="behavior" rows="5">
+navigation: delegate;
+dialog: delegate timeout(15s);
+external-protocol: delegate timeout(15s);
+new-window: delegate;</textarea
+        >
+      </label>
+      <button id="apply">Apply behavior</button>
+      <button id="reload">Reload fixture</button>
+      <div id="behavior-owner"></div>
+      <section id="confirmation" hidden>
+        <p id="request-description"></p>
+        <button id="accept">Accept request</button>
+        <button id="dismiss">Dismiss request</button>
+      </section>
+      <pre id="behavior-output"></pre>
+    </main>
+  </body>
+</html>

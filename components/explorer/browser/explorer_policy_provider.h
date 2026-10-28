@@ -3,6 +3,7 @@
 
 #ifndef TUFFITE_COMPONENTS_EXPLORER_BROWSER_EXPLORER_POLICY_PROVIDER_H_
 #define TUFFITE_COMPONENTS_EXPLORER_BROWSER_EXPLORER_POLICY_PROVIDER_H_
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -20,6 +21,8 @@ namespace tuffite {
 class ExplorerPolicyProvider {
  public:
   virtual ~ExplorerPolicyProvider() = default;
+  virtual content::WebContents* OpenBrowserWindow(
+      std::unique_ptr<content::WebContents>) const;
   virtual void ResolveMessageWindow(
       content::RenderFrameHost&,
       int64_t,

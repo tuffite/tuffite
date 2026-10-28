@@ -10,10 +10,10 @@ runtime and does not replace trusted Rust services.
 Each extension runs as a long-lived `UtilitySession` in a Chromium Utility process.
 The browser backend remains the policy authority and owns every privileged resource.
 Its `BrowserContext::utilities().create_v8(name, ...)` opens a named definition
-registered with `#[tuffite::utility(name = "parser")]` on an impl of
+registered with `V8::setup(builder.name("parser"))` on an implementation of
 `tuffite::utility::V8`. `new(V8Context)` constructs a Browser-side provider on first use.
 `setup(builder: utility::v8::Builder)` returns the configured builder before `new`.
-Framework supplies manifest service configuration and the default `entry.mjs`;
+Framework supplies empty service-local configuration and the default `entry.mjs`;
 `builder.entry(path)` selects a different logical entry. The returned options are
 validated and frozen before provider construction.
 
@@ -41,8 +41,10 @@ javascript_extensions accessor is deprecated.
 
 One Rust provider per registered name is reused within a Browser runtime; each JS
 session still gets an independent native isolate. `V8Context` provides the name,
-service-local configuration from `app.utilities.<name>.configuration`, the full
-application manifest, Browser executor, and a cooperative stopping signal.
+service-local configuration frozen by `V8::setup(builder)`, the full application
+manifest, Browser executor, and a cooperative stopping signal. Setup starts with
+empty configuration; applications supply defaults or read their own configuration
+in Rust instead of declaring utility startup data in the manifest.
 `BrowserContext::set_state(Arc<T>)` installs typed state retrieved with
 `V8Context::state::<T>()`; these Arcs stay in Browser. Provider methods can run
 concurrently and constructor failure is retained for that runtime. Session init

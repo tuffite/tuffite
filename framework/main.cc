@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 #include "build/build_config.h"
-#include "tuffite/framework/public/abi.h"
+#include "tuffite/framework/public/c_api/application.h"
 
 #if BUILDFLAG(IS_WIN)
 #include <windows.h>

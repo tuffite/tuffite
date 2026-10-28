@@ -21,8 +21,9 @@ export default defineConfig({
       apply: "build",
       async closeBundle() {
         const output = resolve(
-            isAbsolute(outDir) ? outDir : resolve(uiRoot, outDir),
-            "playground-public");
+          isAbsolute(outDir) ? outDir : resolve(uiRoot, outDir),
+          "playground-public",
+        );
         await mkdir(output, { recursive: true });
         await cp(fileURLToPath(new URL("./public", import.meta.url)), output, { recursive: true });
       },
@@ -32,28 +33,30 @@ export default defineConfig({
   build: {
     outDir,
     emptyOutDir: true,
-    rollupOptions: {
-      input: {
-        main: fileURLToPath(new URL("./index.html", import.meta.url)),
-        isolated: fileURLToPath(new URL("./isolated.html", import.meta.url)),
-        mojomSmoke: fileURLToPath(new URL("./mojom-smoke.html", import.meta.url)),
-        capabilities: fileURLToPath(new URL("./capabilities.html", import.meta.url)),
-        compatibility: fileURLToPath(new URL("./compatibility.html", import.meta.url)),
-        compatibilitySample: fileURLToPath(new URL("./compatibility-sample.html", import.meta.url)),
-        events: fileURLToPath(new URL("./events.html", import.meta.url)),
-        eventFixture: fileURLToPath(new URL("./event-fixture.html", import.meta.url)),
-        eventPopup: fileURLToPath(new URL("./event-popup.html", import.meta.url)),
-        tabs: fileURLToPath(new URL("./tabs.html", import.meta.url)),
-        tabSample: fileURLToPath(new URL("./tab-sample.html", import.meta.url)),
-        capabilitySample: fileURLToPath(new URL("./capability-sample.html", import.meta.url)),
-        transfer: fileURLToPath(new URL("./transfer.html", import.meta.url)),
-        transferSample: fileURLToPath(new URL("./transfer-sample.html", import.meta.url)),
-        explorer: fileURLToPath(new URL("./explorer.html", import.meta.url)),
-        nested: fileURLToPath(new URL("./nested.html", import.meta.url)),
-        historyA: fileURLToPath(new URL("./history-a.html", import.meta.url)),
-        historyB: fileURLToPath(new URL("./history-b.html", import.meta.url)),
-        window: fileURLToPath(new URL("./window.html", import.meta.url)),
-      },
+    rolldownOptions: {
+      input: [
+        "index.html",
+        "profiles.html",
+        "isolated.html",
+        "capabilities.html",
+        "compatibility.html",
+        "events.html",
+        "behavior.html",
+        "tabs.html",
+        "transfer.html",
+        "explorer.html",
+        "nested.html",
+        "window.html",
+        "fixtures/behavior.html",
+        "fixtures/events.html",
+        "fixtures/popup.html",
+        "fixtures/compatibility.html",
+        "fixtures/tab.html",
+        "fixtures/capabilities.html",
+        "fixtures/transfer.html",
+        "fixtures/mojom.html",
+        "fixtures/history.html",
+      ].map(entry => fileURLToPath(new URL(entry, import.meta.url))),
     },
   },
 });

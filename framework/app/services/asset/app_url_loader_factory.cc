@@ -38,6 +38,8 @@ namespace {
 struct Asset {
   std::string mime_type;
   base::FilePath path;
+  std::optional<std::string> contents;
+  std::string allow_origin;
 };
 
 std::optional<Asset> FindAsset(const asset::AssetConfiguration& assets,
@@ -51,7 +53,7 @@ std::optional<Asset> FindAsset(const asset::AssetConfiguration& assets,
   if (!net::GetMimeTypeFromFile(relative, &mime_type)) {
     mime_type = "application/octet-stream";
   }
-  return Asset{std::move(mime_type), *path};
+  return Asset{std::move(mime_type), *path, std::nullopt, {}};
 }
 
 constexpr size_t kMaxAssetBytes = 64 * 1024 * 1024;
@@ -74,6 +76,10 @@ class AppURLLoader final : public network::mojom::URLLoader {
         content_security_policy_(std::move(content_security_policy)) {}
 
   void Start() {
+    if (asset_.contents) {
+      OnAssetRead(std::move(asset_.contents));
+      return;
+    }
     if (asset_.path.empty()) {
       OnAssetRead(std::nullopt);
       return;
@@ -104,14 +110,16 @@ class AppURLLoader final : public network::mojom::URLLoader {
     response->content_length = base::checked_cast<int64_t>(contents_.size());
     response->charset =
         asset_.mime_type == "application/octet-stream" ? "" : "utf-8";
-    response->headers =
-        net::HttpResponseHeaders::Builder(net::HttpVersion(1, 1),
-                                          found ? "200 OK" : "404 Not Found")
-            .AddHeader("Content-Type", asset_.mime_type)
-            .AddHeader("Cache-Control", "no-store")
-            .AddHeader("X-Content-Type-Options", "nosniff")
-            .AddHeader("Content-Security-Policy", content_security_policy_)
-            .Build();
+    net::HttpResponseHeaders::Builder headers(
+        net::HttpVersion(1, 1), found ? "200 OK" : "404 Not Found");
+    headers.AddHeader("Content-Type", asset_.mime_type)
+        .AddHeader("Cache-Control", "no-store")
+        .AddHeader("X-Content-Type-Options", "nosniff")
+        .AddHeader("Content-Security-Policy", content_security_policy_);
+    if (!asset_.allow_origin.empty()) {
+      headers.AddHeader("Access-Control-Allow-Origin", asset_.allow_origin);
+    }
+    response->headers = headers.Build();
     mojo::ScopedDataPipeProducerHandle producer;
     mojo::ScopedDataPipeConsumerHandle consumer;
     if (mojo::CreateDataPipe(nullptr, producer, consumer) != MOJO_RESULT_OK) {
@@ -157,9 +165,11 @@ class AppURLLoader final : public network::mojom::URLLoader {
 AppURLLoaderFactory::AppURLLoaderFactory(
     mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
     const asset::AssetConfiguration& assets,
+    asset::MemoryAssetResolver resolver,
     base::SelfDeletingPassKey key)
     : network::SelfDeletingURLLoaderFactory(std::move(receiver), key),
-      assets_(assets) {}
+      assets_(assets),
+      resolver_(std::move(resolver)) {}
 
 AppURLLoaderFactory::~AppURLLoaderFactory() = default;
 
@@ -172,7 +182,12 @@ void AppURLLoaderFactory::CreateLoaderAndStart(
     const net::MutableNetworkTrafficAnnotationTag& traffic_annotation) {
   mojo::Remote<network::mojom::URLLoaderClient> client_remote(
       std::move(client));
-  if (!assets_.IsAppUrl(request.url)) {
+  const bool isolated_resource =
+      request.url.path().starts_with("/.tuffite-isolated/");
+  if (isolated_resource ? (!assets_.HandlesScheme(request.url.scheme()) ||
+                           request.url.has_username() ||
+                           request.url.has_password() || request.url.has_port())
+                        : !assets_.IsAppUrl(request.url)) {
     client_remote->OnComplete(
         network::URLLoaderCompletionStatus(net::ERR_ACCESS_DENIED));
     return;
@@ -182,10 +197,28 @@ void AppURLLoaderFactory::CreateLoaderAndStart(
         network::URLLoaderCompletionStatus(net::ERR_METHOD_NOT_SUPPORTED));
     return;
   }
-  const std::optional<Asset> asset = FindAsset(assets_, request.url);
+  std::optional<Asset> asset;
+  if (isolated_resource) {
+    if (resolver_ &&
+        request.destination != network::mojom::RequestDestination::kDocument &&
+        request.destination != network::mojom::RequestDestination::kIframe &&
+        request.destination != network::mojom::RequestDestination::kWorker &&
+        request.destination !=
+            network::mojom::RequestDestination::kSharedWorker) {
+      if (auto memory = resolver_.Run(request.url)) {
+        asset = Asset{std::move(memory->mime_type),
+                      {},
+                      std::move(memory->contents),
+                      std::move(memory->allow_origin)};
+      }
+    }
+  } else {
+    asset = FindAsset(assets_, request.url);
+  }
   auto request_loader = std::make_unique<AppURLLoader>(
       std::move(client_remote), asset.value_or(Asset{}),
-      assets_.content_security_policy);
+      isolated_resource ? "default-src 'none'"
+                        : assets_.ContentSecurityPolicy(request.url));
   AppURLLoader* request_loader_ptr = request_loader.get();
   mojo::MakeSelfOwnedReceiver(std::move(request_loader), std::move(loader));
   request_loader_ptr->Start();
@@ -193,10 +226,11 @@ void AppURLLoaderFactory::CreateLoaderAndStart(
 
 // static
 mojo::PendingRemote<network::mojom::URLLoaderFactory>
-AppURLLoaderFactory::Create(const asset::AssetConfiguration& assets) {
+AppURLLoaderFactory::Create(const asset::AssetConfiguration& assets,
+                            asset::MemoryAssetResolver resolver) {
   mojo::PendingRemote<network::mojom::URLLoaderFactory> remote;
   base::MakeSelfDeleting<AppURLLoaderFactory>(
-      remote.InitWithNewPipeAndPassReceiver(), assets);
+      remote.InitWithNewPipeAndPassReceiver(), assets, std::move(resolver));
   return remote;
 }
 

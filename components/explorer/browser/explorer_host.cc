@@ -82,6 +82,38 @@ int64_t NextExplorerIsolationId() {
 
 }  // namespace
 
+namespace {
+bool ApplyBehavior(const std::string& declarations, ExplorerPolicy* policy) {
+  auto overrides = ParseExplorerBehavior(declarations);
+  if (!overrides) {
+    return false;
+  }
+  policy->behavior.Apply(*overrides);
+  switch (policy->behavior[ExplorerAction::kNavigation].mode) {
+    case ExplorerMode::kBrowser:
+      policy->navigation = ExplorerNavigationPolicy::kAllow;
+      break;
+    case ExplorerMode::kDelegate:
+      policy->navigation = ExplorerNavigationPolicy::kEmit;
+      break;
+    case ExplorerMode::kBlock:
+      policy->navigation = ExplorerNavigationPolicy::kBlock;
+      break;
+  }
+  switch (policy->behavior[ExplorerAction::kDialog].mode) {
+    case ExplorerMode::kBrowser:
+      policy->dialogs = ExplorerDialogPolicy::kBrowser;
+      break;
+    case ExplorerMode::kDelegate:
+      policy->dialogs = ExplorerDialogPolicy::kEmit;
+      break;
+    case ExplorerMode::kBlock:
+      policy->dialogs = ExplorerDialogPolicy::kSuppress;
+      break;
+  }
+  return true;
+}
+}  // namespace
 class ExplorerDialogManager final : public content::JavaScriptDialogManager,
                                     public content::WebContentsObserver {
  public:
@@ -117,6 +149,12 @@ class ExplorerDialogManager final : public content::JavaScriptDialogManager,
                          is_reload, std::move(callback), nullptr);
   }
 
+  void SetSourceDocument(content::RenderFrameHost* frame) {
+    source_document_ = frame->GetWeakDocumentPtr();
+  }
+  content::RenderFrameHost* SourceDocument() const {
+    return source_document_.AsRenderFrameHostIfValid();
+  }
   bool HandleJavaScriptDialog(content::WebContents* web_contents,
                               bool accept,
                               const std::u16string* prompt_override) override {
@@ -326,43 +364,23 @@ void ExplorerHost::Attach(const std::string& token,
     std::move(callback).Run("SecurityError");
     return;
   }
-  if (params->navigation != "emit" && params->navigation != "allow") {
-    std::move(callback).Run("SecurityError");
-    return;
-  }
-  if (params->dialogs != "emit" && params->dialogs != "suppress") {
-    std::move(callback).Run("SecurityError");
+  if (!ApplyBehavior(params->behavior, &policy)) {
+    std::move(callback).Run("SyntaxError");
     return;
   }
   policy.isolated_browsing_context = params->isolated;
-  policy.navigation = params->navigation == "emit"
-                          ? ExplorerNavigationPolicy::kEmit
-                          : ExplorerNavigationPolicy::kAllow;
-  policy.dialogs = params->dialogs == "emit" ? ExplorerDialogPolicy::kEmit
-                                             : ExplorerDialogPolicy::kSuppress;
+  auto security_policy = policy;
+  security_policy.behavior = record->policy().behavior;
+  security_policy.navigation = record->policy().navigation;
+  security_policy.dialogs = record->policy().dialogs;
   // Exact policy equality keeps existing nested-tree grants valid.
   // A page cannot use a transfer to elevate capabilities or change partitions.
-  if (policy != record->policy() ||
+  if (security_policy != record->policy() ||
       (record->is_window()
            ? !record->OfferedTo(render_frame_host())
            : !record->transferred_handle() &&
                  record->owner_origin() !=
                      render_frame_host().GetLastCommittedOrigin())) {
-    LOG(ERROR) << "Explorer transfer policy mismatch: navigation="
-               << static_cast<int>(policy.navigation) << "/"
-               << static_cast<int>(record->policy().navigation)
-               << " dialogs=" << static_cast<int>(policy.dialogs) << "/"
-               << static_cast<int>(record->policy().dialogs)
-               << " isolated=" << policy.isolated_browsing_context << "/"
-               << record->policy().isolated_browsing_context
-               << " execute=" << policy.allow_execute_javascript << "/"
-               << record->policy().allow_execute_javascript
-               << " origins=" << policy.execute_javascript_origins.size() << "/"
-               << record->policy().execute_javascript_origins.size()
-               << " partition=" << policy.partition << "/"
-               << record->policy().partition << " owner="
-               << (record->owner_origin() ==
-                   render_frame_host().GetLastCommittedOrigin());
     std::move(callback).Run("SecurityError");
     return;
   }
@@ -396,6 +414,7 @@ void ExplorerHost::Attach(const std::string& token,
       return;
     }
   }
+  attaching_policy_ = policy;
   attaching_transfer_ = record->GetWeakPtr();
   record->SetState("attaching");
   client_.Bind(std::move(client));
@@ -419,7 +438,9 @@ void ExplorerHost::AttachTransferred(blink::FramePolicy frame_policy,
   }
   auto record = attaching_transfer_;
   auto owned = record->TakeContents();
-  policy_ = record->policy();
+  policy_ = std::move(attaching_policy_);
+  attaching_policy_.reset();
+  ExplorerSurfaceData::UpdateExplorerBehavior(owned.get(), *policy_);
   document_id_ = record->document_id();
   primary_navigation_error_.reset();
   const auto& partition = owned->GetPrimaryMainFrame()
@@ -468,16 +489,6 @@ void ExplorerHost::Create(mojom::ExplorerCreateParamsPtr params,
     return;
   }
   ExplorerPolicy policy;
-  const auto navigation = params->navigation == "emit"
-                              ? std::optional(ExplorerNavigationPolicy::kEmit)
-                          : params->navigation == "allow"
-                              ? std::optional(ExplorerNavigationPolicy::kAllow)
-                              : std::nullopt;
-  const auto dialogs = params->dialogs == "emit"
-                           ? std::optional(ExplorerDialogPolicy::kEmit)
-                       : params->dialogs == "suppress"
-                           ? std::optional(ExplorerDialogPolicy::kSuppress)
-                           : std::nullopt;
   // The empty public attribute is the only spelling for sharing the exact
   // parent partition. `shared` remains a manifest capability kind and an
   // internal policy label, avoiding an attribute that looks like a named
@@ -485,13 +496,11 @@ void ExplorerHost::Create(mojom::ExplorerCreateParamsPtr params,
   if (params->partition == "shared" ||
       !ResolvePolicy(params->partition.empty() ? "shared" : params->partition,
                      &policy) ||
-      !navigation || !dialogs) {
+      !ApplyBehavior(params->behavior, &policy)) {
     std::move(callback).Run(false);
     return;
   }
   policy.isolated_browsing_context = params->isolated;
-  policy.navigation = *navigation;
-  policy.dialogs = *dialogs;
   content::RenderFrameHost* child =
       ResolveDirectChild(params->frame_to_replace);
   GURL url(params->initial_url.empty() ? "about:blank" : params->initial_url);
@@ -834,6 +843,10 @@ void ExplorerHost::CompleteDialog(uint64_t request_id, bool propagate) {
   }
   PendingDialogBubble bubble = std::move(pending->second);
   pending_dialog_bubbles_.erase(pending);
+  if (propagate && bubble.kind == "external-protocol") {
+    dialog_manager_->Respond(request_id, false, {}, true);
+    return;
+  }
   if (propagate) {
     offered_dialogs_.erase(request_id);
     ContinueDialogBubble(WebContentsObserver::web_contents(),
@@ -866,6 +879,8 @@ std::string ExplorerHost::DownloadDetail(const download::DownloadItem& item) {
   detail.Set("path", item.GetTargetFilePath().AsUTF8Unsafe());
   detail.Set("mimeType", item.GetMimeType());
   detail.Set("state", state);
+  detail.Set("paused", item.IsPaused());
+  detail.Set("canResume", item.CanResume());
   detail.Set("receivedBytes", static_cast<double>(item.GetReceivedBytes()));
   detail.Set("totalBytes", static_cast<double>(item.GetTotalBytes()));
   detail.Set("error", static_cast<int>(item.GetLastReason()));
@@ -930,6 +945,38 @@ void ExplorerHost::CancelDownload(uint32_t id,
     item->Cancel(true);
   }
   std::move(callback).Run(owned);
+}
+void ExplorerHost::PauseDownload(uint32_t id, PauseDownloadCallback callback) {
+  auto* contents = WebContentsObserver::web_contents();
+  auto* item = render_frame_host()
+                   .GetBrowserContext()
+                   ->GetDownloadManager()
+                   ->GetDownload(id);
+  const bool accepted =
+      contents && item &&
+      content::DownloadItemUtils::GetWebContents(item) == contents &&
+      item->GetState() == download::DownloadItem::IN_PROGRESS &&
+      !item->IsPaused();
+  if (accepted) {
+    item->Pause();
+  }
+  std::move(callback).Run(accepted);
+}
+void ExplorerHost::ResumeDownload(uint32_t id,
+                                  ResumeDownloadCallback callback) {
+  auto* contents = WebContentsObserver::web_contents();
+  auto* item = render_frame_host()
+                   .GetBrowserContext()
+                   ->GetDownloadManager()
+                   ->GetDownload(id);
+  const bool accepted =
+      contents && item &&
+      content::DownloadItemUtils::GetWebContents(item) == contents &&
+      item->CanResume();
+  if (accepted) {
+    item->Resume(true);
+  }
+  std::move(callback).Run(accepted);
 }
 void ExplorerHost::ReadDownload(uint32_t id, ReadDownloadCallback callback) {
   auto* contents = WebContentsObserver::web_contents();
@@ -1039,6 +1086,7 @@ bool ExplorerHost::LoadURL(const GURL& url) {
     dialog_manager_->CancelDialogs(WebContentsObserver::web_contents(), true);
   }
   params.transition_type = ui::PAGE_TRANSITION_LINK;
+  params.has_user_gesture = true;
   WebContentsObserver::web_contents()->GetController().LoadURLWithParams(
       params);
   return true;
@@ -1238,6 +1286,9 @@ content::WebContents* ExplorerHost::OpenURLFromTab(
     }
     return result;
   }
+  if (policy_ && policy_->navigation == ExplorerNavigationPolicy::kBlock) {
+    return nullptr;
+  }
   if ((policy_ && policy_->navigation == ExplorerNavigationPolicy::kEmit)) {
     NotifyRequestedOpen(ExplorerOpenEventType(params.disposition, false).data(),
                         params.url, params.disposition, params.user_gesture);
@@ -1300,6 +1351,8 @@ content::WebContents* ExplorerHost::AddNewContents(
   }
   auto* source_frame = ExplorerSurfaceData::GetWindowSource(new_contents.get());
   if (!source_frame || !source_frame->IsActive() || !policy_ ||
+      policy_->behavior[ExplorerAction::kNewWindow].mode ==
+          ExplorerMode::kBlock ||
       !CanNavigateTo(target_url) ||
       ExplorerRouter::Get(source).transfer_count() >=
           kMaxPendingBubbleRequests) {
@@ -1309,12 +1362,33 @@ content::WebContents* ExplorerHost::AddNewContents(
     return nullptr;
   }
   auto* contents = new_contents.get();
+  if (policy_->behavior[ExplorerAction::kNewWindow].mode ==
+      ExplorerMode::kBrowser) {
+    auto* opened = policy_provider_->OpenBrowserWindow(std::move(new_contents));
+    if (was_blocked) {
+      *was_blocked = !opened;
+    }
+    return opened;
+  }
   contents->WasHidden();
   auto& record =
       ExplorerTransferStore::GetOrCreateForCurrentDocument(source_frame)
           ->Add(std::move(new_contents), *policy_,
                 base::UnguessableToken::Create().ToString(), {});
   record.OfferWindow(render_frame_host());
+  const auto token = record.token();
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE,
+      base::BindOnce(
+          [](base::WeakPtr<ExplorerHost> host, std::string token) {
+            if (host) {
+              ExplorerTransferRecord::DiscardWindow(host->render_frame_host(),
+                                                    token);
+            }
+          },
+          weak_factory_.GetWeakPtr(), token),
+      base::Milliseconds(
+          policy_->behavior[ExplorerAction::kNewWindow].timeout_ms));
   base::DictValue request;
   request.Set("token", record.token());
   request.Set("url", target_url.spec());
@@ -1427,6 +1501,81 @@ void ExplorerHost::ExitPictureInPicture() {
   }
 }
 
+void ExplorerHost::SetBehavior(const std::string& declarations,
+                               SetBehaviorCallback callback) {
+  if (!policy_) {
+    std::move(callback).Run(false);
+    return;
+  }
+  ExplorerPolicy policy;
+  if (!ResolvePolicy(policy_->partition, &policy) ||
+      !ApplyBehavior(declarations, &policy)) {
+    std::move(callback).Run(false);
+    return;
+  }
+  policy_->behavior = policy.behavior;
+  policy_->navigation = policy.navigation;
+  policy_->dialogs = policy.dialogs;
+  if (dialog_manager_) {
+    dialog_manager_->CancelDialogs(nullptr, true);
+  }
+  auto* contents = WebContentsObserver::web_contents();
+  if (!contents) {
+    contents = pending_inner_web_contents_.get();
+  }
+  if (contents) {
+    ExplorerSurfaceData::UpdateExplorerBehavior(contents, *policy_);
+  }
+  std::move(callback).Run(true);
+}
+bool ExplorerHost::DelegateExternalProtocol(content::WebContents* contents,
+                                            const GURL& url,
+                                            const std::string& origin,
+                                            content::RenderFrameHost* initiator,
+                                            base::OnceClosure launch) {
+  auto* host = ExplorerRouter::Get(contents).FindHostForContents(contents);
+  if (!host) {
+    const auto* policy = ExplorerSurfaceData::GetExplorerPolicy(contents);
+    // A detached page cannot present UI. A page adopted by a native browser
+    // window still has its policy and may use normal native confirmation.
+    return ExplorerRouter::Get(contents).FindTransferForContents(contents) ||
+           !policy ||
+           policy->behavior[ExplorerAction::kExternalProtocol].mode !=
+               ExplorerMode::kBrowser;
+  }
+  if (!host->policy_ || !host->dialog_manager_) {
+    return true;
+  }
+  const auto behavior =
+      host->policy_->behavior[ExplorerAction::kExternalProtocol];
+  if (behavior.mode == ExplorerMode::kBrowser) {
+    return false;
+  }
+  if (behavior.mode == ExplorerMode::kBlock || !initiator) {
+    return true;
+  }
+  host->dialog_manager_->SetSourceDocument(initiator);
+  auto id = host->dialog_manager_->Begin(base::BindOnce(
+      [](base::OnceClosure launch, bool accepted, const std::u16string&) {
+        if (accepted) {
+          std::move(launch).Run();
+        }
+      },
+      std::move(launch)));
+  host->EmitDialogBubble(id, "external-protocol", url.spec(), origin, false,
+                         ExplorerSurfaceHost::RefForWebContents(contents));
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE,
+      base::BindOnce(
+          [](base::WeakPtr<ExplorerHost> host, uint64_t id) {
+            if (host && host->dialog_manager_) {
+              host->dialog_manager_->Respond(id, false, {}, true);
+            }
+          },
+          host->weak_factory_.GetWeakPtr(), id),
+      base::Milliseconds(behavior.timeout_ms));
+  return true;
+}
 void ExplorerHost::RequestDialog(
     const std::string& kind,
     const std::u16string& message,
@@ -1446,7 +1595,50 @@ void ExplorerHost::RequestDialog(
   if (did_suppress_message) {
     *did_suppress_message = false;
   }
+  if (policy_->dialogs == ExplorerDialogPolicy::kBrowser) {
+    auto* owner =
+        content::WebContents::FromRenderFrameHost(&render_frame_host());
+    while (owner && owner->GetOuterWebContents()) {
+      owner = owner->GetOuterWebContents();
+    }
+    auto* manager =
+        owner && owner->GetDelegate()
+            ? owner->GetDelegate()->GetJavaScriptDialogManager(owner)
+            : nullptr;
+    if (!manager || manager == dialog_manager_.get() ||
+        !dialog_manager_->SourceDocument()) {
+      if (did_suppress_message) {
+        *did_suppress_message = true;
+      } else {
+        std::move(callback).Run(false, {});
+      }
+      return;
+    }
+    if (kind == "beforeunload") {
+      manager->RunBeforeUnloadDialog(owner, dialog_manager_->SourceDocument(),
+                                     is_reload, std::move(callback));
+    } else {
+      manager->RunJavaScriptDialog(
+          owner, dialog_manager_->SourceDocument(),
+          kind == "alert"    ? content::JAVASCRIPT_DIALOG_TYPE_ALERT
+          : kind == "prompt" ? content::JAVASCRIPT_DIALOG_TYPE_PROMPT
+                             : content::JAVASCRIPT_DIALOG_TYPE_CONFIRM,
+          message, default_value, std::move(callback), did_suppress_message);
+    }
+    return;
+  }
   const uint64_t request_id = dialog_manager_->Begin(std::move(callback));
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE,
+      base::BindOnce(
+          [](base::WeakPtr<ExplorerHost> host, uint64_t id) {
+            if (host && host->dialog_manager_) {
+              host->dialog_manager_->Respond(id, false, {}, true);
+            }
+          },
+          weak_factory_.GetWeakPtr(), request_id),
+      base::Milliseconds(
+          policy_->behavior[ExplorerAction::kDialog].timeout_ms));
   EmitDialogBubble(request_id, kind, base::UTF16ToUTF8(message),
                    base::UTF16ToUTF8(default_value), is_reload,
                    ExplorerSurfaceHost::RefForWebContents(
@@ -1530,11 +1722,14 @@ bool ExplorerHost::MaybeEmitNavigation(content::WebContents* contents,
     auto* transfer =
         ExplorerRouter::Get(contents).FindTransferForContents(contents);
     return transfer &&
-           transfer->policy().navigation == ExplorerNavigationPolicy::kEmit;
+           transfer->policy().navigation != ExplorerNavigationPolicy::kAllow;
   }
   if (!host->policy_ ||
-      host->policy_->navigation != ExplorerNavigationPolicy::kEmit) {
+      host->policy_->navigation == ExplorerNavigationPolicy::kAllow) {
     return false;
+  }
+  if (host->policy_->navigation == ExplorerNavigationPolicy::kBlock) {
+    return true;
   }
   host->NotifyRequestedOpen("navigation", url,
                             WindowOpenDisposition::CURRENT_TAB, user_gesture);

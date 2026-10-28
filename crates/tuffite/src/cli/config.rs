@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -67,18 +68,6 @@ pub fn check(path: &Path) -> Result<Value, String> {
     if let Some(bundle) = root.get("bundle") {
         check_bundle(bundle)?;
     }
-    if root["app"]["security"]["capabilities"]
-        .as_array()
-        .is_some_and(|rules| {
-            rules.iter().any(|rule| {
-                rule.get("shellApi")
-                    .and_then(Value::as_array)
-                    .is_some_and(|entries| !entries.is_empty())
-            })
-        })
-    {
-        crate::build::security_command_ids(path)?;
-    }
     Ok(Value::Object(root.clone()))
 }
 
@@ -111,44 +100,79 @@ pub(super) fn validate_output_name(value: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
+fn check_schemes(value: &Value) -> Result<Vec<&str>, String> {
+    let schemes = array(value, "app.schemes")?;
+    let mut unique = BTreeSet::new();
+    if schemes.is_empty() || schemes.len() > 16 {
+        return Err("app.schemes: expected 1..=16 schemes".to_owned());
+    }
+    schemes
+        .iter()
+        .map(|value| {
+            let scheme = nonempty_string(Some(value), "app.schemes")?;
+            if scheme.len() > 64
+                || !scheme.as_bytes()[0].is_ascii_lowercase()
+                || !scheme.bytes().all(|b| {
+                    b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'+' | b'-' | b'.')
+                })
+                || matches!(
+                    scheme,
+                    "http"
+                        | "https"
+                        | "ws"
+                        | "wss"
+                        | "ftp"
+                        | "file"
+                        | "filesystem"
+                        | "blob"
+                        | "data"
+                        | "javascript"
+                        | "about"
+                        | "chrome"
+                        | "chrome-untrusted"
+                        | "chrome-extension"
+                        | "devtools"
+                        | "view-source"
+                        | "vbscript"
+                        | "shell"
+                        | "ms-msdt"
+                        | "search-ms"
+                )
+                || !unique.insert(scheme)
+            {
+                return Err(
+                    "app.schemes: expected unique lowercase non-reserved schemes".to_owned(),
+                );
+            }
+            Ok(scheme)
+        })
+        .collect::<Result<Vec<_>, String>>()
+}
+
 fn check_app(value: &Value) -> Result<(), String> {
+    let app = object(value, "app")?;
+    known_fields(app, "app", &["identifier"])?;
+    nonempty_string(app.get("identifier"), "app.identifier")?;
+    Ok(())
+}
+
+#[cfg(test)]
+fn check_runtime_app(value: &Value) -> Result<(), String> {
     let app = object(value, "app")?;
     known_fields(
         app,
         "app",
         &[
             "identifier",
+            "schemes",
             "windows",
             "assets",
             "network",
-            "utilities",
             "isolatedWorlds",
-            "security",
         ],
     )?;
-    if let Some(utilities) = app.get("utilities") {
-        for (name, definition) in object(utilities, "app.utilities")? {
-            if name.len() > 128
-                || !name.replace("::", ".").split('.').all(|part| {
-                    let mut bytes = part.bytes();
-                    bytes
-                        .next()
-                        .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_' || b == b'$')
-                        && bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$')
-                })
-            {
-                return Err("app.utilities: invalid service name".to_owned());
-            }
-            let path = format!("app.utilities.{name}");
-            let definition = object(definition, &path)?;
-            known_fields(definition, &path, &["configuration"])?;
-            if let Some(config) = definition.get("configuration")
-                && serde_json::to_vec(config).map_err(|e| e.to_string())?.len() > 64 * 1024
-            {
-                return Err(format!("{path}.configuration: exceeds 64 KiB"));
-            }
-        }
-    }
+    let schemes = check_schemes(required(app, "schemes", "app.schemes")?)?;
     if let Some(worlds) = app.get("isolatedWorlds") {
         let worlds = object(worlds, "app.isolatedWorlds")?;
         if worlds.len() > 32 {
@@ -166,7 +190,13 @@ fn check_app(value: &Value) -> Result<(), String> {
             }
             let path = format!("app.isolatedWorlds.{name}");
             let value = object(value, &path)?;
-            known_fields(value, &path, &["entry", "origins"])?;
+            known_fields(value, &path, &["entry", "directory", "origins"])?;
+            if let Some(directory) = value.get("directory") {
+                super::filesystem::safe_relative_path(
+                    nonempty_string(Some(directory), &format!("{path}.directory"))?,
+                    &format!("{path}.directory"),
+                )?;
+            }
             let entry = nonempty_string(value.get("entry"), &format!("{path}.entry"))?;
             super::filesystem::safe_relative_path(entry, &format!("{path}.entry"))?;
             let origins = array(
@@ -182,38 +212,30 @@ fn check_app(value: &Value) -> Result<(), String> {
         }
     }
     nonempty_string(app.get("identifier"), "app.identifier")?;
-    let security = object(required(app, "security", "app.security")?, "app.security")?;
-    known_fields(security, "app.security", &["csp", "capabilities"])?;
-    check_origin_capabilities(required(
-        security,
-        "capabilities",
-        "app.security.capabilities",
-    )?)?;
-    if let Some(csp) = security.get("csp") {
-        let csp = nonempty_string(Some(csp), "app.security.csp")?;
-        if csp.len() > 4096 || csp.contains(['\r', '\n']) {
-            return Err("app.security.csp: expected 1..=4096 bytes without newlines".to_owned());
-        }
-    }
     if let Some(assets) = app.get("assets") {
-        let entry = app
-            .get("windows")
-            .and_then(|windows| windows.pointer("/0/url"))
-            .and_then(Value::as_str);
-        let scheme = entry
-            .and_then(|url| url.split_once("://").map(|(scheme, _)| scheme))
-            .ok_or("app.windows: missing entry URL scheme")?;
-        check_assets(assets, scheme)?;
+        check_assets(assets, &schemes)?;
     }
     if let Some(network) = app.get("network") {
         check_network(network)?;
     }
     if let Some(windows) = app.get("windows") {
         check_windows(windows)?;
+        for window in windows.as_array().unwrap() {
+            let scheme = window["url"]
+                .as_str()
+                .unwrap()
+                .split("://")
+                .next()
+                .unwrap_or("");
+            if !schemes.contains(&scheme) {
+                return Err("app.windows URLs must use a declared app.schemes entry".to_owned());
+            }
+        }
     }
     Ok(())
 }
 
+#[cfg(test)]
 fn check_network(value: &Value) -> Result<(), String> {
     let path = "app.network";
     let network = object(value, path)?;
@@ -239,6 +261,7 @@ fn check_network(value: &Value) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 fn check_windows(value: &Value) -> Result<(), String> {
     let windows = array(value, "app.windows")?;
     if windows.is_empty() {
@@ -312,6 +335,7 @@ fn check_windows(value: &Value) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 fn origins_overlap(left: &str, right: &str) -> bool {
     let sample = |origin: &str| url::Url::parse(&origin.replacen("*.", "sample.", 1)).unwrap();
     let matches = |pattern: &str, candidate: &url::Url| {
@@ -330,7 +354,8 @@ fn origins_overlap(left: &str, right: &str) -> bool {
     matches(left, &sample(right)) || matches(right, &sample(left))
 }
 
-fn check_assets(value: &Value, scheme: &str) -> Result<(), String> {
+#[cfg(test)]
+fn check_assets(value: &Value, schemes: &[&str]) -> Result<(), String> {
     let mut routes: Vec<(String, String)> = vec![];
     for (index, route) in array(value, "app.assets")?.iter().enumerate() {
         let path = format!("app.assets[{index}]");
@@ -362,8 +387,14 @@ fn check_assets(value: &Value, scheme: &str) -> Result<(), String> {
         for origin in route["origins"].as_array().unwrap() {
             let origin = origin.as_str().unwrap();
             check_origin_pattern(origin, &path, false)?;
-            if origin.split("://").next() != Some(scheme) {
-                return Err(format!("{path}: assets must use the application scheme"));
+            if !origin
+                .split("://")
+                .next()
+                .is_some_and(|scheme| schemes.contains(&scheme))
+            {
+                return Err(format!(
+                    "{path}: assets must use a declared app.schemes entry"
+                ));
             }
             for pattern in route["paths"].as_array().unwrap() {
                 let pattern = pattern.as_str().unwrap();
@@ -410,6 +441,7 @@ fn check_mojom_sources(value: &Value) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 fn check_origin_pattern(pattern: &str, path: &str, allow_self: bool) -> Result<(), String> {
     if pattern == "*" || (allow_self && pattern == "self") {
         return Ok(());
@@ -441,8 +473,19 @@ fn check_origin_pattern(pattern: &str, path: &str, allow_self: bool) -> Result<(
     Ok(())
 }
 
-fn check_origin_capabilities(value: &Value) -> Result<(), String> {
-    let path = "app.security.capabilities";
+#[cfg(test)]
+fn check_browser(value: &Value) -> Result<(), String> {
+    let browser = object(value, "browser")?;
+    known_fields(browser, "browser", &["rules", "devtools"])?;
+    if let Some(value) = browser.get("devtools") {
+        boolean(Some(value), "browser.devtools")?;
+    }
+    check_origin_rules(required(browser, "rules", "browser.rules")?)
+}
+
+#[cfg(test)]
+fn check_origin_rules(value: &Value) -> Result<(), String> {
+    let path = "browser.rules";
     let mut identifiers = BTreeSet::new();
     for (index, rule) in array(value, path)?.iter().enumerate() {
         let path = format!("{path}[{index}]");
@@ -457,15 +500,21 @@ fn check_origin_capabilities(value: &Value) -> Result<(), String> {
                 "shellApi",
                 "explorer",
                 "devtools",
+                "csp",
             ],
         )?;
-        let identifier = nonempty_string(rule.get("identifier"), &format!("{path}.identifier"))?;
-        if !identifier
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$' || b == b'-')
-            || !identifiers.insert(identifier)
-        {
-            return Err(format!("{path}.identifier: expected unique identifier"));
+        if let Some(value) = rule.get("identifier") {
+            let identifier = nonempty_string(Some(value), &format!("{path}.identifier"))?;
+            if !identifier
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'$' | b'-'))
+                || !identifiers.insert(identifier)
+            {
+                return Err(format!("{path}.identifier: expected unique identifier"));
+            }
+        }
+        if let Some(value) = rule.get("csp") {
+            check_csp(value, &format!("{path}.csp"))?;
         }
         if let Some(value) = rule.get("devtools") {
             boolean(Some(value), &format!("{path}.devtools"))?;
@@ -518,10 +567,57 @@ fn check_origin_capabilities(value: &Value) -> Result<(), String> {
         if let Some(value) = rule.get("explorer") {
             let field = format!("{path}.explorer");
             let explorer = object(value, &field)?;
-            known_fields(explorer, &field, &["create", "executeJavaScript"])?;
+            known_fields(
+                explorer,
+                &field,
+                &["create", "executeJavaScript", "behavior"],
+            )?;
             for (key, value) in explorer {
-                boolean(Some(value), &format!("{field}.{key}"))?;
+                if key != "behavior" {
+                    boolean(Some(value), &format!("{field}.{key}"))?;
+                }
             }
+            if let Some(value) = explorer.get("behavior") {
+                check_explorer_behavior(value, &format!("{field}.behavior"))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+fn check_csp(value: &Value, field: &str) -> Result<(), String> {
+    let csp = nonempty_string(Some(value), field)?;
+    if csp.len() > 4096 || csp.contains(['\r', '\n', '\0']) {
+        return Err(format!("{field}: invalid header value"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+fn check_explorer_behavior(value: &Value, field: &str) -> Result<(), String> {
+    let behavior = object(value, field)?;
+    known_fields(
+        behavior,
+        field,
+        &["navigation", "dialog", "externalProtocol", "newWindow"],
+    )?;
+    for (operation, value) in behavior {
+        let field = format!("{field}.{operation}");
+        let entry = object(value, &field)?;
+        known_fields(entry, &field, &["mode", "timeoutMs"])?;
+        let mode = nonempty_string(entry.get("mode"), &format!("{field}.mode"))?;
+        if !matches!(mode, "browser" | "delegate" | "block") {
+            return Err(format!("{field}.mode: unknown behavior mode"));
+        }
+        if let Some(timeout) = entry.get("timeoutMs")
+            && (operation == "navigation"
+                || mode != "delegate"
+                || !timeout.as_u64().is_some_and(|n| (1..=300_000).contains(&n)))
+        {
+            return Err(format!(
+                "{field}.timeoutMs: requires a delegated controller and 1..=300000"
+            ));
         }
     }
     Ok(())
@@ -653,6 +749,7 @@ fn integer(value: Option<&Value>, path: &str) -> Result<u64, String> {
         .ok_or_else(|| format!("{path}: expected non-negative integer"))
 }
 
+#[cfg(test)]
 fn boolean(value: Option<&Value>, path: &str) -> Result<bool, String> {
     value
         .and_then(Value::as_bool)
@@ -684,16 +781,18 @@ mod tests {
     #[test]
     fn isolated_world_packages_require_scoped_origins_and_safe_entries() {
         let fixture: Value =
-            serde_json::from_str(include_str!("../../../../playground/tuffite.json")).unwrap();
+            serde_json::from_str(include_str!("../../tests/fixtures/runtime.json")).unwrap();
         let mut app = fixture["app"].clone();
-        assert!(check_app(&app).is_ok());
+        assert!(check_runtime_app(&app).is_ok());
         for name in ["io.example.visual-blocks", "extension_a", "world"] {
-            app["isolatedWorlds"] = serde_json::json!({name: {"entry":"card.js","origins":["playground://main"]}});
-            assert!(check_app(&app).is_ok(), "{name}");
+            app["isolatedWorlds"] =
+                serde_json::json!({name: {"entry":"card.js","origins":["playground://main"]}});
+            assert!(check_runtime_app(&app).is_ok(), "{name}");
         }
         for name in ["", "9bad", "app::World", "_bad", "bad/name"] {
-            app["isolatedWorlds"] = serde_json::json!({name: {"entry":"card.js","origins":["playground://main"]}});
-            assert!(check_app(&app).is_err(), "{name}");
+            app["isolatedWorlds"] =
+                serde_json::json!({name: {"entry":"card.js","origins":["playground://main"]}});
+            assert!(check_runtime_app(&app).is_err(), "{name}");
         }
         for definition in [
             serde_json::json!({"entry":"../escape.js","origins":["playground://main"]}),
@@ -701,30 +800,7 @@ mod tests {
             serde_json::json!({"entry":"card.js","origins":["playground://main"],"source":"no"}),
         ] {
             app["isolatedWorlds"] = serde_json::json!({"weather": definition});
-            assert!(check_app(&app).is_err());
-        }
-    }
-
-    #[test]
-    fn utility_startup_configuration_accepts_rust_owner_paths() {
-        let fixture: Value =
-            serde_json::from_str(include_str!("../../../../playground/tuffite.json")).unwrap();
-        for name in ["playground::typed_utility::Worker", "echo", "demo.Worker"] {
-            let mut app = fixture["app"].clone();
-            app["utilities"] = serde_json::json!({name: {"configuration": {"mode": 7}}});
-            assert!(check_app(&app).is_ok(), "{name}");
-        }
-        for name in [
-            "",
-            "app:::Worker",
-            "app..Worker",
-            "app::",
-            "::Worker",
-            "app:Worker",
-        ] {
-            let mut app = fixture["app"].clone();
-            app["utilities"] = serde_json::json!({name: {}});
-            assert!(check_app(&app).is_err(), "{name}");
+            assert!(check_runtime_app(&app).is_err());
         }
     }
 
@@ -771,6 +847,19 @@ mod tests {
             .manifest(&path)
             .generate()
             .unwrap();
+        for field in ["assets", "schemes", "windows", "network", "isolatedWorlds"] {
+            let mut invalid = source.clone();
+            invalid["app"][field] = serde_json::json!([]);
+            fs::write(&path, serde_json::to_vec(&invalid).unwrap()).unwrap();
+            assert!(
+                check(&path).unwrap_err().contains("unknown field"),
+                "{field}"
+            );
+        }
+        let mut invalid = source.clone();
+        invalid["browser"] = serde_json::json!({"rules": []});
+        fs::write(&path, serde_json::to_vec(&invalid).unwrap()).unwrap();
+        assert!(check(&path).unwrap_err().contains("unknown field"));
         source["schemaVersion"] = 2.into();
         fs::write(&path, serde_json::to_vec(&source).unwrap()).unwrap();
         assert!(check(&path).unwrap_err().contains("unknown field"));
@@ -807,18 +896,18 @@ mod tests {
             {"origins": ["demo://*.artifact", "demo://*.preview"], "paths": ["/assets/*"], "directory": "ui/assets"},
             {"origins": ["demo://main"], "paths": ["/home"], "file": "ui/index.html"}
         ]);
-        assert!(check_assets(&shared, "demo").is_ok());
+        assert!(check_assets(&shared, &["demo"]).is_ok());
         let collision = serde_json::json!([
             {"origins": ["demo://*.artifact"], "paths": ["/home"], "file": "ui/a.html"},
             {"origins": ["demo://a.artifact"], "paths": ["/home"], "file": "ui/b.html"}
         ]);
         assert!(
-            check_assets(&collision, "demo")
+            check_assets(&collision, &["demo"])
                 .unwrap_err()
                 .contains("ambiguous")
         );
         let traversal = serde_json::json!([{"origins": ["demo://main"], "paths": ["/assets/*"], "directory": "../secret"}]);
-        assert!(check_assets(&traversal, "demo").is_err());
+        assert!(check_assets(&traversal, &["demo"]).is_err());
     }
 
     #[test]
@@ -841,15 +930,12 @@ mod tests {
 
     #[test]
     fn reports_nested_type_and_unknown_field_paths() {
-        let error = check_origin_capabilities(&serde_json::json!([{
+        let error = check_origin_rules(&serde_json::json!([{
             "identifier": "app-shell", "origins": ["myapp://main"],
             "explorer": {"create": "true"}
         }]))
         .unwrap_err();
-        assert_eq!(
-            error,
-            "app.security.capabilities[0].explorer.create: expected boolean"
-        );
+        assert_eq!(error, "browser.rules[0].explorer.create: expected boolean");
 
         let mut object = Map::new();
         object.insert("devPackge".to_owned(), Value::String("dist".to_owned()));
@@ -861,19 +947,71 @@ mod tests {
     fn devtools_policy_accepts_booleans_and_rejects_strings() {
         for value in [serde_json::json!(false), serde_json::json!(true)] {
             assert!(
-                check_origin_capabilities(&serde_json::json!([{
+                check_origin_rules(&serde_json::json!([{
                     "identifier": "inspection", "origins": ["https://example.com"],
                     "devtools": value
                 }]))
                 .is_ok()
             );
         }
-        let error = check_origin_capabilities(&serde_json::json!([{
+        let error = check_origin_rules(&serde_json::json!([{
             "identifier": "inspection", "origins": ["https://example.com"],
             "devtools": "false"
         }]))
         .unwrap_err();
         assert!(error.contains("devtools: expected boolean"), "{error}");
+    }
+
+    #[test]
+    fn devtools_master_switch_is_typed_and_utilities_are_removed() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/runtime.json")).unwrap();
+        for value in [serde_json::json!(true), serde_json::json!(false)] {
+            let mut manifest = fixture.clone();
+            manifest["browser"]["devtools"] = value;
+            assert!(check_browser(&manifest["browser"]).is_ok());
+        }
+        for value in [
+            serde_json::json!("false"),
+            serde_json::json!(null),
+            serde_json::json!({}),
+        ] {
+            let mut manifest = fixture.clone();
+            manifest["browser"]["devtools"] = value;
+            assert!(
+                check_browser(&manifest["browser"])
+                    .unwrap_err()
+                    .contains("browser.devtools")
+            );
+        }
+        let mut app = fixture["app"].clone();
+        app["utilities"] = serde_json::json!({});
+        assert!(check_runtime_app(&app).unwrap_err().contains("utilities"));
+    }
+
+    #[test]
+    fn browser_rules_validate_behavior_parameters_and_reject_typos() {
+        let mut rule = serde_json::json!([{
+            "origins": ["demo://main"],
+            "explorer": {"behavior": {
+                "externalProtocol": {"mode": "delegate", "timeoutMs": 15000}
+            }}
+        }]);
+        assert!(check_origin_rules(&rule).is_ok());
+        rule[0]["explorer"]["behavior"]["externalProtocol"]["mode"] = "browser".into();
+        assert!(check_origin_rules(&rule).unwrap_err().contains("timeoutMs"));
+        rule[0]["explorer"]["behavior"]["externalProtocol"]["mode"] = "delegate".into();
+        rule[0]["explorer"]["behavior"]["externalProtocol"]["timeoutMs"] = 0.into();
+        assert!(check_origin_rules(&rule).is_err());
+        rule[0]["explorer"]["behavior"] =
+            serde_json::json!({"externalProtcol": {"mode": "browser"}});
+        assert!(
+            check_origin_rules(&rule)
+                .unwrap_err()
+                .contains("externalProtcol")
+        );
+        rule[0]["explorer"]["behavior"] = serde_json::json!({"dialog": {"mode": "allow"}});
+        assert!(check_origin_rules(&rule).unwrap_err().contains("mode"));
     }
 
     #[test]

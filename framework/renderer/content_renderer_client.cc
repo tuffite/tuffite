@@ -22,10 +22,7 @@ ContentRendererClient::ContentRendererClient() = default;
 ContentRendererClient::~ContentRendererClient() = default;
 
 void ContentRendererClient::RenderThreadStarted() {
-  const std::string scheme =
-      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
-          kAppSchemeSwitch);
-  if (!scheme.empty()) {
+  for (const auto& scheme : ApplicationSchemes()) {
     blink::WebSecurityPolicy::RegisterURLSchemeAsSupportingFetchAPI(
         blink::WebString::FromAscii(scheme));
   }

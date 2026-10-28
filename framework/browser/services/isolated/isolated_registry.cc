@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <limits>
 
+#include "base/base64.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "tuffite/framework/common/access.h"
@@ -19,22 +20,34 @@ void IsolatedRegistry::SetDevelopmentAlias(const url::Origin& packaged,
 }
 void IsolatedRegistry::AddBundled(const std::string& name,
                                   const Definition& definition) {
-  entries_.emplace(name, Entry{definition, next_generation_++, true});
+  entries_.emplace(name, Entry{std::make_shared<const Definition>(definition),
+                               next_generation_++, true});
 }
-std::optional<std::string> IsolatedRegistry::Source(
+std::shared_ptr<const IsolatedRegistry::Definition> IsolatedRegistry::Find(
     std::string_view name,
     const url::Origin& origin) const {
   auto it = entries_.find(std::string(name));
   if (it == entries_.end() ||
       !std::ranges::any_of(
-          it->second.definition.origins, [&](const auto& pattern) {
+          it->second.definition->origins, [&](const auto& pattern) {
             return access::MatchesOrigin(origin, pattern) ||
                    (development_origin_ && origin == *development_origin_ &&
                     access::MatchesOrigin(*packaged_origin_, pattern));
           })) {
+    return {};
+  }
+  return it->second.definition;
+}
+std::optional<std::string> IsolatedRegistry::Source(
+    std::string_view name,
+    const url::Origin& origin) const {
+  auto definition = Find(name, origin);
+  if (!definition) {
     return std::nullopt;
   }
-  return it->second.definition.source;
+  auto resource = definition->resources.find(definition->entry);
+  return resource == definition->resources.end() ? definition->source
+                                                 : resource->second;
 }
 std::optional<std::string> IsolatedRegistry::Apply(
     const base::DictValue& request) {
@@ -63,9 +76,9 @@ std::optional<std::string> IsolatedRegistry::Apply(
   }
   const auto* source = request.FindString("source");
   const auto* origins = request.FindList("origins");
-  if (!source || source->empty() || source->size() > 8 * 1024 * 1024 ||
-      !base::IsStringUTF8(*source) || !origins || origins->empty() ||
-      origins->size() > 32 ||
+  if (!source || (source->empty() && !request.FindDict("resources")) ||
+      source->size() > 8 * 1024 * 1024 || !base::IsStringUTF8(*source) ||
+      !origins || origins->empty() || origins->size() > 32 ||
       next_generation_ == std::numeric_limits<uint64_t>::max()) {
     return std::nullopt;
   }
@@ -80,10 +93,33 @@ std::optional<std::string> IsolatedRegistry::Apply(
     }
     definition.origins.push_back(std::move(normalized));
   }
-  size_t bytes = source->size();
+  if (const auto* entry = request.FindString("entry")) {
+    const auto* resources = request.FindDict("resources");
+    if (!isolated::IsValidResourcePath(*entry) || !resources ||
+        resources->empty() || resources->size() > 1024) {
+      return std::nullopt;
+    }
+    definition.entry = *entry;
+    for (const auto [path, value] : *resources) {
+      if (!isolated::IsValidResourcePath(path) || !value.is_string()) {
+        return std::nullopt;
+      }
+      std::string contents;
+      if (!base::Base64Decode(value.GetString(), &contents) ||
+          contents.size() > 8 * 1024 * 1024) {
+        return std::nullopt;
+      }
+      definition.resources.emplace(path, std::move(contents));
+    }
+    if (!definition.resources.contains(definition.entry)) {
+      return std::nullopt;
+    }
+    definition.source.clear();
+  }
+  size_t bytes = definition.ByteSize();
   for (const auto& [key, entry] : entries_) {
     if (key != *name) {
-      bytes += entry.definition.source.size();
+      bytes += entry.definition->ByteSize();
     }
   }
   if (bytes > 32 * 1024 * 1024 ||
@@ -91,8 +127,9 @@ std::optional<std::string> IsolatedRegistry::Apply(
     return std::nullopt;
   }
   const auto generation = next_generation_++;
-  entries_.insert_or_assign(*name,
-                            Entry{std::move(definition), generation, false});
+  entries_.insert_or_assign(
+      *name, Entry{std::make_shared<const Definition>(std::move(definition)),
+                   generation, false});
   return base::NumberToString(generation);
 }
 }  // namespace tuffite

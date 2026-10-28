@@ -16,12 +16,10 @@ source_set("registry") {
 }
 source_set("isolated") {
   public = [
-    "isolated_abi.h",
     "isolated_service.h",
     "isolated_service_factory.h",
   ]
   sources = public + [
-              "isolated_abi.cc",
               "isolated_service_factory.cc",
               "isolated_service_impl.cc",
               "isolated_service_impl.h",
@@ -32,12 +30,13 @@ source_set("isolated") {
     "//components/keyed_service/core",
     "//content/public/browser",
     "//tuffite/components/isolated/browser",
-    "//tuffite/framework/public:abi",
+    "//tuffite/framework/app/services/asset:configuration",
+    "//tuffite/framework/public/c_api:abi",
     "//url",
   ]
   deps = [
     ":registry",
-    "//tuffite/framework/app:host_headers",
+    "//net",
     "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/browser:support",
   ]

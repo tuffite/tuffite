@@ -8,7 +8,7 @@ let loaded = 0;
 for (let i = 0; i < 2; ++i) {
   const explorer = document.createElement('explorer');
   explorer.id = i ? 'tab-control' : 'tab-primary';
-  explorer.navigation = 'allow'; explorer.style.cssText = 'display:block;width:100%;height:330px;margin:1rem 0';
+  explorer.behavior = "navigation: browser;"; explorer.style.cssText = 'display:block;width:100%;height:330px;margin:1rem 0';
   for (const type of ['findresult', 'zoomchange', 'audiostatechange', 'faviconchange', 'renderprocessgone']) {
     explorer.addEventListener(type, event => {
       events.push({role: i ? 'control' : 'primary', type, detail: event.detail});
@@ -19,7 +19,7 @@ for (let i = 0; i < 2; ++i) {
     });
   }
   explorer.addEventListener('loadstop', () => { if (++loaded >= 2) status.textContent = 'Fixtures ready'; });
-  explorer.src = new URL('./tab-sample.html', location.href).href;
+  explorer.src = new URL('./fixtures/tab.html', location.href).href;
   hosts.append(explorer); explorers.push(explorer);
 }
 window.tabDemo = {explorers, events};

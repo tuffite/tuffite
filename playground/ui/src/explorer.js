@@ -24,11 +24,11 @@ try {
 }
 
 document.querySelector("#window-open-button")?.addEventListener("click", () => {
-  window.open("./history-a.html?source=window-open", "_blank");
+  window.open("./fixtures/history.html?page=a&source=window-open", "_blank");
 });
 document.querySelector("#popup-link")?.addEventListener("click", () => {
   window.open(
-    "./history-a.html?source=popup",
+    "./fixtures/history.html?page=a&source=popup",
     "_blank",
     "popup,width=480,height=320",
   );

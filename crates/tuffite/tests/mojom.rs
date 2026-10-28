@@ -6,14 +6,17 @@ mod generated {
 
 use tuffite::__private::mojom::Struct;
 
-#[tuffite::utility(interfaces(generated::Diagnostics), factory = create_worker)]
 struct AsyncWorker {
     value: u32,
 }
 
-async fn create_worker(
-    context: tuffite::UtilityContext,
-) -> tuffite::ApplicationResult<AsyncWorker> {
+impl tuffite::Utility for AsyncWorker {
+    async fn new(context: tuffite::UtilityContext) -> tuffite::Result<Self> {
+        create_worker(context).await
+    }
+}
+
+async fn create_worker(context: tuffite::UtilityContext) -> tuffite::Result<AsyncWorker> {
     let mut yielded = false;
     std::future::poll_fn(|cx| {
         if yielded {

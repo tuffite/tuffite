@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "build/build_config.h"
@@ -15,9 +16,11 @@
 namespace base {
 class RunLoop;
 }
+
 namespace content {
 class BrowserContext;
 }
+
 namespace display {
 class Screen;
 #if BUILDFLAG(IS_MAC)
@@ -31,18 +34,25 @@ class ViewsDelegate;
 #if !BUILDFLAG(IS_MAC)
 namespace wm {
 class WMState;
-}
+}  // namespace wm
 #endif
 
 namespace tuffite {
-class AbiHostBridge;
+namespace abi {
+class Application;
+class Host;
+}  // namespace abi
 class ApplicationContext;
 class BrowserTestObserver;
 class BrowserContext;
 
 class BrowserMainParts final : public content::BrowserMainParts {
  public:
-  BrowserMainParts(AbiHostBridge& bridge, ApplicationContext& application);
+  BrowserMainParts(abi::Application& application,
+                   abi::Host& host,
+                   base::RepeatingClosure prepare_browser,
+                   base::RepeatingClosure begin_shutdown,
+                   base::RepeatingClosure shutdown);
   ~BrowserMainParts() override;
 
  private:
@@ -53,9 +63,13 @@ class BrowserMainParts final : public content::BrowserMainParts {
   void PostMainMessageLoopRun() override;
   void InitializeMessageLoopContext();
   void OnBrowserInitialized(bool ok);
+  base::WeakPtr<BrowserContext> startup_context_;
 
-  const raw_ref<AbiHostBridge> bridge_;
-  const raw_ref<ApplicationContext> application_;
+  const raw_ref<abi::Application> application_;
+  const raw_ref<abi::Host> host_;
+  const base::RepeatingClosure prepare_browser_;
+  const base::RepeatingClosure begin_shutdown_;
+  const base::RepeatingClosure shutdown_;
   std::unique_ptr<BrowserContext> browser_context_;
   std::unique_ptr<views::ViewsDelegate> views_delegate_;
   std::unique_ptr<views::LayoutProvider> layout_provider_;

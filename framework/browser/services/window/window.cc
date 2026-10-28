@@ -22,6 +22,7 @@
 #include "third_party/blink/public/mojom/page/draggable_region.mojom.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "third_party/skia/include/core/SkRegion.h"
+#include "tuffite/framework/browser/browser_context.h"
 #include "tuffite/framework/browser/services/file_chooser/file_chooser_service.h"
 #include "tuffite/framework/browser/services/file_chooser/file_chooser_service_factory.h"
 #include "tuffite/framework/browser/services/javascript_dialog/javascript_dialog_service.h"
@@ -170,16 +171,19 @@ Window::Window(content::BrowserContext* browser_context,
   maximum_size_ = gfx::Size(16384, 16384);
   SetHasWindowSizeControls(true);
 
-  web_contents_ = content::WebContents::Create(
-      content::WebContents::CreateParams(browser_context));
-  Observe(web_contents_.get());
-  web_contents_->GetMutableRendererPrefs()->accept_languages = kAcceptLanguages;
-  web_contents_->SyncRendererPrefs();
-  web_contents_->SetDelegate(this);
-  if (!decorations_) {
-    web_contents_->SetSupportsDraggableRegions(true);
-    views::WebContentsSetBackgroundColor::CreateForWebContentsWithColor(
-        web_contents_.get(), SK_ColorTRANSPARENT);
+  if (browser_context) {
+    web_contents_ = content::WebContents::Create(
+        content::WebContents::CreateParams(browser_context));
+    Observe(web_contents_.get());
+    web_contents_->GetMutableRendererPrefs()->accept_languages =
+        kAcceptLanguages;
+    web_contents_->SyncRendererPrefs();
+    web_contents_->SetDelegate(this);
+    if (!decorations_) {
+      web_contents_->SetSupportsDraggableRegions(true);
+      views::WebContentsSetBackgroundColor::CreateForWebContentsWithColor(
+          web_contents_.get(), SK_ColorTRANSPARENT);
+    }
   }
   auto contents = std::make_unique<views::View>();
   contents->SetUseDefaultFillLayout(true);
@@ -216,6 +220,23 @@ Window* Window::Create(content::BrowserContext* browser_context,
                        const gfx::Size& size,
                        bool decorations,
                        const window::Constraints* constraints) {
+  return CreateForApplication(
+      BrowserContext::GetFrom(*browser_context).application_context(),
+      browser_context, url, size, decorations, constraints);
+}
+Window* Window::CreateEmpty(ApplicationContext& app,
+                            const gfx::Size& size,
+                            bool decorations,
+                            const window::Constraints* constraints) {
+  return CreateForApplication(app, nullptr, GURL(), size, decorations,
+                              constraints);
+}
+Window* Window::CreateForApplication(ApplicationContext& app,
+                                     content::BrowserContext* browser_context,
+                                     const GURL& url,
+                                     const gfx::Size& size,
+                                     bool decorations,
+                                     const window::Constraints* constraints) {
   auto owned =
       std::unique_ptr<Window>(new Window(browser_context, size, decorations));
   Window* window = owned.get();
@@ -266,7 +287,9 @@ Window* Window::Create(content::BrowserContext* browser_context,
   // compositor Surface that is never presented by the desktop window. This
   // follows content_shell's proven SetContents ordering.
   window->web_view_->SetWebContents(window->web_contents_.get());
-  window->web_contents_->Focus();
+  if (window->web_contents_) {
+    window->web_contents_->Focus();
+  }
 #if !BUILDFLAG(IS_MAC)
   window->widget_->GetNativeWindow()->GetHost()->Show();
 #endif
@@ -290,8 +313,7 @@ Window* Window::Create(content::BrowserContext* browser_context,
   // calls WasShown(); without it the renderer may never produce the first
   // compositor frame.
   window->SyncWebContentsVisibility();
-  auto* owner =
-      window::WindowServiceFactory::GetForBrowserContext(browser_context);
+  auto* owner = window::WindowServiceFactory::GetForApplication(&app);
   window->owner_ = owner->GetWeakPtr();
   owner->Adopt(std::move(owned));
   if (!url.is_empty()) {
@@ -301,6 +323,9 @@ Window* Window::Create(content::BrowserContext* browser_context,
 }
 
 Window* Window::FromWebContents(content::WebContents* web_contents) {
+  if (!web_contents) {
+    return nullptr;
+  }
   auto found =
       std::ranges::find(MutableWindows(), web_contents, &Window::web_contents);
   return found == MutableWindows().end() ? nullptr : *found;
@@ -316,12 +341,14 @@ void Window::SetQuitClosure(base::OnceClosure quit_closure) {
 
 void Window::Shutdown() {
   // WindowService owns native windows; the global index is observational only.
-  std::set<content::BrowserContext*> contexts;
+  std::set<window::WindowService*> services;
   for (auto* window : MutableWindows()) {
-    contexts.insert(window->web_contents()->GetBrowserContext());
+    if (window->owner_) {
+      services.insert(window->owner_.get());
+    }
   }
-  for (auto* context : contexts) {
-    window::WindowServiceFactory::GetForBrowserContext(context)->Shutdown();
+  for (auto* service : services) {
+    service->Shutdown();
   }
 }
 content::JavaScriptDialogManager* Window::GetJavaScriptDialogManager(
@@ -343,7 +370,9 @@ void Window::PrepareForShutdown() {
     web_contents_->WasHidden();
     web_contents_shown_ = false;
   }
-  web_contents_->SetDelegate(nullptr);
+  if (web_contents_) {
+    web_contents_->SetDelegate(nullptr);
+  }
   if (web_view_) {
     web_view_->SetWebContents(nullptr);
     web_view_ = nullptr;
@@ -386,6 +415,52 @@ bool Window::IsPointWithinDraggableRegion(const gfx::Point& point) const {
 
 void Window::Close() {
   widget()->Close();
+}
+
+std::unique_ptr<content::WebContents> Window::SetContent(
+    std::unique_ptr<content::WebContents> next) {
+  CHECK(next && widget_ && web_view_);
+  if (auto* contents = picture_in_picture_contents_.get()) {
+    if (auto* controller = content::PictureInPictureWindowController::
+            GetOrCreateVideoPictureInPictureController(contents)) {
+      controller->Close(false);
+    }
+    picture_in_picture_contents_.reset();
+  }
+  if (web_contents_) {
+    GetJavaScriptDialogManager(web_contents_.get())
+        ->CancelDialogs(web_contents_.get(), true);
+  }
+  Observe(nullptr);
+  web_view_->SetWebContents(nullptr);
+  if (web_contents_shown_) {
+    web_contents_->WasHidden();
+  }
+  web_contents_shown_ = false;
+  if (web_contents_) {
+    web_contents_->SetDelegate(nullptr);
+  }
+  auto previous = std::move(web_contents_);
+  web_contents_ = std::move(next);
+  draggable_region_ = SkRegion();
+  web_contents_->SetDelegate(this);
+  Observe(web_contents_.get());
+  web_contents_->SetSupportsDraggableRegions(!decorations_);
+  if (!decorations_) {
+    views::WebContentsSetBackgroundColor::CreateForWebContentsWithColor(
+        web_contents_.get(), SK_ColorTRANSPARENT);
+  }
+  if (auto* navigation =
+          web_contents_->GetController().GetLastCommittedEntry()) {
+    TitleWasSet(navigation);
+  }
+  web_view_->SetBrowserContext(web_contents_->GetBrowserContext());
+  web_view_->SetWebContents(web_contents_.get());
+  SyncWebContentsVisibility();
+  widget_->GetContentsView()->InvalidateLayout();
+  widget_->GetContentsView()->DeprecatedLayoutImmediately();
+  web_contents_->Focus();
+  return previous;
 }
 
 void Window::LoadURL(const GURL& url) {
@@ -580,7 +655,9 @@ void Window::WindowClosing() {
     web_contents_->WasHidden();
     web_contents_shown_ = false;
   }
-  web_contents_->SetDelegate(nullptr);
+  if (web_contents_) {
+    web_contents_->SetDelegate(nullptr);
+  }
   if (web_view_) {
     web_view_->SetWebContents(nullptr);
     web_view_ = nullptr;

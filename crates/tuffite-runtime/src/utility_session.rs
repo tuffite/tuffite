@@ -13,8 +13,8 @@ pub const MAX_UTILITY_SESSION_CREDITS: u32 = 1_024;
 
 use std::sync::{Arc, Mutex};
 
-use crate::application::{ApplicationError, ApplicationResult, CommandResult};
 use crate::supervisor::CancellationToken;
+use crate::{CommandResult, Error, Result};
 
 /// One ordered semantic event emitted by a long-lived Utility session.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -89,8 +89,7 @@ pub struct UtilitySessionFlowControl {
     closed: bool,
 }
 
-type UtilitySessionEventSink =
-    dyn Fn(UtilitySessionEvent) -> ApplicationResult<()> + Send + Sync + 'static;
+type UtilitySessionEventSink = dyn Fn(UtilitySessionEvent) -> Result<()> + Send + Sync + 'static;
 
 /// Cloneable, credit-controlled event emitter supplied to a Utility session.
 #[derive(Clone)]
@@ -113,7 +112,7 @@ impl UtilitySessionEmitter {
     pub(crate) fn new_for_host(
         initial_credits: u32,
         max_event_bytes: usize,
-        sink: impl Fn(UtilitySessionEvent) -> ApplicationResult<()> + Send + Sync + 'static,
+        sink: impl Fn(UtilitySessionEvent) -> Result<()> + Send + Sync + 'static,
     ) -> Result<Self, UtilitySessionFlowError> {
         Ok(Self {
             flow: Arc::new(Mutex::new(UtilitySessionFlowControl::new(
@@ -125,7 +124,7 @@ impl UtilitySessionEmitter {
     }
 
     /// Emits one ordered semantic event if the consumer has granted credit.
-    pub fn emit(&self, kind: u32, payload: impl Into<Vec<u8>>) -> ApplicationResult<u64> {
+    pub fn emit(&self, kind: u32, payload: impl Into<Vec<u8>>) -> Result<u64> {
         // Hold the flow lock until the Host sink has copied/enqueued the event.
         // This preserves sequence order and guarantees close waits for any
         // in-flight callback. Host sinks must not synchronously re-enter this
@@ -136,7 +135,7 @@ impl UtilitySessionEmitter {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let event = flow
             .emit(kind, payload)
-            .map_err(|error| ApplicationError::new(error.to_string()))?;
+            .map_err(|error| Error::new(error.to_string()))?;
         let sequence = event.sequence();
         if let Err(error) = (self.sink)(event) {
             flow.close();
@@ -477,10 +476,9 @@ mod tests {
 
     #[test]
     fn emitter_closes_when_the_host_sink_rejects_an_event() {
-        let emitter = UtilitySessionEmitter::new_for_host(1, 16, |_| {
-            Err(ApplicationError::new("host queue is closed"))
-        })
-        .unwrap();
+        let emitter =
+            UtilitySessionEmitter::new_for_host(1, 16, |_| Err(Error::new("host queue is closed")))
+                .unwrap();
         assert!(emitter.emit(1, b"lost".to_vec()).is_err());
         assert!(emitter.emit(1, b"after-close".to_vec()).is_err());
     }

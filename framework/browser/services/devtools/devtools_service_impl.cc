@@ -202,7 +202,8 @@ CreateDevToolsManagerDelegate() {
 }
 bool DevToolsServiceImpl::Start(content::BrowserContext* context,
                                 uint16_t port) {
-  if (stopped_ || !context || context != browser_context_) {
+  if (stopped_ || !manifest_->IsDevToolsEnabled() || !context ||
+      context != browser_context_) {
     return false;
   }
   if (ServerOwner()) {
@@ -219,6 +220,9 @@ base::WeakPtr<DevToolsService> DevToolsServiceImpl::GetWeakPtr() {
   return weak_factory_.GetWeakPtr();
 }
 void DevToolsServiceImpl::StartIfRequested(content::BrowserContext* context) {
+  if (!manifest_->IsDevToolsEnabled()) {
+    return;
+  }
   const auto& command_line = *base::CommandLine::ForCurrentProcess();
   int port = 0;
   if (command_line.HasSwitch(switches::kRemoteDebuggingPort) &&

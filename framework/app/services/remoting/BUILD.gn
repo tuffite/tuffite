@@ -52,3 +52,14 @@ source_set("remoting") {
     }
   }
 }
+
+source_set("protocol") {
+  sources = [
+    "remoting_protocol.cc",
+    "remoting_protocol.h",
+  ]
+  public_deps = [
+    ":remoting",
+    "//tuffite/framework/public/shell_api:protocol",
+  ]
+}

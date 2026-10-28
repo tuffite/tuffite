@@ -17,6 +17,13 @@ namespace {
 class WebAuthenticationDelegate final
     : public content::WebAuthenticationDelegate {
  public:
+#if BUILDFLAG(IS_MAC)
+  std::optional<TouchIdAuthenticatorConfig> GetTouchIdAuthenticatorConfig(
+      content::BrowserContext* context) override {
+    return WebAuthenticationServiceFactory::GetForBrowserContext(context)
+        ->GetTouchIdAuthenticatorConfig(context);
+  }
+#endif
   bool SupportsResidentKeys(content::RenderFrameHost* frame) override {
     return WebAuthenticationServiceFactory::GetForBrowserContext(
                frame->GetBrowserContext())
@@ -58,6 +65,6 @@ WebAuthenticationServiceFactory::GetDelegate() {
 std::unique_ptr<KeyedService>
 WebAuthenticationServiceFactory::BuildServiceInstanceForBrowserContext(
     content::BrowserContext* context) const {
-  return std::make_unique<WebAuthenticationServiceImpl>();
+  return std::make_unique<WebAuthenticationServiceImpl>(context);
 }
 }  // namespace tuffite

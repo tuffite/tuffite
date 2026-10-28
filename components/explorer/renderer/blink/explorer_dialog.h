@@ -39,6 +39,12 @@ class CORE_EXPORT ExplorerDialog final : public ScriptWrappable {
   bool responded() const { return responded_; }
   const String& type() const { return type_; }
   const String& message() const { return message_; }
+  String url() const {
+    return type_ == "external-protocol" ? message_ : String();
+  }
+  String initiatingOrigin() const {
+    return type_ == "external-protocol" ? default_value_ : String();
+  }
   const String& defaultValue() const { return default_value_; }
   bool isReload() const { return is_reload_; }
   const String& from() const { return from_; }

@@ -1,25 +1,20 @@
 {
-  "$schema": "../../schemas/tuffite.schema.json",
+  "$schema": "../../tuffite.schema.json",
   "app": {
-    "identifier": "org.tuffite.framework",
-    "security": {
-      "capabilities": []
-    },
-    "network": {},
-    "assets": []
+    "identifier": "org.tuffite.framework"
   },
   "build": {
     "mojomSources": [
-      "../../framework/shell_api/common.mojom",
-      "../../framework/shell_api/dialog.mojom",
-      "../../framework/shell_api/path.mojom",
-      "../../framework/shell_api/remoting.mojom",
-      "../../framework/shell_api/fs.mojom",
-      "../../framework/shell_api/storage.mojom",
-      "../../framework/shell_api/log.mojom",
-      "../../framework/shell_api/network.mojom",
-      "../../framework/shell_api/utility.mojom",
-      "../../framework/shell_api/window.mojom"
+      "../../framework/public/shell_api/common.mojom",
+      "../../framework/public/shell_api/dialog.mojom",
+      "../../framework/public/shell_api/path.mojom",
+      "../../framework/public/shell_api/remoting.mojom",
+      "../../framework/public/shell_api/fs.mojom",
+      "../../framework/public/shell_api/storage.mojom",
+      "../../framework/public/shell_api/log.mojom",
+      "../../framework/public/shell_api/network.mojom",
+      "../../framework/public/shell_api/utility.mojom",
+      "../../framework/public/shell_api/window.mojom"
     ]
   }
 }

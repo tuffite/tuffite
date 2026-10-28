@@ -10,6 +10,7 @@
 
 #include "base/memory/weak_ptr.h"
 #include "tuffite/components/dispatch/browser/rpc_handler.h"
+
 namespace tuffite::rpc {
 struct RequestKey {
   base::UnguessableToken connection;

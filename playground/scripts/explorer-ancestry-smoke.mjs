@@ -59,15 +59,15 @@ try {
       event.ports[0]?.postMessage('port-ack');
     });
     const explorer = document.createElement('explorer');
-    explorer.navigation = 'allow';
+    explorer.behavior = "navigation: browser;";
     explorer.style.cssText = 'display:block;width:800px;height:500px';
-    explorer.src = new URL('history-a.html?ancestry-root', base).href;
+    explorer.src = new URL('fixtures/history.html?page=a&ancestry-root', base).href;
     window.ancestryExplorer = explorer;
     const loaded = new Promise(resolve => explorer.addEventListener('loadstop', resolve, { once: true }));
     document.body.append(explorer);
     await loaded;
   }, base);
-  const firstUrl = new URL('history-a.html?ancestry-root', base).href;
+  const firstUrl = new URL('fixtures/history.html?page=a&ancestry-root', base).href;
   const first = await evaluate(firstUrl, `(() => {
     window.ancestryReplies=[];
     window.addEventListener('message',event=>{
@@ -100,7 +100,7 @@ try {
   await wait(async () => (await evaluate(firstUrl,'ancestryReplies.some(event=>event.reply==="element")')), 'Explorer.postMessage did not reach guest');
   await evaluate(firstUrl, `window.addEventListener('message',async event=>{
     if(event.data?.type!=='ancestry-handle')return;
-    const target=document.createElement('explorer');target.navigation='allow';document.body.append(target);
+    const target=document.createElement('explorer');target.behavior = "navigation: browser;";document.body.append(target);
     try {
       await target.attach(event.data.handle);
       const state=await target.getNavigationState();
@@ -110,8 +110,8 @@ try {
     finally {target.remove();event.ports[0].close();}
   })`);
   const moved = await app.evaluate(async base => {
-    const source=document.createElement('explorer');source.navigation='allow';
-    source.src=new URL('history-a.html?ancestry-handle',base).href;
+    const source=document.createElement('explorer');source.behavior = "navigation: browser;";
+    source.src=new URL('fixtures/history.html?page=a&ancestry-handle',base).href;
     const loaded=new Promise(resolve=>source.addEventListener('loadstop',resolve,{once:true}));
     document.body.append(source);await loaded;
     const original=await source.getNavigationState();const handle=await source.detach();
@@ -133,13 +133,13 @@ try {
     const iframe=document.createElement('iframe');
     iframe.srcdoc='<script>parent.parent.postMessage({ancestryTest:"iframe",parentSelf:parent===window,topIsApp:top===parent.parent},"*")<\/script>';
     document.body.append(iframe);
-    const child=document.createElement('explorer');child.navigation='allow';
-    child.src=new URL('history-b.html?ancestry-nested',location.href).href;
+    const child=document.createElement('explorer');child.behavior = "navigation: browser;";
+    child.src=new URL('fixtures/history.html?page=b&ancestry-nested',location.href).href;
     window.nestedAncestryExplorer=child;
     const loaded=new Promise(resolve=>child.addEventListener('loadstop',resolve,{once:true}));
     document.body.append(child);await loaded;return true;
   })()`);
-  const nestedUrl = new URL('history-b.html?ancestry-nested', base).href;
+  const nestedUrl = new URL('fixtures/history.html?page=b&ancestry-nested', base).href;
   assert.deepEqual(await evaluate(nestedUrl, `(() => {
     top.postMessage({ancestryTest:'nested'},'*');
     return {parentSelf:parent===window,topSelf:top===window,parentTop:parent===top,parentTopIsTop:parent.top===top,ancestorOrigins:[...location.ancestorOrigins]};

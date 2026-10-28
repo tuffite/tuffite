@@ -13,57 +13,28 @@ use std::path::{Component, Path};
 #[serde(rename_all = "camelCase")]
 pub(super) struct PackageApp {
     pub(super) identifier: String,
-    #[serde(default)]
-    assets: Vec<AssetRoute>,
-    #[serde(default)]
-    isolated_worlds: std::collections::BTreeMap<String, IsolatedWorld>,
 }
 
-#[derive(Debug, Deserialize)]
-struct IsolatedWorld {
-    entry: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct AssetRoute {
-    file: Option<String>,
-    directory: Option<String>,
-}
-
-pub(super) fn configure_assets(
+/// Tooling reads only the explicit file inventory; runtime URL maps remain in Rust.
+pub(super) fn configure_resources(
     project_dir: &Path,
-    app: &PackageApp,
     bundle_resources: &[String],
-    _packaged_manifest: &mut serde_json::Value,
 ) -> Result<Vec<String>, String> {
-    let mut resources = bundle_resources.to_vec();
-    for route in &app.assets {
-        let (source, directory) = match (&route.file, &route.directory) {
-            (Some(file), None) => (file, false),
-            (None, Some(directory)) => (directory, true),
-            _ => return Err("app.assets: specify exactly one of file/directory".to_owned()),
-        };
-        let relative = safe_relative_path(source, "app.assets source")?;
-        let path = project_dir.join(&relative);
-        if directory {
-            canonical_directory(&path)?;
+    let mut resources = Vec::new();
+    for entry in bundle_resources {
+        let relative = safe_relative_path(entry, "bundle.resources entry")?;
+        reject_path_symlinks(project_dir, &relative)?;
+        let source = project_dir.join(&relative);
+        if source.is_dir() {
+            canonical_directory(&source)?;
         } else {
-            canonical_file(&path)?;
+            canonical_file(&source)?;
         }
-        let source = portable_relative_path(&relative)?;
-        if !resources.iter().any(|entry| entry == &source) {
-            resources.push(source);
-        }
-    }
-    for world in app.isolated_worlds.values() {
-        let relative = safe_relative_path(&world.entry, "app.isolatedWorlds entry")?;
-        canonical_file(&project_dir.join(&relative))?;
         let source = portable_relative_path(&relative)?;
         if !resources.contains(&source) {
             resources.push(source);
         }
     }
-    // A directory already includes its children. Avoid duplicate copies.
     let all = resources.clone();
     resources.retain(|entry| {
         !all.iter()

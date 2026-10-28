@@ -70,6 +70,34 @@ Update the outer `.gclient` pin to the released Framework commit when adopting i
 Chromium DEPS, toolchain versions, historical tags and user application versions
 are separate release decisions.
 
+## Updating the public ABI
+
+Public C declarations are split across `framework/public/c_api/*.h`. There is no
+aggregate public ABI header; native consumers include the interfaces they use.
+Framework ABI adapters live in `framework/app/abi/`: Application owns the
+native-to-Rust connection; Host implements Rust-to-native capabilities.
+MainDelegate directly owns both adapters and ApplicationContext. BrowserMainParts
+invokes its lifecycle callbacks around browser teardown; MainDelegate destroys
+application services, stops Rust, then disables Host scheduling.
+
+`tuffite-abi` normally uses checked-in `crates/tuffite-abi/src/bindings.rs`, so
+application dependency builds require neither libclang nor the Framework headers.
+Maintainers enable `bindgen` to run bindgen against
+`crates/tuffite-abi/wrapper.h` for Cargo's TARGET. Install libclang and set
+LIBCLANG_PATH if needed. The feature writes to OUT_DIR and enables a parity test
+against the checked-in bindings; `--all-features` includes this check.
+
+```sh
+python3 scripts/abi.py --output framework/public/c_api/version.h
+cargo test -p tuffite-abi --features bindgen
+```
+
+When headers change, copy the generated file from the path reported by a failing
+parity test to `crates/tuffite-abi/src/bindings.rs`, rerun the test, and commit
+both changes.
+
+`x.py bump` updates the source version header together with the manifests.
+
 ## Daily tasks
 
 ```sh
@@ -84,6 +112,12 @@ python3 x.py test --suite native      # Build and run native unit tests
 python3 x.py test --suite smoke       # Package and run Playground integration smoke
 python3 x.py test --suite explorer    # Package and run the detailed Explorer CDP smoke
 ```
+
+The smoke suite includes the multiple-profile and window-content composition
+checks. Run just that packaged scenario with
+`python3 playground/scripts/smoke.py --package dist/playground --profiles`.
+See [profiles.md](profiles.md) for the Application/Browser lifecycle, ownership,
+storage layout and legacy-entry migration.
 
 `playground/scripts/smoke.py --package dist/playground --explorer-reload`
 exercises nested local cross-site pages, repeated reloads, source-window messages,
@@ -227,24 +261,24 @@ committed Mise `[env]` configuration so CLI and Cargo receive the same tag.
 
 The Rust build API is `tuffite::build::framework::Resolver` with
 `tuffite::build::Builder::new().add(resolver)`. Applications use
-`#[tuffite::main(browser = PlaygroundBrowser)]` and `tuffite::generate_handler!`.
+`#[tuffite::main]` with `app::Builder<Application>` and grouped interface registration.
 Binding generation and Framework resolution/download run automatically in
 `tuff dev`, `tuff build`, and `tuff package`; no separate generate/download
 command is needed. Use `tuff framework verify <distribution>` to verify an
 existing Distribution. The ABI has two directional tables: `Host` / `tuffite_host` provides native host
 callbacks; `Application` / `tuffite_application` provides Rust application entries.
 Both tables begin with `Header { struct_size, version: Version, reserved }`.
-`Host.query_extension(Browser)` discovers `BrowserHost`, whose `utility` and
-`shell_api` fields point to independent facade tables. `Utility.session` points to a separately sized `UtilitySessionClient`;
-each callable native table has its own context. Unknown capability IDs return
-null. These borrowed immutable tables remain valid through application stop,
-and Runtime validates and snapshots their known prefixes. Host's core layout
-does not grow when a facade gains optional operations.
+`Host.query_extension` directly discovers independently headed domain tables:
+UtilitySession, Isolated, Contexts and Remoting. Each callable native table has
+its own context. Unknown capability IDs return null. These borrowed immutable
+tables remain valid through application stop; Runtime validates and snapshots
+their declared prefixes. No legacy BrowserHost or Utility aggregate is retained.
 `Application.utility` still embeds the ABI `UtilityService` lifecycle callbacks
-and an independently sized `session: &'static UtilitySessionService` table. The safe Runtime
-`#[tuffite::browser]` marks the Browser implementation; `#[tuffite::main]`
-selects that backend and explicit utility types;
-`Browser` and `Utility` implement their respective process lifecycles. See
+and an independently sized `session: *const UtilitySessionService` table. The safe Runtime
+`#[tuffite::main]` exports definitions inferred from the returned Builder and
+explicit utility types. `Application`, `Browser` and `Utility` implement their
+respective lifecycles. Application/Browser interfaces use Builder registration
+groups with generated `interfaces::Name` markers. See
 [the application model](architecture.md#8-application-model).
 The directional tables share version/size checks but are not interchangeable. The dynamic getter is
 `tuffite_get_application`; table names do not carry version suffixes.
@@ -260,8 +294,8 @@ schema versions describe a separate user-facing contract.
 
 The ABI crate inherits `[workspace.package].version` from `Cargo.toml` along
 with the SDK and Runtime. Rust derives `ABI_MAJOR` / `ABI_MINOR` / `ABI_PATCH`
-from Cargo; GN generates `abi_version.h` from both manifests through
-`scripts/abi.py`, which also supplies Distribution packaging. The unpublished
+from Cargo; `scripts/abi.py` generates the checked-in `version.h`,
+and `x.py bump` updates it together with the manifests. The unpublished
 2.x ABI was reset to the shared 0.1.0 release; rebuild existing Distributions
 and application libraries together. Current capabilities all belong to that
 baseline. Consumers check table size and their minimum binary version, with
@@ -635,7 +669,7 @@ previous inspection behavior. The local CLI validates this boolean alongside the
 other capability fields. See `components/explorer/README.md` for an example.
 
 Rust Browser implementations may use the static trait method
-`fn setup(builder: browser::Builder) -> ApplicationResult<browser::Builder>`
+`fn setup(builder: browser::Builder) -> Result<browser::Builder>`
 and return `Ok(builder.disable_devtools_for_origin(origin))` before native services and
 windows are created. It adds denials to the manifest policy. Setup errors and
 invalid patterns abort startup. The optional ABI tail preserves older application

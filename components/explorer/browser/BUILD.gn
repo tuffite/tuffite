@@ -39,6 +39,7 @@ source_set("browser") {
     "//base",
     "//content/public/browser",
     "//mojo/public/cpp/bindings",
+    "//tuffite/components/explorer/common:external_protocol",
     "//tuffite/components/explorer/common:mojom",
     "//ui/gfx",
     "//url",

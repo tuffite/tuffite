@@ -8,3 +8,12 @@ license.workspace = true
 
 [lints]
 workspace = true
+
+[features]
+# Maintainer-only: requires libclang and the Framework source headers.
+bindgen = ["dep:bindgen", "dep:syn", "dep:prettyplease"]
+
+[build-dependencies]
+bindgen = { version = "=0.72.1", optional = true }
+syn = { version = "2", features = ["full", "visit-mut"], optional = true }
+prettyplease = { version = "0.2", optional = true }

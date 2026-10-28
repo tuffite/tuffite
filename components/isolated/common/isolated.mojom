@@ -5,5 +5,6 @@ module tuffite.mojom;
 // Document-scoped package lookup. The browser supplies immutable package code;
 // the renderer never chooses a path or a source URL.
 interface IsolatedHost {
-  Load(string name) => (string? source);
+  Load(string name) => (string? entry_url);
+  Release(string entry_url);
 };

@@ -28,7 +28,7 @@
 #include "base/threading/sequence_bound.h"
 #include "gin/array_buffer.h"
 #include "gin/public/isolate_holder.h"
-#include "tuffite/framework/public/abi.h"
+#include "tuffite/framework/public/c_api/types.h"
 #include "url/gurl.h"
 #include "v8/include/v8-context.h"
 #include "v8/include/v8-exception.h"

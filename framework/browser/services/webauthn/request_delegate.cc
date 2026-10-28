@@ -179,6 +179,12 @@ void WebAuthnRequestDelegate::OnTransportAvailabilityEnumerated(
     Cancel();
     return;
   }
+  if (availability_->has_win_native_api_authenticator) {
+    // Windows owns the platform passkey/Hello UI and its USB/phone
+    // alternatives.
+    ChooseTransport(Transport::kInternal);
+    return;
+  }
   ShowChoices();
 }
 
@@ -268,8 +274,9 @@ void WebAuthnRequestDelegate::ShowChoices() {
   };
   bool mechanism = false;
   if (availability_->has_win_native_api_authenticator ||
-      availability_->has_icloud_keychain) {
-    add(Transport::kInternal, u"Use system passkeys or a security key");
+      availability_->has_icloud_keychain ||
+      availability_->available_transports.contains(Transport::kInternal)) {
+    add(Transport::kInternal, u"Use system passkeys or Touch ID");
     mechanism = true;
   }
   if (!availability_->has_win_native_api_authenticator &&
@@ -291,7 +298,8 @@ void WebAuthnRequestDelegate::ShowChoices() {
         u"on the website.");
   }
 #if BUILDFLAG(IS_MAC)
-  if (!availability_->has_icloud_keychain) {
+  if (!availability_->has_icloud_keychain &&
+      !availability_->available_transports.contains(Transport::kInternal)) {
     dialog->AddMessage(
         u"This application cannot access iCloud passkeys. Use a security key "
         u"or a phone instead.");

@@ -1,30 +1,96 @@
-//! Application-wide registration and process entry selection.
+//! Application context, lifecycle and startup configuration.
 
-use crate::{Browser, CommandError, UtilityServiceRegistration};
+pub(crate) mod builder;
+
+use crate::{Browser, CommandError, Result, UtilityServiceRegistration};
 use tuffite_abi::{Application as AbiApplication, Header};
 
-/// Failure while creating or shutting down an application.
-#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
-#[error("{message}")]
-pub struct ApplicationError {
-    message: String,
+/// Application-wide capabilities. Clones are handles, not native ownership.
+#[derive(Clone, Debug)]
+pub struct ApplicationContext {
+    context: std::sync::Arc<crate::BrowserContext>,
 }
-
-impl ApplicationError {
-    /// Creates an application lifecycle error.
+impl AsRef<Self> for ApplicationContext {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+impl ApplicationContext {
+    #[doc(hidden)]
     #[must_use]
-    pub fn new(message: impl Into<String>) -> Self {
+    pub fn remoting_host(&self) -> crate::native_remoting::Host {
+        self.context.remoting_host()
+    }
+    pub(crate) fn new(context: crate::BrowserContext) -> Self {
         Self {
-            message: message.into(),
+            context: std::sync::Arc::new(context),
         }
+    }
+    #[must_use]
+    pub fn configuration(&self) -> &[u8] {
+        self.context.configuration()
+    }
+    #[must_use]
+    pub fn executor(&self) -> crate::ChromiumExecutor {
+        self.context.executor()
+    }
+    #[must_use]
+    pub fn stop_signal(&self) -> crate::StopSignal {
+        self.context.stop_signal()
+    }
+    pub fn set_state<T: Send + Sync + 'static>(&self, value: std::sync::Arc<T>) {
+        self.context.set_state(value);
+    }
+    #[must_use]
+    pub fn state<T: Send + Sync + 'static>(&self) -> Option<std::sync::Arc<T>> {
+        self.context.state()
+    }
+    #[must_use]
+    pub fn profiles(&self) -> crate::ProfileManager {
+        crate::ProfileManager::new(self.context.context_client())
+    }
+    #[must_use]
+    pub fn windows(&self) -> crate::Windows {
+        crate::Windows::new(self.context.context_client())
+    }
+    #[must_use]
+    pub fn events(&self) -> crate::EventEmitter {
+        self.context.events()
+    }
+    #[must_use]
+    pub fn utilities(&self) -> crate::utility::Host {
+        self.context.utilities()
+    }
+    #[must_use]
+    pub fn utility_sessions(&self) -> crate::UtilitySessionHost {
+        self.context.utility_sessions()
+    }
+    #[must_use]
+    pub fn javascript_extensions(&self) -> crate::JavaScriptExtensionHost {
+        crate::JavaScriptExtensionHost::new(self.utility_sessions())
     }
 }
 
-/// Result returned by application lifecycle methods.
-pub type ApplicationResult<T> = Result<T, ApplicationError>;
-
+/// One application backend, shared by all of its loaded profiles.
+pub trait Application: Send + Sized + 'static {
+    /// Collects immutable declarations before Chromium starts. No native
+    /// context exists yet; this must only build definitions in each process.
+    fn setup(builder: crate::app::Builder<Self>) -> Result<crate::app::Builder<Self>> {
+        Ok(builder)
+    }
+    fn new(context: ApplicationContext) -> Result<Self>;
+    fn initialize(&mut self) -> impl std::future::Future<Output = Result<()>> + Send {
+        async { Ok(()) }
+    }
+    fn shutdown(
+        &mut self,
+        _context: crate::ShutdownContext,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async { Ok(()) }
+    }
+}
 /// Result returned by a binary `ShellAPI` command.
-pub type CommandResult = Result<Vec<u8>, CommandError>;
+pub type CommandResult = std::result::Result<Vec<u8>, CommandError>;
 
 /// Internal frozen registration view used by ABI adapters.
 #[doc(hidden)]
@@ -48,6 +114,9 @@ static UTILITY_SESSION_SERVICE: tuffite_abi::UtilitySessionService =
 pub const fn for_application<B: Browser, R: Registrations>() -> AbiApplication {
     AbiApplication {
         header: Header::for_type::<AbiApplication>(),
+        start_profile: None,
+        command_scope: None,
+        configuration: None,
         setup_browser: Some(crate::abi::setup_browser::<B>),
         initialize_browser: Some(crate::abi::initialize_browser),
         cancel_v8_session: Some(crate::abi::cancel_v8_session),
@@ -66,7 +135,7 @@ pub const fn for_application<B: Browser, R: Registrations>() -> AbiApplication {
             invoke: Some(crate::utility_entry::invoke_utility),
             cancel: Some(crate::utility_entry::cancel_utility),
             stop: Some(crate::utility_entry::stop_utility),
-            session: &UTILITY_SESSION_SERVICE,
+            session: &raw const UTILITY_SESSION_SERVICE,
         },
     }
 }

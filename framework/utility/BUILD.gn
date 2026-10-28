@@ -24,7 +24,7 @@ source_set("utility") {
     "//tuffite:buildflags",
     "//tuffite/framework/common/utility:mojom",
     "//tuffite/framework/common/utility:service_name",
-    "//tuffite/framework/public:abi",
+    "//tuffite/framework/public/c_api:abi",
     "//url",
     "//v8",
   ]

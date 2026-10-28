@@ -12,6 +12,8 @@ class ManifestService;
 class ExplorerServiceImpl final : public ExplorerService {
  public:
   explicit ExplorerServiceImpl(const ManifestService& manifest);
+  content::WebContents* OpenBrowserWindow(
+      std::unique_ptr<content::WebContents>) const override;
   void AddNavigationThrottles(content::NavigationThrottleRegistry&) override;
   void ResolveMessageWindow(
       content::RenderFrameHost&,

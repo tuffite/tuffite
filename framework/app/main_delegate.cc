@@ -12,12 +12,14 @@
 #include "base/environment.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/logging/logging_settings.h"
 #include "base/path_service.h"
 #include "base/process/process.h"
 #include "base/process/process_handle.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 #include "components/network_session_configurator/common/network_switches.h"
 #include "content/public/app/content_main.h"
 #include "content/public/common/content_switches.h"
@@ -25,12 +27,13 @@
 #include "crypto/secure_util.h"
 #include "crypto/sha2.h"
 #include "tuffite/buildflags.h"
-#include "tuffite/framework/app/abi_host_bridge.h"
+#include "tuffite/framework/app/abi/application.h"
+#include "tuffite/framework/app/abi/host.h"
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/content_client.h"
-#include "tuffite/framework/app/services/application_dependency_manager.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
+#include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/browser/content_browser_client.h"
 #include "tuffite/framework/common/switches.h"
 #include "tuffite/framework/renderer/content_renderer_client.h"
@@ -176,48 +179,105 @@ void InitLogging(const base::CommandLine& command_line) {
 
 }  // namespace
 
-MainDelegate::MainDelegate(std::unique_ptr<AbiHostBridge> bridge)
-    : bridge_(std::move(bridge)) {
-  CHECK(bridge_);
+MainDelegate::MainDelegate(std::unique_ptr<abi::Application> application)
+    : application_(std::move(application)) {
+  CHECK(application_);
+  const auto bytes = application_->table().configuration
+                         ? application_->table().configuration()
+                         : tuffite_byte_slice_t{};
+  CHECK_LE(bytes.len, 1024u * 1024u);
+  CHECK(bytes.len == 0 || bytes.data);
+  if (bytes.len) {
+    // The ABI table owns these validated application-lifetime bytes.
+    runtime_configuration_.assign(reinterpret_cast<const char*>(bytes.data),
+                                  bytes.len);
+  }
+  host_ = std::make_unique<abi::Host>(base::BindRepeating(
+      &abi::Application::OnEvent, base::Unretained(application_.get())));
 }
+
 MainDelegate::~MainDelegate() {
   Shutdown();
 }
+
 void MainDelegate::ProcessExiting(const std::string&) {
   Shutdown();
 }
-bool MainDelegate::StartUp(std::unique_ptr<ManifestService> manifest) {
-  CHECK(!stopped_);
-  CHECK(!context_);
-  context_ =
-      std::make_unique<ApplicationContext>(std::move(manifest), *bridge_);
-  ApplicationDependencyManager::Get()->CreateServices(context_.get());
-  bridge_->BindApplicationContext(context_.get());
-  if (browser_client_) {
-    browser_client_->BindApplicationServices(context_.get());
-  }
-  return bridge_->Start(
-      context_->GetService<ManifestService>()->SerializeRuntimeConfiguration());
+
+ApplicationContext* MainDelegate::context() {
+  return context_.get();
 }
-void MainDelegate::Shutdown() {
-  if (stopped_) {
+
+void MainDelegate::BindBrowserTaskRunner() {
+  application_->BindBrowserTaskRunner();
+  host_->BindBrowserTaskRunner();
+  application_->SetApplicationEvent(host_->application_event());
+}
+
+bool MainDelegate::StartUp(std::unique_ptr<ManifestService> manifest) {
+  CHECK(shutdown_phase_ == ShutdownPhase::kReady);
+  CHECK(!context_);
+  context_ = std::make_unique<ApplicationContext>(std::move(manifest));
+  host_->BindApplicationContext(context_.get());
+  if (!application_->Start(host_->table(), *context_)) {
+    Shutdown();
+    return false;
+  }
+  return true;
+}
+
+void MainDelegate::BeginShutdown() {
+  if (shutdown_phase_ != ShutdownPhase::kReady) {
     return;
   }
-  stopped_ = true;
-  bridge_->BeginShutdown();
-  bridge_->Stop();
-  if (browser_client_) {
-    browser_client_->BindApplicationServices(nullptr);
-  }
-  bridge_->BindApplicationContext(nullptr);
-  if (context_) {
-    ApplicationDependencyManager::Get()->DestroyServices(context_.get());
-    context_.reset();
+  // Closing either direction runs external callbacks. A reentrant Shutdown
+  // must not stop Rust until both batches of callbacks have completed.
+  shutdown_phase_ = ShutdownPhase::kQuiescing;
+  host_->Close();
+  application_->Quiesce();
+  shutdown_phase_ = ShutdownPhase::kQuiesced;
+  if (shutdown_requested_ && !host_->has_browser_context()) {
+    Shutdown();
   }
 }
+
+void MainDelegate::Shutdown() {
+  if (shutdown_phase_ == ShutdownPhase::kStopping ||
+      shutdown_phase_ == ShutdownPhase::kStopped) {
+    return;
+  }
+  if (shutdown_phase_ == ShutdownPhase::kQuiescing) {
+    shutdown_requested_ = true;
+    return;
+  }
+  BeginShutdown();
+  if (shutdown_phase_ == ShutdownPhase::kStopped) {
+    return;
+  }
+  CHECK(!host_->has_browser_context());
+  shutdown_phase_ = ShutdownPhase::kStopping;
+  // Browser consumers are gone. Complete service-owned ABI replies while Rust
+  // is alive, then stop Rust with Host scheduling and tables still available.
+  if (application_->table().start_profile) {
+    // Complete accepted application-scoped utility callbacks while their Rust
+    // state is still alive, just as profile retirement does for its sessions.
+    if (auto* utilities =
+            context_ ? context_->GetService<UtilityService>(false) : nullptr) {
+      utilities->Shutdown();
+    }
+    application_->Stop();
+    context_.reset();
+  } else {
+    context_.reset();
+    application_->Stop();
+  }
+  host_->Shutdown();
+  shutdown_phase_ = ShutdownPhase::kStopped;
+}
+
 int MainDelegate::Run(int argc, const char* const* argv, void* sandbox_info) {
   CHECK(!run_called_);
-  CHECK(!stopped_);
+  CHECK(shutdown_phase_ == ShutdownPhase::kReady);
   run_called_ = true;
   content::ContentMainParams params(this);
 #if BUILDFLAG(IS_WIN)
@@ -231,7 +291,7 @@ int MainDelegate::Run(int argc, const char* const* argv, void* sandbox_info) {
   params.argv = const_cast<const char**>(argv);
 #endif
   const int result = content::ContentMain(std::move(params));
-  const bool initialization_failed = bridge_->initialization_failed();
+  const bool initialization_failed = application_->initialization_failed();
   Shutdown();
   return initialization_failed ? kRuntimeBootstrapFailure : result;
 }
@@ -275,16 +335,26 @@ std::optional<int> MainDelegate::BasicStartupComplete() {
   command_line->AppendSwitchPath(switches::kBrowserSubprocessPath,
                                  executable_path);
   std::string manifest_error;
-  std::optional<std::string> app_scheme =
-      app::ManifestLoader::ReadApplicationScheme(executable_directory,
-                                                 &manifest_error);
-  if (!app_scheme) {
+  if (command_line->HasSwitch("tuffite-runtime-snapshot")) {
+#if BUILDFLAG(TUFFITE_DEV_MODE)
+    runtime_configuration_.clear();
+#else
+    LOG(ERROR)
+        << "Runtime configuration snapshots require a development Framework";
+    return kRuntimeBootstrapFailure;
+#endif
+  }
+  auto app_schemes = app::ManifestLoader::ReadApplicationSchemes(
+      executable_directory, &manifest_error, runtime_configuration_);
+  if (!app_schemes) {
     LOG(ERROR) << "Unable to load Tuffite application manifest: "
                << manifest_error;
     return kRuntimeBootstrapFailure;
   }
-  command_line->AppendSwitchASCII(kAppSchemeSwitch, *app_scheme);
-  if (app::ManifestLoader::ReadNetworkDisableHttp2(executable_directory)) {
+  command_line->AppendSwitchASCII(kAppSchemesSwitch,
+                                  base::JoinString(*app_schemes, ","));
+  if (app::ManifestLoader::ReadNetworkDisableHttp2(executable_directory,
+                                                   runtime_configuration_)) {
     command_line->AppendSwitch(switches::kDisableHttp2);
   }
   // Blink reads runtime feature switches before PreBrowserMain(). There is no
@@ -365,15 +435,15 @@ std::optional<int> MainDelegate::PreBrowserMain() {
     startup_environment.development_url = GURL(development_url);
 #endif
   }
-  auto definition =
-      app::ManifestLoader::Load(executable_directory, &manifest_error);
+  auto definition = app::ManifestLoader::Load(
+      executable_directory, &manifest_error, runtime_configuration_);
   if (!definition) {
     LOG(ERROR) << "Unable to load Tuffite application manifest: "
                << manifest_error;
     return kRuntimeBootstrapFailure;
   }
   app::BrowserOptions browser_options;
-  if (const auto setup = bridge().application().setup_browser) {
+  if (const auto setup = application().table().setup_browser) {
     const auto status =
         setup(&browser_options.security.devtools.denied_origins,
               [](void* data, tuffite_byte_slice_t origin) -> tuffite_status_t {
@@ -423,8 +493,12 @@ content::ContentClient* MainDelegate::CreateContentClient() {
 }
 
 content::ContentBrowserClient* MainDelegate::CreateContentBrowserClient() {
-  browser_client_ = std::make_unique<ContentBrowserClient>(bridge());
-  browser_client_->BindApplicationServices(context());
+  browser_client_ = std::make_unique<ContentBrowserClient>(
+      application(), host(),
+      base::BindRepeating(&MainDelegate::BindBrowserTaskRunner,
+                          base::Unretained(this)),
+      base::BindRepeating(&MainDelegate::BeginShutdown, base::Unretained(this)),
+      base::BindRepeating(&MainDelegate::Shutdown, base::Unretained(this)));
   return browser_client_.get();
 }
 
@@ -435,7 +509,7 @@ content::ContentRendererClient* MainDelegate::CreateContentRendererClient() {
 
 content::ContentUtilityClient* MainDelegate::CreateContentUtilityClient() {
   utility_client_ =
-      std::make_unique<ContentUtilityClient>(bridge().application());
+      std::make_unique<ContentUtilityClient>(application().table());
   return utility_client_.get();
 }
 

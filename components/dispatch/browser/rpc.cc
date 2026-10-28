@@ -23,15 +23,7 @@ Router::Router(std::vector<Service> services) {
         services_.end());
 }
 
-bool Router::Dispatch(content::RenderFrameHost& frame,
-                      std::string_view method,
-                      base::span<const uint8_t> payload,
-                      const base::UnguessableToken& document,
-                      Reply* reply) const {
-  return Dispatch(dispatch::Context(frame, document), method, payload, reply);
-}
-
-bool Router::Dispatch(const dispatch::Context& context,
+bool Router::Dispatch(const dispatch::RendererRequestContext& context,
                       std::string_view method,
                       base::span<const uint8_t> payload,
                       Reply* reply) const {

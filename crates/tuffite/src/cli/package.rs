@@ -36,7 +36,7 @@ use publication::{
 };
 use resources::PackageApp;
 use resources::{
-    configure_assets, copy_regular_file, copy_resources, validate_internal_asset_root,
+    configure_resources, copy_regular_file, copy_resources, validate_internal_asset_root,
 };
 use runtime::{
     copy_framework_runtime, executable_name, validate_executable_name, validate_executable_stem,
@@ -225,32 +225,6 @@ impl<'a> Packager<'a> {
             File::open(&manifest_path).map_err(io_error("open application manifest"))?,
         ))
         .map_err(|error| format!("parse {}: {error}", manifest_path.display()))?;
-        let command_ids = crate::build::security_command_ids(&manifest_path)?;
-        if let Some(rules) = packaged_manifest["app"]["security"]["capabilities"].as_array_mut() {
-            for rule in rules {
-                if let Some(entries) = rule
-                    .get_mut("shellApi")
-                    .and_then(serde_json::Value::as_array_mut)
-                {
-                    let mut compiled = Vec::new();
-                    for entry in entries.iter() {
-                        compiled.extend(crate::build::compile_security_entry(entry, &command_ids)?);
-                    }
-                    *entries = compiled;
-                }
-            }
-        }
-        // Runtime metadata contains identities, never build-time declaration paths.
-        packaged_manifest["app"]["shellApi"] = serde_json::json!({
-            "commandIds": command_ids,
-        });
-        packaged_manifest
-            .as_object_mut()
-            .expect("validated manifest")
-            .remove("build");
-        let app_manifest: AppManifest = serde_json::from_value(packaged_manifest.clone())
-            .map_err(|error| format!("parse {}: {error}", manifest_path.display()))?;
-        validate_application_id(&app_manifest.app.identifier)?;
         let framework_manifest = framework.manifest();
         tracing::info!(
             framework = %framework.root().display(),
@@ -268,6 +242,22 @@ impl<'a> Packager<'a> {
         }
         let application_runtime =
             ApplicationRuntime::build(project_dir, framework, release, processes)?;
+        let command_ids = crate::build::security_command_ids(&manifest_path)?;
+        // Runtime metadata contains identities, never build-time declaration paths.
+        packaged_manifest["app"]["shellApi"] = serde_json::json!({
+            "commandIds": command_ids,
+        });
+        packaged_manifest
+            .as_object_mut()
+            .expect("validated manifest")
+            .remove("build");
+        packaged_manifest
+            .as_object_mut()
+            .expect("validated manifest")
+            .remove("$schema");
+        let app_manifest: AppManifest = serde_json::from_value(packaged_manifest.clone())
+            .map_err(|error| format!("parse {}: {error}", manifest_path.display()))?;
+        validate_application_id(&app_manifest.app.identifier)?;
         super::hooks::run(&manifest_path, "beforePackageCommand", processes)?;
         let product_name = app_manifest
             .product_name
@@ -281,15 +271,10 @@ impl<'a> Packager<'a> {
             profile = if release { "release" } else { "debug" },
             "built application runtime"
         );
-        let resources = configure_assets(
-            project_dir,
-            &app_manifest.app,
-            &app_manifest.bundle.resources,
-            &mut packaged_manifest,
-        )
-        .map_err(|error| {
-            format!("{error}; build the application frontend after Cargo has run build.rs, then retry packaging")
-        })?;
+        let resources =
+            configure_resources(project_dir, &app_manifest.bundle.resources).map_err(|error| {
+                format!("{error}; build the frontend and list its files in bundle.resources")
+            })?;
         reject_symlink(&application_runtime.library)?;
         if let Some(configured) = app_manifest.bundle.executable.as_deref() {
             validate_executable_stem(configured)?;

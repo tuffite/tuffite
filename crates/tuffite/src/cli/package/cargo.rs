@@ -62,28 +62,7 @@ impl ApplicationRuntime {
     ) -> Result<Self, String> {
         let target_triple = &framework.manifest().target;
         let manifest = canonical_file(&project_dir.join("Cargo.toml"))?;
-        let mut metadata_command = cargo_command(project_dir);
-        metadata_command
-            .args([
-                "metadata",
-                "--format-version",
-                "1",
-                "--no-deps",
-                "--manifest-path",
-            ])
-            .arg(&manifest);
-        let metadata_output = processes
-            .output(&mut metadata_command)
-            .map_err(|error| format!("run cargo metadata: {error}"))?;
-        if !metadata_output.status.success() {
-            return Err(format!(
-                "cargo metadata failed for {}:\n{}",
-                manifest.display(),
-                String::from_utf8_lossy(&metadata_output.stderr)
-            ));
-        }
-        let metadata: CargoMetadata = serde_json::from_slice(&metadata_output.stdout)
-            .map_err(|error| format!("parse cargo metadata for {}: {error}", manifest.display()))?;
+        let metadata = read_metadata(project_dir, &manifest, processes)?;
         let package = metadata
             .packages
             .iter()
@@ -242,4 +221,34 @@ pub(super) fn package_target(triple: &str) -> Result<PackageTarget<'_>, String> 
         platform,
         architecture,
     })
+}
+
+fn read_metadata(
+    project_dir: &Path,
+    manifest: &Path,
+    processes: &dyn super::super::processes::Processes,
+) -> Result<CargoMetadata, String> {
+    let mut metadata_command = cargo_command(project_dir);
+    metadata_command
+        .args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--no-deps",
+            "--manifest-path",
+        ])
+        .arg(manifest);
+    let metadata_output = processes
+        .output(&mut metadata_command)
+        .map_err(|error| format!("run cargo metadata: {error}"))?;
+    if !metadata_output.status.success() {
+        return Err(format!(
+            "cargo metadata failed for {}:\n{}",
+            manifest.display(),
+            String::from_utf8_lossy(&metadata_output.stderr)
+        ));
+    }
+    let metadata: CargoMetadata = serde_json::from_slice(&metadata_output.stdout)
+        .map_err(|error| format!("parse cargo metadata for {}: {error}", manifest.display()))?;
+    Ok(metadata)
 }

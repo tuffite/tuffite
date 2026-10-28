@@ -10,6 +10,7 @@
 #include "base/values.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "tuffite/components/isolated/browser/isolated_source_provider.h"
+#include "tuffite/framework/app/services/asset/asset_configuration.h"
 #include "url/origin.h"
 
 namespace tuffite {
@@ -18,6 +19,9 @@ class IsolatedService : public KeyedService, public IsolatedSourceProvider {
   virtual std::optional<std::string> Source(
       std::string_view name,
       const url::Origin& origin) const = 0;
+  virtual std::optional<asset::MemoryAsset> ResourceForFrame(
+      content::RenderFrameHost& frame,
+      const GURL& url) const = 0;
   virtual std::optional<std::string> Apply(const base::DictValue& request) = 0;
   virtual base::WeakPtr<IsolatedService> GetWeakPtr() = 0;
 };

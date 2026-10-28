@@ -1,7 +1,7 @@
 //! Browser-owned registration of DOM isolated-world script snapshots.
 //!
 //! The application validates/installs extension packages, then registers the
-//! bundled classic-script bytes. This API does not load paths or remote URLs.
+//! immutable ESM package bytes. Dynamic registration never fetches remote URLs.
 use std::ffi::c_void;
 use tuffite_abi::{ByteSlice, Status};
 
@@ -25,12 +25,14 @@ fn status_error(status: i32) -> Error {
     }
 }
 
-/// Immutable, self-contained classic-script snapshot and exact allowed origins.
+/// Immutable ESM package snapshot and exact allowed origins.
 #[derive(Clone, Debug)]
 pub struct WorldDefinition {
     name: String,
     source: String,
     origins: Vec<String>,
+    entry: Option<String>,
+    resources: std::collections::BTreeMap<String, String>,
 }
 impl WorldDefinition {
     #[must_use]
@@ -39,7 +41,83 @@ impl WorldDefinition {
             name: name.into(),
             source: source.into(),
             origins: Vec::new(),
+            entry: None,
+            resources: std::collections::BTreeMap::new(),
         }
+    }
+    /// Defines an ESM entry relative to a package snapshot populated with `resource`.
+    #[must_use]
+    pub fn package(name: impl Into<String>, entry: impl Into<String>) -> Self {
+        Self {
+            entry: Some(entry.into()),
+            ..Self::new(name, "")
+        }
+    }
+    /// Adds one binary resource. Native validates paths, package size and entry existence.
+    #[must_use]
+    pub fn resource(mut self, path: impl Into<String>, bytes: impl AsRef<[u8]>) -> Self {
+        use base64::Engine as _;
+        self.resources.insert(
+            path.into(),
+            base64::engine::general_purpose::STANDARD.encode(bytes),
+        );
+        self
+    }
+    /// Snapshots a validated local package without following symlinks.
+    /// Installation, signatures and authorization remain application responsibilities.
+    pub fn from_directory(
+        name: impl Into<String>,
+        directory: impl AsRef<std::path::Path>,
+        entry: impl Into<String>,
+    ) -> std::io::Result<Self> {
+        use std::{fs, io, path::Path};
+        fn collect(
+            mut definition: WorldDefinition,
+            root: &Path,
+            path: &Path,
+            total: &mut u64,
+        ) -> io::Result<WorldDefinition> {
+            if fs::symlink_metadata(path)?.file_type().is_symlink() {
+                return Err(io::Error::other(
+                    "isolated packages cannot contain symlinks",
+                ));
+            }
+            for child in fs::read_dir(path)? {
+                let child = child?;
+                let metadata = child.file_type()?;
+                if metadata.is_symlink() {
+                    return Err(io::Error::other(
+                        "isolated packages cannot contain symlinks",
+                    ));
+                }
+                if metadata.is_dir() {
+                    definition = collect(definition, root, &child.path(), total)?;
+                } else if metadata.is_file() {
+                    let path = child.path();
+                    let size = child.metadata()?.len();
+                    *total += size;
+                    if size > 8 * 1024 * 1024
+                        || *total > 32 * 1024 * 1024
+                        || definition.resources.len() >= 1024
+                    {
+                        return Err(io::Error::other("isolated package exceeds resource limits"));
+                    }
+                    let bytes = fs::read(&path)?;
+                    definition = definition.resource(
+                        path.strip_prefix(root)
+                            .map_err(io::Error::other)?
+                            .to_string_lossy()
+                            .replace('\\', "/"),
+                        bytes,
+                    );
+                } else {
+                    return Err(io::Error::other("isolated packages require regular files"));
+                }
+            }
+            Ok(definition)
+        }
+        let root = directory.as_ref();
+        collect(Self::package(name, entry), root, root, &mut 0)
     }
     #[must_use]
     pub fn allow_origin(mut self, origin: impl Into<String>) -> Self {
@@ -107,7 +185,7 @@ impl Host {
         if status != Status::Ok {
             // SAFETY: Rejected calls retain context ownership without replying.
             drop(unsafe { Box::from_raw(data.cast::<ReplyContext>()) });
-            return Err(status_error(status as i32));
+            return Err(status_error(status.0));
         }
         Ok(())
     }
@@ -143,7 +221,8 @@ impl Host {
     where
         F: FnOnce(Result<Registration, Error>) + Send + 'static,
     {
-        if definition.source.is_empty()
+        if (definition.entry.is_none() && definition.source.is_empty())
+            || (definition.entry.is_some() && definition.resources.is_empty())
             || definition.source.len() > 8 * 1024 * 1024
             || definition.origins.is_empty()
             || definition.origins.len() > 32
@@ -155,6 +234,12 @@ impl Host {
             "op": op, "name": name, "source": definition.source,
             "origins": definition.origins, "generation": generation.map(|v| v.to_string())
         });
+        let mut request = request;
+        if let Some(entry) = definition.entry {
+            request["entry"] = entry.into();
+            request["resources"] =
+                serde_json::to_value(definition.resources).map_err(|_| Error::InvalidArgument)?;
+        }
         self.apply(&request, move |result| {
             reply(result.map(|generation| Registration { name, generation }));
         })
@@ -181,16 +266,16 @@ unsafe impl Send for Host {}
 // SAFETY: The same accepted native contract permits concurrent submissions.
 unsafe impl Sync for Host {}
 struct ReplyContext(Box<dyn FnOnce(Result<u64, Error>) + Send>);
-unsafe extern "C" fn on_reply(data: *mut c_void, status: i32, generation: u64) -> Status {
+unsafe extern "C" fn on_reply(data: *mut c_void, status: Status, generation: u64) -> Status {
     if data.is_null() {
         return Status::InvalidArgument;
     }
     // SAFETY: Exactly one accepted completion owns this Box until consumption.
     let context = unsafe { Box::from_raw(data.cast::<ReplyContext>()) };
-    let result = if status == 0 {
+    let result = if status == Status::Ok {
         Ok(generation)
     } else {
-        Err(status_error(status))
+        Err(status_error(status.0))
     };
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (context.0)(result))) {
         Ok(()) => Status::Ok,
@@ -218,12 +303,22 @@ mod tests {
     fn typed_reply_preserves_full_generation_and_consumes_callback() {
         unsafe extern "C" fn apply(
             _: *mut c_void,
-            _: ByteSlice,
+            request: ByteSlice,
             data: *mut c_void,
             reply: Option<tuffite_abi::IsolatedReplyFn>,
         ) -> Status {
+            // SAFETY: Host lends readable serialized request bytes for this call.
+            let value: serde_json::Value = serde_json::from_slice(unsafe {
+                std::slice::from_raw_parts(request.data, request.len)
+            })
+            .unwrap();
+            assert_eq!(value["entry"], "entry.js");
+            assert_eq!(value["resources"]["image.bin"], "AP8=");
             // SAFETY: Caller transfers one live ReplyContext when accepted.
-            assert_eq!(unsafe { reply.unwrap()(data, 0, u64::MAX) }, Status::Ok);
+            assert_eq!(
+                unsafe { reply.unwrap()(data, Status::Ok, u64::MAX) },
+                Status::Ok
+            );
             Status::Ok
         }
         let host = Host::new(Some(tuffite_abi::Isolated {
@@ -233,8 +328,12 @@ mod tests {
         }));
         let result = Arc::new(Mutex::new(None));
         let output = result.clone();
-        host.register(definition(), move |value| {
-            *output.lock().unwrap() = Some(value)
+        let package = WorldDefinition::package("card", "entry.js")
+            .resource("entry.js", b"export {};")
+            .resource("image.bin", [0, 255])
+            .allow_origin("https://example.com");
+        host.register(package, move |value| {
+            *output.lock().unwrap() = Some(value);
         })
         .unwrap();
         let registration = result.lock().unwrap().take().unwrap().unwrap();

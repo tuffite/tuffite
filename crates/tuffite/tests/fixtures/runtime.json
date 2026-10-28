@@ -1,0 +1,357 @@
+{
+  "productName": "Tuffite Playground",
+  "app": {
+    "identifier": "org.tuffite.playground",
+    "windows": [
+      {
+        "label": "main",
+        "url": "playground://main/ui/dist/index.html",
+        "title": "Tuffite Playground",
+        "width": 1100,
+        "height": 1000,
+        "minWidth": 320,
+        "minHeight": 240,
+        "maxWidth": 1920,
+        "maxHeight": 1200
+      },
+      {
+        "label": "secondary",
+        "url": "playground://main/ui/dist/window.html",
+        "title": "Tuffite Secondary Window",
+        "width": 560,
+        "height": 420,
+        "focused": false,
+        "minWidth": 320,
+        "minHeight": 240,
+        "maxWidth": 1920,
+        "maxHeight": 1200
+      }
+    ],
+    "network": {
+      "maxResponseBytes": 1048576,
+      "timeoutSeconds": 30
+    },
+    "assets": [
+      {
+        "origins": [
+          "playground://main",
+          "playground://*.artifact",
+          "playground://*.preview",
+          "playground://public",
+          "playground://business",
+          "playground://behavior.fixture",
+          "playground-resource://main"
+        ],
+        "paths": [
+          "/ui/dist/*"
+        ],
+        "directory": "ui/dist"
+      },
+      {
+        "origins": [
+          "playground://parser.utility"
+        ],
+        "paths": [
+          "/*"
+        ],
+        "directory": "ui/dist/playground-public/utilities/parser"
+      }
+    ],
+    "schemes": [
+      "playground",
+      "playground-resource"
+    ],
+    "isolatedWorlds": {
+      "weather": {
+        "entry": "card.js",
+        "origins": [
+          "playground://main"
+        ],
+        "directory": "ui/dist/playground-public/isolated"
+      },
+      "weatherOther": {
+        "entry": "card.js",
+        "origins": [
+          "playground://main"
+        ],
+        "directory": "ui/dist/playground-public/isolated"
+      }
+    }
+  },
+  "build": {
+    "devUrl": "http://127.0.0.1:5189/",
+    "beforeDevCommand": {
+      "script": "mise exec -- bun run dev",
+      "cwd": "ui"
+    },
+    "mojomSources": [
+      "shell_api.mojom"
+    ],
+    "beforePackageCommand": {
+      "script": "bun run build",
+      "cwd": "ui"
+    }
+  },
+  "bundle": {
+    "resources": [
+      "ui/dist",
+      "ui/dist/playground-public/utilities/parser"
+    ]
+  },
+  "browser": {
+    "devtools": true,
+    "rules": [
+      {
+        "identifier": "app-shell",
+        "origins": [
+          "playground://main"
+        ],
+        "explorer": {
+          "create": true,
+          "executeJavaScript": true,
+          "behavior": {
+            "navigation": {
+              "mode": "delegate"
+            },
+            "dialog": {
+              "mode": "delegate"
+            },
+            "externalProtocol": {
+              "mode": "browser"
+            },
+            "newWindow": {
+              "mode": "delegate"
+            }
+          }
+        },
+        "shellApi": [
+          "playground.Commands.DoSomething",
+          "playground.Commands.CheckUtilitySession",
+          "playground.Commands.CheckJavascriptExtension",
+          "playground.Commands.EchoMojom",
+          "playground.Echo.RoundTrip",
+          "playground.Echo.Restricted",
+          "playground.Aux.RoundTrip",
+          "playground.Aux.ReadState",
+          "playground.Aux.ProcessId",
+          "playground.Diagnostics.ProcessId",
+          "playground.Profiles.*",
+          "playground.BrowserDiagnostics.*",
+          "tuffite.Storage.*",
+          "tuffite.Log.*",
+          "tuffite.Utility.*",
+          {
+            "method": "tuffite.Fs.ReadFile",
+            "allow": [
+              {
+                "path": "resource/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Fs.Exists",
+            "allow": [
+              {
+                "path": "resource/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Fs.*",
+            "allow": [
+              {
+                "path": "data/*"
+              },
+              {
+                "path": "cache/*"
+              },
+              {
+                "path": "temp/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Path.Resolve",
+            "allow": [
+              {
+                "path": "resource/*"
+              },
+              {
+                "path": "data/*"
+              },
+              {
+                "path": "cache/*"
+              },
+              {
+                "path": "temp/*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Net.Request",
+            "allow": [
+              {
+                "url": "http://example.com/*"
+              },
+              {
+                "url": "https://example.com/*"
+              },
+              {
+                "url": "http://127.0.0.1/*"
+              },
+              {
+                "url": "https://127.0.0.1/*"
+              }
+            ]
+          },
+          "tuffite.Path.Directories",
+          "tuffite.Dialog.OpenFile",
+          "tuffite.Dialog.OpenDirectory",
+          "tuffite.Window.Current",
+          "tuffite.Window.List",
+          "tuffite.Window.Create",
+          {
+            "method": "tuffite.Window.Focus",
+            "allow": [
+              {
+                "window": "*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Window.Minimize",
+            "allow": [
+              {
+                "window": "*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Window.Maximize",
+            "allow": [
+              {
+                "window": "*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Window.Restore",
+            "allow": [
+              {
+                "window": "*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Window.SetFullscreen",
+            "allow": [
+              {
+                "window": "*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Window.Close",
+            "allow": [
+              {
+                "window": "*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Window.SetTitle",
+            "allow": [
+              {
+                "window": "*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Window.GetBounds",
+            "allow": [
+              {
+                "window": "*"
+              }
+            ]
+          },
+          {
+            "method": "tuffite.Window.SetBounds",
+            "allow": [
+              {
+                "window": "*"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "identifier": "artifact-and-preview",
+        "origins": [
+          "playground://*.artifact",
+          "playground://*.preview"
+        ],
+        "shellApi": [
+          "tuffite.Path.Directories",
+          "tuffite.Storage.Get",
+          {
+            "method": "tuffite.Fs.ReadFile",
+            "allow": [
+              {
+                "path": "resource/ui/dist/**"
+              }
+            ],
+            "deny": [
+              {
+                "path": "resource/ui/dist/index.html"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "identifier": "artifact-app-command",
+        "origins": [
+          "playground://demo.artifact"
+        ],
+        "shellApi": [
+          "playground.Commands.DoSomething"
+        ]
+      },
+      {
+        "identifier": "business-only",
+        "origins": [
+          "playground://business"
+        ],
+        "shellApi": [
+          "playground.Commands.DoSomething",
+          "playground.Echo.RoundTrip"
+        ]
+      },
+      {
+        "identifier": "document-csp",
+        "origins": [
+          "playground://main",
+          "playground://*.artifact",
+          "playground://*.preview",
+          "playground://public",
+          "playground://business",
+          "playground://parser.utility",
+          "playground://demo.artifact"
+        ],
+        "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*"
+      },
+      {
+        "origins": [
+          "playground://behavior.fixture"
+        ],
+        "csp": "default-src 'self'; script-src 'self'; img-src 'none'"
+      },
+      {
+        "origins": [
+          "playground-resource://main"
+        ],
+        "csp": "default-src 'self'; script-src 'self'; worker-src 'self'"
+      }
+    ]
+  }
+}

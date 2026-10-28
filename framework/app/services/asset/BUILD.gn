@@ -6,6 +6,7 @@ assert(tuffite_in_chromium)
 
 source_set("asset") {
   public = [
+    "app_url_loader_factory.h",
     "asset_service.h",
     "asset_service_factory.h",
   ]

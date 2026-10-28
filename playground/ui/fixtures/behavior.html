@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Origin-scoped behavior fixture</title>
+    <script type="module" src="/src/behavior-fixture.js"></script>
+  </head>
+  <body>
+    <h1>Browser actions</h1>
+    <button id="confirm">Confirm</button>
+    <a id="navigate" href="behavior.html?navigated">Navigate</a>
+    <a id="external" href="tuffite-behavior-test://fixture"
+      >Open test protocol</a
+    >
+    <button id="popup">Open window</button>
+    <img
+      id="blocked-image"
+      alt="Blocked by this origin's CSP"
+      src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+    />
+  </body>
+</html>

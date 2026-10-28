@@ -6,16 +6,45 @@ version checks, and layout tests; it does not implement Chromium integration,
 service routing, application policy, or the safe SDK.
 
 Application developers use `tuffite`. Runtime and Framework maintainers use this
-crate and the matching [C header](../../framework/public/abi.h).
+crate and the matching [C headers](../../framework/public/c_api/).
+
+## Generating declarations
+
+Normal builds use the checked-in `src/bindings.rs`. Applications do not need
+libclang, bindgen, or a Framework source checkout to compile this crate.
+The declarations use fixed-width integers, `usize` for C `size_t`, raw pointers,
+and `extern "C"` callbacks so Rust applies the target's C layout.
+
+Maintainers enable `bindgen` to run bindgen against `wrapper.h` and the
+public C headers under `framework/public/c_api/`. This requires libclang
+(`LIBCLANG_PATH` can select its installation) and the Framework source headers.
+`build.rs` writes bindings into Cargo's OUT_DIR for TARGET and tracks included
+headers. With this feature enabled, tests also compare the generated declarations
+with the checked-in file; the Framework test suite enables it via `--all-features`.
+
+```sh
+cargo test -p tuffite-abi
+cargo test -p tuffite-abi --features bindgen
+```
+
+After changing public headers, run the second command. If the declarations have
+changed, the parity test reports the generated file's full path. Copy that file
+to `crates/tuffite-abi/src/bindings.rs`, rerun the test, and commit it alongside
+the header changes. Do not edit the generated declarations by hand.
+Rust helpers in `src/lib.rs` add constructors and named integer values without
+repeating table layouts or callback signatures. ABI integer newtypes accept
+unknown values; raw pointers remain raw.
+
+`scripts/abi.py` and `x.py bump` keep the native version header aligned with Cargo.
 
 ## Layers and process boundaries
 
 ```mermaid
 flowchart TB
-  Main["#[tuffite::main(browser = B, utilities(U1, U2))]"]
-  Builder["app::Builder&lt;B&gt;: commands and process startup hook"]
-  BrowserMetadata["#[tuffite::browser] metadata"]
-  Names["#[tuffite::utility(name = ...)] metadata"]
+  Main["#[tuffite::main] → Embedding"]
+  Builder["app::Builder&lt;A&gt;: scoped interfaces and process startup hook"]
+  BrowserMetadata["Explicit backend/interface registrations"]
+  Names["Utility::setup + Builder metadata"]
   BrowserMetadata --> Main
   Export["tuffite_get_application(): immutable ABI Application"]
   Main --> Builder
@@ -23,7 +52,7 @@ flowchart TB
   Builder --> Export
   subgraph BrowserProcess["Browser process"]
     Native["Native Framework: routing and supervision"]
-    Backend["Rust Browser: process state and serialized commands"]
+    Backend["Rust Application / profile Browsers: scoped state and commands"]
     Host["Host: events, tasks, capability discovery"]
     Launch["prepare_process: process kind and argv hook"]
     Native --> Launch
@@ -58,18 +87,20 @@ handles and global state belong to that process.
 | Native Framework | Chromium lifecycle, task scheduling, browser routing, utility supervision, Mojo adapters |
 | Mojo / Shell Protocol | Cross-process transport / application message envelope |
 
-The ABI `MainDelegate` and `UtilityService` structs are callback tables. The safe SDK `#[tuffite::main]` selects process implementations; `app::Builder<B>`
-assembles commands and launch hooks. `Browser` and `Utility` implement process-local lifecycles.
-There is no safe Rust `MainDelegate` trait or application state object. These traits are not FFI structs.
+The ABI `MainDelegate` and `UtilityService` structs are callback tables. The safe
+SDK `#[tuffite::main]` infers backend types from `app::Builder<Application>`, which
+freezes application/browser interface registrations and launch hooks. The Rust
+`Application`, `Browser` and `Utility` traits own their respective lifecycles;
+these business backends are distinct from the ABI callback tables. `MainDelegate`
+remains native infrastructure.
 
 ## Callback table model
 
-`Host` provides core native capabilities and discovery. `MainDelegate` provides
-Rust implementation callbacks. `Host.query_extension(Browser)` discovers a
-`BrowserHost` capability table, whose `shell_api` and `utility` fields point to
-independently headed tables. These pointers are not inline fields of Host.
-`BrowserHost` is the native capability aggregate; the safe `Browser` trait is
-the application implementation selected by `#[tuffite::browser]`.
+`Host` provides core native capabilities and discovery. `Application` provides
+Rust implementation callbacks. Domain capability tables such as UtilitySession,
+Isolated, Contexts and Remoting are discovered directly through
+`Host.query_extension`; each has its own header and native context. The safe
+`Browser` trait represents a profile backend, not a capability aggregate.
 
 ```mermaid
 classDiagram
@@ -90,15 +121,6 @@ classDiagram
     post_task
     query_extension
   }
-  class BrowserHost {
-    Header header
-    pointer shell_api
-    pointer utility
-  }
-  class Utility {
-    Header header
-    pointer session
-  }
   class UtilitySessionClient {
     Header header
     pointer user_data
@@ -107,11 +129,6 @@ classDiagram
     acknowledge
     cancel
     close
-  }
-  class ShellApi {
-    Header header
-    pointer user_data
-    invoke
   }
   class Application {
     Header header
@@ -143,14 +160,8 @@ classDiagram
   }
   Header *-- Version
   Host *-- Header
-  Utility *-- Header
-  ShellApi *-- Header
   UtilitySessionClient *-- Header
-  Host ..> BrowserHost : query Browser
-  BrowserHost *-- Header
-  BrowserHost --> Utility : utility pointer
-  BrowserHost --> ShellApi : shell_api pointer
-  Utility --> UtilitySessionClient : borrowed pointer
+  Host ..> UtilitySessionClient : query UtilitySession
   Application *-- Header
   Application *-- UtilityService
   UtilityService --> UtilitySessionService : stable borrowed pointer
@@ -160,16 +171,14 @@ classDiagram
 | Table/group | Implemented by | Called by | Purpose |
 | --- | --- | --- | --- |
 | `Host` | Native Framework | Browser Rust runtime | Native events, Chromium tasks and capability discovery |
-| `BrowserHost` | Native browser Framework | Browser Rust runtime | Process capabilities grouped under Browser |
-| `BrowserHost.utility` / `Utility.session` | Native browser Framework | Browser Rust runtime | Supervised remote sessions addressed by service name and routing ID |
-| `BrowserHost.shell_api` | Native browser Framework | Browser Rust runtime | Generated native Shell API requests |
+| `UtilitySessionClient` | Native browser Framework | Browser Rust runtime | Supervised remote sessions addressed by service name and routing ID |
+| `Remoting` | Native Framework | Application Rust runtime | Dedicated native Remoting operations |
 | `MainDelegate` | Rust application runtime | Native Framework | Startup, command dispatch, shutdown |
 | `Application.utility` | Rust application runtime | Native utility adapter; registration also checked in browser | Registered service lifecycle and bounded request/response |
 | `Application.utility.session` | Rust application runtime | Native utility adapter | Process-local service session implementation |
 
 Every independently exchanged native table starts with `Header`. SessionClient
-and ShellApi carry their own `user_data`, which need not equal Host's context.
-`Utility` only exposes a session table pointer and needs no additional context.
+and Remoting carry their own `user_data`, which need not equal Host's context.
 Application embeds the unary `UtilityService` group. Its `session` points to an
 independently headed, immutable `UtilitySessionService` table with stable storage
 owned by the application provider. Native startup validates both known prefixes. This
@@ -178,37 +187,31 @@ fields; the library and service table remain loaded until Framework run returns.
 
 ### Capability discovery and lifetime
 
-`Host.query_extension(user_data, capability: u32)` returns `*const Header` or
-null. ABI 0.1.0 introduces `Capability::Browser = 2`, matching
-`TUFFITE_CAPABILITY_BROWSER`. The current Rust runtime queries only Browser:
+`Host.query_extension(user_data, capability: u32)` returns a domain table's
+`*const Header`, or null for unsupported IDs. Current selectors are
+UtilitySession = 0, UtilityInterfaces = 1, Isolated = 2, Contexts = 3 and
+Remoting = 4. There are no legacy aliases or reserved Shell API slots.
 
 ```text
-Host.query_extension(Browser) → BrowserHost
-                               ├── shell_api → ShellApi
-                               └── utility → Utility
-                                             └── session → UtilitySessionClient
+Host.query_extension(UtilitySession) → UtilitySessionClient
+Host.query_extension(Isolated)       → Isolated
+Host.query_extension(Contexts)       → Contexts
+Host.query_extension(Remoting)       → Remoting
 ```
 
-The native bridge retains the earlier IDs `ShellApi = 0` and `Utility = 1` for
-older clients. New code uses the Browser hierarchy. The parameter remains raw
-`u32`, so future or unknown IDs are valid input and return null.
-
-The provider guarantees an aligned readable size prefix and a valid declared
-known prefix. Runtime checks size first, then version and reserved fields before
-copying its known table prefix. BrowserHost requires ABI 0.1.0; Runtime separately validates both child tables
-and the nested session table.
-Malformed advertised capabilities reject startup; an absent query, null result,
-null child table, null session pointer, or null optional operation means that capability is
-unavailable. Safe wrappers return `Unavailable` when the operation is missing.
+The provider guarantees an aligned readable size prefix and declared table.
+Runtime validates size, version and reserved header bits before copying the
+known table prefix. Malformed advertised tables reject startup. An absent query,
+null result or missing optional operation makes that capability unavailable.
 
 Query is local, thread-safe and side-effect-free: it launches no process and
-transfers no ownership. Native tables are immutable members of `AbiHostBridge`,
+transfers no ownership. Native tables are immutable members of `abi::Host`,
 not temporaries on the startup stack. They and their contexts remain valid until
 application stop completes. Runtime does not assemble a second combined callback
 table. Core execution and
 events hold a `NativeHost(Host)` snapshot; the Utility facade holds only its
-`UtilitySessionClient` snapshot, and the Shell API facade holds only
-`Option<ShellApi>`. Thin internal wrappers express accepted thread-safety and
+`UtilitySessionClient` snapshot, and the Remoting facade holds its own
+`Option<Remoting>`. Thin internal wrappers express accepted thread-safety and
 context-lifetime contracts without duplicating ABI fields. No discovered raw
 table pointers are retained. Querying an operation does not bypass that operation's permission or lifecycle checks.
 
@@ -219,12 +222,12 @@ browser copy's `Application.utility.session` directly executes against browser
 Rust service state; it does not invoke the isolated utility-process copy.
 
 ```text
-Browser Rust → BrowserHost.utility.session → native browser supervisor
+Browser Rust → UtilitySessionClient → native browser supervisor
              → Mojo IPC → native utility adapter
              → utility-process Application.utility.session → Rust service
 ```
 
-`Utility.session` is the browser-side client entry, while
+`UtilitySessionClient` is the browser-side client entry, while
 `Application.utility.session` is the utility-side implementation entry. Both ABI
 calls are local; the native layer connects them across processes. Client calls
 use service names/routing IDs and asynchronous creation. Implementation calls
@@ -236,46 +239,28 @@ Host is the native provider. Its Browser capability exposes the browser process
 services; it does not construct application Browser state. A future Renderer
 capability can use its own discovery ID without changing Host layout.
 
-### Shared Shell API and Remoting
+### Native capabilities and renderer Shell API
 
-`ShellApi.invoke(channel, binary_arguments, reply)` uses the same schema, codec,
-registry and native handler as a Renderer call. The safe `ShellApiHost` accepts
-any generated `ShellApiRequest`; builtins live under `tuffite::shell_api`.
-There is no feature-specific Remoting ABI table or separate JSON envelope.
+The generic `ShellApi.invoke` capability and its ABI slot are removed.
+Capability IDs and layouts describe the current unpublished API directly.
+Native Rust calls use domain capabilities; no native call enters builtin renderer
+routes or constructs a fake renderer context.
 
 ```text
-Renderer JavaScript → generated codec → Mojo Shell Protocol ─┐
-Browser Rust → generated request → ShellApi C ABI ───────────┤
-                                                           ↓
-                          shared Router → handler → native service
+Renderer JS → Mojo document transport → BrowserContext ShellApiService
+            → renderer builtin handler → domain service
+Rust SDK → runtime-bound native capability → domain service
 ```
 
-The router selects a method; each handler validates arguments and its actual
-caller context. Renderer calls carry a frame and document identity; native calls
-carry an ApplicationContext and a stable application owner identity.
-Native calls never impersonate a frame. Frame-dependent methods return
-InvalidArgument without a frame. Renderer permissions/origin checks remain in
-handlers and their existing dispatch boundary. Direct `remoting.injectInput`
-requires the native Application context in its handler.
+The optional Remoting capability (ID 4) has fixed operation slots rather than a
+channel-name dispatcher. Its adapter and renderer handler share typed Mojom data
+conversion. Renderer handlers still enforce manifest grants; InjectInput is
+always denied to renderers. The native client is `Remoting::new(&application_context)`.
 
-The invoke return is ABI `Status` for **acceptance**. Once accepted, exactly one
-reply carries the separate RPC status vocabulary (raw `i32`) and a binary result.
-RPC AccessDenied must never be interpreted as an ABI status with the same number.
-Rejection retains reply-context ownership and must not invoke the reply.
-
-```rust,ignore
-use tuffite::shell_api::remoting;
-context.shell_api().invoke(&remoting::Capabilities {}, |result| {
-    // A generated RemotingCapabilities result, or ShellApiError.
-    println!("{result:?}");
-})?;
-```
-
-RemotingService currently lives in the browser process with dedicated input and
-capture task runners. Its ordinary Shell API methods reach the same CRD backend
-from Rust and JavaScript. Utility remains a separate facade because its session
-transport exposes ordered events, credits, cancellation and supervised process
-lifetime, rather than only unary method replies.
+Admission returns ABI Status. An accepted call owns exactly one completion,
+including during shutdown, whose separate RPC status is a raw i32. Rejected
+calls retain completion ownership and never reply. Runtime admission guards
+prevent retained clients from accessing native state after stop.
 
 ## Logical main and explicit process definitions
 
@@ -283,37 +268,26 @@ Application crates emit a business `cdylib`. The OS main belongs to the native
 launcher. `#[tuffite::main]` marks a zero-argument definition factory, explicitly
 selects the browser type and utility types, and exports one
 `tuffite_get_application()`. It does not scan other modules or use linker
-registration. `#[tuffite::browser]` marks a concrete Browser implementation;
-each utility attribute emits named type metadata. The main macro checks
-service names and duplicates at compile time. Only listed utilities are exported.
+registration. Application and Browser are ordinary lifecycle traits;
+Utility and V8 configure metadata through their setup builders. Process preparation
+collects and validates names and interface ownership after Application setup. Only
+types explicitly registered on Embedding are exported.
 
 ```rust,ignore
-#[tuffite::browser]
 impl tuffite::Browser for MyBrowser {
     // new, optional dispatch and shutdown
 }
 
-#[tuffite::utility(name = "indexer")]
 impl tuffite::Utility for Indexer {
+    fn setup(builder: tuffite::utility::Builder<Self>) -> tuffite::Result<tuffite::utility::Builder<Self>> {
+        Ok(builder.name("indexer"))
+    }
     // new, invoke, optional create_session and shutdown
 }
 
-#[tuffite::main(browser = MyBrowser, utilities(Indexer))]
-fn main() -> tuffite::app::Builder<MyBrowser> {
-    tuffite::app::Builder::new()
-        .commands(tuffite::generate_handler![open_project])
-        .before_startup(|launch| {
-            match launch.process_kind() {
-                tuffite::app::ProcessKind::Browser => {
-                    launch.argv_mut().retain(|arg| arg != "--business-debug");
-                }
-                tuffite::app::ProcessKind::Utility => {
-                    // Prepare utility-process arguments, without changing its role.
-                }
-                _ => {}
-            }
-            Ok(())
-        })
+#[tuffite::main]
+fn main() -> tuffite::Embedding<App> {
+    tuffite::Embedding::new().browser::<MyBrowser>().utility::<Indexer>()
 }
 ```
 
@@ -326,7 +300,7 @@ Generated commands take `&mut MyBrowser`. If no command table is configured,
 the builder uses `Browser::dispatch`; a configured table replaces that method.
 Browser state is `Send` and mutable command dispatch is serialized. Rust utility
 state is `Send + Sync`, unary calls borrow `&self`, and session commands are
-serialized within each session. Both backends use `#[tuffite::utility(name = ...)]`.
+serialized within each session. Both backends select their names in setup and register their types in `Embedding`.
 The implemented trait selects Rust (`utility::Utility`) or V8 (`utility::V8`);
 `V8::setup(builder)` selects the entry path via `builder.entry(...)` and `V8::resolve(&self, request)` supplies each requested source. Native creates the
 V8 runtime, while Rust services implement new/invoke.
@@ -347,7 +321,7 @@ sequenceDiagram
   Framework->>Framework: Classify process from original args
   alt ABI 0.1.0 process hook present
     Framework->>Library: Application.prepare_process(process_kind, argv, sink)
-    Library->>Library: before_startup with owned ProcessLaunch
+    Library->>Library: Application::setup with owned Startup
     Library->>Framework: Emit replacement argv synchronously
     Framework->>Framework: Validate executable, unchanged role, UTF-8 and limits
   else Legacy ABI 0.1.0 browser hook
@@ -386,9 +360,9 @@ native callback contexts remain valid until browser stop completes.
 
 ### ABI 0.1.0 startup hook and named utility runtime
 
-`.before_startup` runs before Framework enters Chromium `ContentMain`. The OS
+`.Application::setup` runs before Framework enters Chromium `ContentMain`. The OS
 process already exists, and sandbox bootstrap may have run, notably macOS
-Seatbelt initialization. It is not a pre-spawn callback. `ProcessLaunch` exposes
+Seatbelt initialization. It is not a pre-spawn callback. `Startup` exposes
 read-only `process_kind()` and owned `argv()` / `argv_mut()`; it supplies no
 BrowserContext or running services.
 
@@ -419,17 +393,16 @@ legacy Rust selection and reserved JavaScript backend.
 use tuffite::utility::v8::{Error, ModuleSource};
 
 struct Parser;
-#[tuffite::utility(name = "parser")]
 impl tuffite::utility::V8 for Parser {
-    fn new(context: tuffite::utility::V8Context) -> tuffite::ApplicationResult<Self> {
+    fn setup(builder: tuffite::utility::v8::Builder) -> tuffite::Result<tuffite::utility::v8::Builder> {
+        Ok(builder.name("parser").entry("entry.mjs"))
+    }
+    fn new(context: tuffite::utility::V8Context) -> tuffite::Result<Self> {
         // The provider can retain context and application-owned state.
         let _name = context.name();
         Ok(Self)
     }
 
-    fn setup(builder: tuffite::utility::v8::Builder) -> tuffite::ApplicationResult<tuffite::utility::v8::Builder> {
-        Ok(builder.entry("entry.mjs"))
-    }
 
     async fn resolve(&self, request: tuffite::utility::v8::ModuleRequest) -> Result<Option<ModuleSource>, Error> {
         let url = request.url();
@@ -443,7 +416,8 @@ impl tuffite::utility::V8 for Parser {
 }
 ```
 
-Both Rust and V8 types appear in `#[tuffite::main(..., utilities(...))]`.
+Register Rust types with `Embedding::utility::<Worker>()` and V8 providers with
+`Embedding::v8_utility::<Parser>()` in the `#[tuffite::main]` factory.
 `context.utilities().create_v8("parser", on_closed, on_created)` launches the
 selected service lazily. Registration and creation encode only its entry path;
 module I/O happens on demand. `ModuleSource` accepts embedded, file-loaded and
@@ -477,30 +451,18 @@ read-only cancellation signal. Closing a native session cancels its pending
 resolutions. The identity is for correlation and does not grant access. Shared
 providers receive asynchronous shutdown after their resolver workers drain.
 
-```json
-{
-  "app": {
-    "utilities": {
-      "indexer": { "configuration": { "mode": "incremental" } },
-      "parser": { "configuration": { "language": "javascript" } }
-    }
-  }
-}
-```
-
-This is a manifest fragment. `app.utilities` configures compiled registrations;
-it does not register new services. Only the selected configuration value is
-serialized for the child, with a 64 KiB limit; an omitted value is an empty byte
-slice. Session init remains independent. ABI 0.1.0 includes
-`Application.utility_start_with_context(name, configuration, service_out)`.
-Native prefers it and uses the original start callback for shorter tables.
-A nonempty configuration with a provider lacking this callback fails with
-IncompatibleAbi instead of silently discarding configuration.
+Rust and V8 utilities configure startup data through `setup(builder)`. Setup
+starts with empty bytes and freezes its result before constructing service state,
+with a 64 KiB limit. Applications own any external configuration they read here;
+the manifest does not contain a utility configuration map. Session init remains
+independent. The ABI's `utility_start_with_context` retains its owned startup-data
+transport; ordinary native launches supply empty bytes and Rust setup fills the
+service-local configuration in the child.
 
 ```mermaid
 flowchart LR
-  Manifest["app.utilities[name].configuration"] --> Browser["Browser process"]
-  Browser -->|"Mojo Start: owned config bytes"| Context["UtilityContext in child"]
+  Browser["Browser process"] -->|"Mojo Start: empty startup data"| Setup["Utility::setup(builder) in child"]
+  Setup -->|"frozen startup data"| Context["UtilityContext in child"]
   Context --> Rust["Utility::new(context): service state"]
   Rust --> Sessions["create_session: independent init and state"]
   Shared["BrowserContext.set_state: Arc of T"] --> Provider["V8::new(V8Context): reusable provider"]
@@ -606,14 +568,15 @@ Add this route to `app.assets` and `utilities/parser` to `bundle.resources`.
 The Playground exercises both branches: entry and sdk/runtime.mjs use assets,
 while sdk/generated.mjs is supplied by its Rust resolver.
 
-`RunFn` describes the Framework entry point. `tuffite_get_application` remains
+`public/application.h` declares the Framework entry point.
+`tuffite_get_application` remains
 the single business-library getter without a version suffix: its Application
 table is an ABI aggregate, not a safe Rust Application implementation.
 
 ## Utility service and session flows
 
 Registration records definitions, not running processes. Browser startup discovers
-`BrowserHost.utility.session` and constructs a safe `UtilitySessionHost` facade.
+`UtilitySessionClient` and constructs a safe `UtilitySessionHost` facade.
 The first `context.utility_sessions().create(name, ...)` request checks the
 compiled registration via the **browser copy** of `Application.utility.is_registered`.
 The native supervisor lazily launches a Chromium utility process and starts the
@@ -630,13 +593,13 @@ sequenceDiagram
   participant Child as Utility process bootstrap
   participant Adapter as Utility native adapter
   participant Backend as Utility backend
-  Browser->>Host: BrowserHost.utility.session.create(name, init)
+  Browser->>Host: UtilitySessionClient.create(name, init)
   Host->>Registry: Application.utility.is_registered(name)
   Registry-->>Host: Registration status
   alt No healthy process for name
     Host->>Child: ServiceProcessHost launch with utility process role
     Child->>Child: Load business cdylib and call tuffite_get_application()
-    Note over Child: Same definitions in a separate process, before_startup for Utility role, no Browser state
+    Note over Child: Same definitions in a separate process, Application::setup for Utility role, no Browser state
     Child->>Adapter: Bind generic Mojo UtilityService
     Host->>Adapter: Mojo Start(name, service configuration)
     Adapter->>Backend: Child Application.utility_runtime(name)
@@ -670,13 +633,13 @@ sequenceDiagram
   participant Host as Native browser host
   participant Adapter as Native utility adapter
   participant Service as Rust utility service
-  Client->>Host: BrowserHost.utility.session.create(name, session_id, callbacks)
+  Client->>Host: UtilitySessionClient.create(name, session_id, callbacks)
   Host->>Adapter: Mojo CreateSession on started service
   Adapter->>Service: Application.utility.session.create(service, session_id, init)
   Service-->>Adapter: Local session handle
   Adapter-->>Host: Mojo create result
   Host-->>Client: created callback
-  Client->>Host: BrowserHost.utility.session.send(name, session_id, command_id)
+  Client->>Host: UtilitySessionClient.send(name, session_id, command_id)
   Host->>Adapter: Mojo Send
   Adapter->>Service: Application.utility.session.send(local_handle, command_id)
   Service-->>Adapter: Reply callback / ordered event callback
@@ -761,10 +724,10 @@ forcibly terminate Rust futures.
 [`workspace.package.version`](../../Cargo.toml). The existing unpublished ABI
 capabilities were reset together to the 0.1.0 baseline.
 Rust derives `ABI_MAJOR`, `ABI_MINOR`, `ABI_PATCH` and `Version::CURRENT` from it.
-[`scripts/abi.py`](../../scripts/abi.py) generates native `abi_version.h` and
+[`scripts/abi.py`](../../scripts/abi.py) generates native `version.h` and
 provides the same version to Distribution packaging.
 
-Host, BrowserHost, Application, Utility, UtilitySessionClient, UtilitySessionService and ShellApi start at offset zero with:
+Host, Application, UtilitySessionClient, UtilitySessionService and Remoting start at offset zero with:
 
 ```text
 Header = struct_size: usize + Version { major, minor, patch }: 3 × u16 + reserved: u16
@@ -833,7 +796,7 @@ int compatible =
 ### Extending capabilities without shifting Host
 
 Host's discovery slot and Utility's session pointer have fixed size. Appending
-session callbacks therefore does not move Host, Application, Utility or ShellApi fields.
+session callbacks therefore does not move Host, Application, other callback table fields.
 
 | Change | Version/layout rule |
 | --- | --- |
@@ -870,12 +833,12 @@ and application configuration retain their own validation contracts.
 | Source | Role |
 | --- | --- |
 | [`src/lib.rs`](src/lib.rs) | Rust ABI declarations, semver and layout tests |
-| [`framework/public/abi.h`](../../framework/public/abi.h) | Matching native C declarations |
+| [`framework/public/c_api/`](../../framework/public/c_api/application.h) | Matching native C declarations |
 | [`abi.rs`](../tuffite-runtime/src/abi.rs) | Validate Host, application lifecycle and FFI guards |
 | [`shell_api.rs`](../tuffite-runtime/src/shell_api.rs) | Generated native requests, acceptance ownership and RPC response decoding |
 | [`utility_host.rs`](../tuffite-runtime/src/utility_host.rs) | Safe browser Rust client and callback ownership |
 | [`utility_entry.rs`](../tuffite-runtime/src/utility_entry.rs) | Process-local utility/service FFI implementation |
-| [`abi_host_bridge.cc`](../../framework/app/abi_host_bridge.cc) | Native table validation and browser Host callbacks |
+| [`app/abi/`](../../framework/app/abi/) | Application connection and native Host callbacks |
 | [`utility_service.cc`](../../framework/utility/utility_service.cc) | Native utility adapter between Mojo and Application callbacks |
 
 Run `python3 x.py test --suite framework --non-interactive` from the Framework
@@ -887,7 +850,7 @@ compilation alone does not prove those runtime flows.
 Grouped typed Utility implementations append an optional `resolve_utility_route`
 callback to `Application`. It maps an IDL interface (or typed owner) to a borrowed
 application-lifetime owner name, without IPC or process launch. Framework copies
-the returned bytes immediately. The `UtilityInterfaces = 3` / `TUFFITE_CAPABILITY_UTILITY_INTERFACES`
+the returned bytes immediately. The `UtilityInterfaces = 1` / `TUFFITE_CAPABILITY_UTILITY_INTERFACES`
 header-only capability confirms routing and raw-owner bypass protection. Apps
 with grouped typed utilities require it before creating Browser state; existing
 raw apps do not require this capability. Older application table prefixes remain

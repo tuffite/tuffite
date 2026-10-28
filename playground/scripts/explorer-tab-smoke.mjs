@@ -33,7 +33,7 @@ const find = async (text, options = {}) => {
 };
 try {
   await app.goto(new URL('tabs.html', base).href);
-  await wait(async () => (await state('#tab-primary')).isLoading === false && (await state('#tab-control')).url.endsWith('/tab-sample.html'), 'Tab fixtures did not load');
+  await wait(async () => (await state('#tab-primary')).isLoading === false && (await state('#tab-control')).url.endsWith('/fixtures/tab.html'), 'Tab fixtures did not load');
   const primary = '#tab-primary'; const control = '#tab-control';
   const initial = await state(primary);
   assert.equal(initial.zoomFactor, 1); assert.equal(initial.audioMuted, false); assert.equal(initial.crashed, false);
@@ -85,7 +85,7 @@ try {
     const transfer = await first.detach();
     if (await first.setZoomFactor(2) || await first.setAudioMuted(false)) throw new Error('Detached element accepted a control');
     const receiver = document.createElement('explorer');
-    receiver.navigation = 'allow';
+    receiver.behavior = "navigation: browser;";
     receiver.style.cssText = first.style.cssText;
     first.replaceWith(receiver); receiver.id = 'tab-primary';
     await receiver.attach(transfer);

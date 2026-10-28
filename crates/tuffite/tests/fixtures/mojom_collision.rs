@@ -162,7 +162,7 @@ impl ::tuffite::__private::mojom::Struct for Status {
         Ok(value)
     }
 }
-#[allow(dead_code)]
+#[allow(dead_code, non_snake_case)]
 pub mod commands {
     pub type Status = super::CommandsStatusRequest;
     impl super::CommandsStatusRequest {
@@ -195,7 +195,6 @@ pub mod commands {
             result: Result<super::Status, ::tuffite::CommandError>,
         ) -> ::tuffite::CommandResult {
             let result = result?;
-            let _ = &result;
             <super::CommandsStatusResponse as ::tuffite::__private::mojom::Struct>::encode_mojom(
                     &super::CommandsStatusResponse {
                         r#result,
@@ -218,10 +217,8 @@ pub mod commands {
             Self::respond(handler(app, request.r#value))
         }
     }
-    /// Registers this interface on the Browser backend.
-    pub fn registry<B: super::Commands + ::tuffite::Browser>() -> ::tuffite::__private::CommandRegistry<
-        B,
-    > {
+    /// Registers this interface on an Application or Browser backend.
+    pub fn registry<B: super::Commands>() -> ::tuffite::__private::CommandRegistry<B> {
         ::tuffite::__private::CommandRegistry::new(
             |browser, command| <B as super::Commands>::__tuffite_dispatch(
                 browser,
@@ -251,5 +248,24 @@ pub trait Commands {
             return CommandsStatusRequest::respond(self.r#status(request.r#value));
         }
         Err(::tuffite::CommandError::UnknownCommand)
+    }
+}
+#[allow(dead_code)]
+pub mod interfaces {
+    /// Type-level interface registration for application and browser scopes.
+    pub struct Commands;
+    impl<T: super::Commands> ::tuffite::utility::InterfaceFor<T> for Commands {
+        fn interface() -> ::tuffite::utility::Interface<T> {
+            ::tuffite::utility::Interface::new(
+                <T as super::Commands>::__TUFFITE_INTERFACE,
+                <T as super::Commands>::__tuffite_dispatch,
+                <T as super::Commands>::__TUFFITE_COMMANDS,
+            )
+        }
+    }
+    impl<T: super::Commands> ::tuffite::app::InterfaceFor<T> for Commands {
+        fn registry() -> ::tuffite::__private::CommandRegistry<T> {
+            super::commands::registry::<T>()
+        }
     }
 }

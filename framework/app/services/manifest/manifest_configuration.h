@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -64,12 +65,15 @@ class ManifestLoader {
  public:
   static std::optional<ManifestDefinition> Load(
       const base::FilePath& package_root,
-      std::string* error);
+      std::string* error,
+      std::string_view configuration = {});
   // Chromium needs these minimal bootstrap reads before custom schemes exist.
-  static std::optional<std::string> ReadApplicationScheme(
+  static std::optional<std::vector<std::string>> ReadApplicationSchemes(
       const base::FilePath& package_root,
-      std::string* error);
-  static bool ReadNetworkDisableHttp2(const base::FilePath& package_root);
+      std::string* error,
+      std::string_view configuration = {});
+  static bool ReadNetworkDisableHttp2(const base::FilePath& package_root,
+                                      std::string_view configuration = {});
 };
 class ConfigurationAssembler {
  public:

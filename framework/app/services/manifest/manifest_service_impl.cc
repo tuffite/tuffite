@@ -10,6 +10,7 @@
 #include "base/path_service.h"
 #include "base/strings/string_util.h"
 #include "build/build_config.h"
+#include "tuffite/components/explorer/common/external_protocol.h"
 #include "tuffite/framework/app/services/manifest/manifest_configuration_data.h"
 #include "tuffite/framework/common/access.h"
 namespace tuffite {
@@ -88,16 +89,33 @@ bool ManifestServiceImpl::IsShellApiOriginAllowed(
 }
 
 bool ManifestServiceImpl::IsDevToolsAllowed(const url::Origin& origin) const {
-  return !std::ranges::any_of(
-      data().origin_capabilities_, [&](const auto& capability) {
-        return !capability.devtools_allowed &&
-               std::ranges::any_of(
-                   capability.origins, [&](const auto& pattern) {
-                     return access::MatchesOrigin(origin, pattern);
-                   });
-      });
+  return IsDevToolsEnabled() &&
+         !std::ranges::any_of(
+             data().origin_rules_, [&](const auto& capability) {
+               return !capability.devtools_allowed &&
+                      std::ranges::any_of(
+                          capability.origins, [&](const auto& pattern) {
+                            return access::MatchesOrigin(origin, pattern);
+                          });
+             });
 }
 
+bool ManifestServiceImpl::IsDevToolsEnabled() const {
+  return data().devtools_enabled_;
+}
+
+ExplorerBehavior ManifestServiceImpl::ExplorerDefaults(
+    const url::Origin& origin) const {
+  ExplorerBehavior behavior;
+  for (const auto& rule : data().origin_rules_) {
+    if (std::ranges::any_of(rule.origins, [&](const auto& pattern) {
+          return access::MatchesOrigin(origin, pattern);
+        })) {
+      behavior.Apply(rule.behavior);
+    }
+  }
+  return behavior;
+}
 bool ManifestServiceImpl::IsExplorerOriginAllowed(
     const url::Origin& origin) const {
   return std::ranges::any_of(data().explorer_origin_patterns_,
@@ -116,7 +134,8 @@ bool ManifestServiceImpl::IsExplorerNavigationAllowed(const url::Origin& caller,
   }
   return IsExplorerOriginAllowed(caller) &&
          (url.SchemeIsHTTPOrHTTPS() || url.SchemeIsFile() ||
-          url.scheme() == data().assets_.scheme);
+          IsExternalProtocol(url, data().assets_.schemes) ||
+          data().assets_.HandlesScheme(url.scheme()));
 }
 
 bool ManifestServiceImpl::IsAllShellApiAllowed(
@@ -138,17 +157,15 @@ bool ManifestServiceImpl::IsAllShellApiAllowed(
 bool ManifestServiceImpl::IsShellApiCommandAllowed(
     const url::Origin& origin,
     std::string_view command) const {
-  return std::ranges::any_of(
-      data().origin_capabilities_, [&](const auto& capability) {
-        return std::ranges::any_of(capability.origins,
-                                   [&](const auto& pattern) {
-                                     return access::MatchesOrigin(origin,
-                                                                  pattern);
-                                   }) &&
-               std::ranges::any_of(
-                   capability.shell_api,
-                   [&](const auto& grant) { return grant.method == command; });
-      });
+  return std::ranges::any_of(data().origin_rules_, [&](const auto& capability) {
+    return std::ranges::any_of(capability.origins,
+                               [&](const auto& pattern) {
+                                 return access::MatchesOrigin(origin, pattern);
+                               }) &&
+           std::ranges::any_of(capability.shell_api, [&](const auto& grant) {
+             return grant.method == command;
+           });
+  });
 }
 
 bool ManifestServiceImpl::IsShellApiScopeAllowed(const url::Origin& origin,
@@ -157,7 +174,7 @@ bool ManifestServiceImpl::IsShellApiScopeAllowed(const url::Origin& origin,
                                                  std::string_view kind,
                                                  bool write) const {
   bool allowed = false;
-  for (const auto& capability : data().origin_capabilities_) {
+  for (const auto& capability : data().origin_rules_) {
     if (!std::ranges::any_of(capability.origins, [&](const auto& pattern) {
           return access::MatchesOrigin(origin, pattern);
         })) {
@@ -244,7 +261,7 @@ bool ManifestServiceImpl::IsWindowUrlAllowed(const url::Origin& caller,
   return IsShellApiCommandAllowed(caller, "tuffite.Window.Create") &&
          url.is_valid() && !url.has_username() && !url.has_password() &&
          (url.IsAboutBlank() || url.SchemeIsHTTPOrHTTPS() ||
-          url.scheme() == data().assets_.scheme);
+          data().assets_.HandlesScheme(url.scheme()));
 }
 
 std::string ManifestServiceImpl::SerializeShellApiOrigins() const {
@@ -274,10 +291,10 @@ std::string ManifestServiceImpl::SerializeExplorerOrigins() const {
   return serialized;
 }
 
-ManifestServiceImpl::OriginCapability ManifestServiceImpl::GrantsFor(
+ManifestServiceImpl::OriginRule ManifestServiceImpl::GrantsFor(
     const url::Origin& origin) const {
-  OriginCapability grants;
-  for (const auto& cap : data().origin_capabilities_) {
+  OriginRule grants;
+  for (const auto& cap : data().origin_rules_) {
     if (!std::ranges::any_of(cap.origins, [&](const auto& pattern) {
           return access::MatchesOrigin(origin, pattern);
         })) {
@@ -289,11 +306,6 @@ ManifestServiceImpl::OriginCapability ManifestServiceImpl::GrantsFor(
                             cap.shell_api.end());
   }
   return grants;
-}
-
-std::map<std::string, std::vector<uint8_t>>
-ManifestServiceImpl::UtilityConfigurations() const {
-  return data().utility_configurations_;
 }
 
 bool ManifestServiceImpl::IsFileSystemPathAllowed(
@@ -398,7 +410,7 @@ bool ManifestServiceImpl::IsNetworkUrlAllowed(const url::Origin& caller,
 
 app::AppInfo ManifestServiceImpl::app_info() const {
   return {data().application_id_, data().product_name_, data().entry_url_,
-          data().assets_.scheme};
+          data().assets_.schemes};
 }
 const std::vector<app::AppWindow>& ManifestServiceImpl::startup_windows()
     const {

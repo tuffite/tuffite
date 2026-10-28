@@ -146,6 +146,11 @@ fn endpoint(schema: &Schema, endpoint: &Endpoint<'_>) -> Result<TokenStream, Str
     let fingerprint = hex(endpoint.fingerprint);
     let response_field = schema.structures[&method.response].fields.first();
     let result = response_field.map_or_else(|| Ok(quote!(())), |field| module_type(&field.ty))?;
+    let unwrap_result = if response_field.is_some() {
+        quote!(let result = result?;)
+    } else {
+        quote!(result?;)
+    };
     let response_fields = response_field
         .map(|field| {
             let name = field_ident(&field.name)?;
@@ -182,8 +187,7 @@ fn endpoint(schema: &Schema, endpoint: &Endpoint<'_>) -> Result<TokenStream, Str
                     .map_err(|_| ::tuffite::CommandError::InvalidArgument("invalid Mojom payload".into()))
             }
             pub fn respond(result: Result<#result, ::tuffite::CommandError>) -> ::tuffite::CommandResult {
-                let result = result?;
-                let _ = &result;
+                #unwrap_result
                 <#response as ::tuffite::__private::mojom::Struct>::encode_mojom(&#response { #response_fields })
                     .map_err(|_| ::tuffite::CommandError::Failed("Mojom encode failed".into()))
             }
@@ -249,11 +253,11 @@ fn interface_bindings(
         });
     }
     let module = quote! {
-        #[allow(dead_code)]
+        #[allow(dead_code, non_snake_case)]
         pub mod #namespace {
             #(#methods)*
-            /// Registers this interface on the Browser backend.
-            pub fn registry<B: super::#service + ::tuffite::Browser>() -> ::tuffite::__private::CommandRegistry<B> {
+            /// Registers this interface on an Application or Browser backend.
+            pub fn registry<B: super::#service>() -> ::tuffite::__private::CommandRegistry<B> {
                 ::tuffite::__private::CommandRegistry::new(
                     |browser, command| <B as super::#service>::__tuffite_dispatch(browser, command),
                     <B as super::#service>::__TUFFITE_COMMANDS,
@@ -296,9 +300,38 @@ pub(super) fn generate(schema: &Schema, endpoints: &[Endpoint<'_>]) -> Result<St
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .unzip();
+    let markers = schema
+        .methods
+        .iter()
+        .map(|m| m.interface.as_str())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(|name| {
+            let service = ident(name)?;
+            let namespace = ident(&lower_first(name))?;
+            Ok::<_, String>(quote! {
+                /// Type-level interface registration for application and browser scopes.
+                pub struct #service;
+                impl<T: super::#service> ::tuffite::utility::InterfaceFor<T> for #service {
+                    fn interface() -> ::tuffite::utility::Interface<T> {
+                        ::tuffite::utility::Interface::new(<T as super::#service>::__TUFFITE_INTERFACE, <T as super::#service>::__tuffite_dispatch, <T as super::#service>::__TUFFITE_COMMANDS)
+                    }
+                }
+                impl<T: super::#service> ::tuffite::app::InterfaceFor<T> for #service {
+                    fn registry() -> ::tuffite::__private::CommandRegistry<T> {
+                        super::#namespace::registry::<T>()
+                    }
+                }
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let enums = enum_bindings(schema)?;
-    let syntax = syn::parse2(quote! { #enums #(#structures)* #(#modules)* #(#traits)* })
-        .map_err(|error| format!("generated Mojom Rust: {error}"))?;
+    let syntax = syn::parse2(quote! {
+        #enums #(#structures)* #(#modules)* #(#traits)*
+        #[allow(dead_code)]
+        pub mod interfaces { #(#markers)* }
+    })
+    .map_err(|error| format!("generated Mojom Rust: {error}"))?;
     Ok(format!(
         "// Generated from Mojom v0. Do not edit.\n{}",
         prettyplease::unparse(&syntax)

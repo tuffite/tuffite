@@ -14,6 +14,14 @@ mojom("mojom") {
   ]
 }
 
+source_set("external_protocol") {
+  public = [
+    "explorer_behavior.h",
+    "external_protocol.h",
+  ]
+  public_deps = [ "//url" ]
+}
+
 if (tuffite_in_chromium) {
   copy("blink_idl_inputs") {
     sources = tuffite_explorer_blink_idl_inputs

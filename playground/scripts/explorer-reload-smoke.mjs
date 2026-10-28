@@ -89,7 +89,7 @@ try {
       }
     });
     const owner = document.createElement("explorer");
-    owner.navigation = "allow";
+    owner.behavior = "navigation: browser;";
     owner.src = url;
     owner.style.cssText = "display:block;width:800px;height:500px";
     window.reloadOwner = owner;
@@ -100,7 +100,7 @@ try {
   console.log("explorer-reload phase=outer-loaded");
   await evaluate(`${base}/owner`, `(async () => {
     const child = document.createElement('explorer');
-    child.navigation = 'allow';
+    child.behavior = "navigation: browser;";
     child.src = ${JSON.stringify(`${other}/child`)};
     window.reloadChild = child;
     window.childEvents = [];

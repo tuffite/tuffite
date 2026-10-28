@@ -7,8 +7,7 @@
     [CEReactions, Reflect] attribute DOMString allow;
     readonly attribute Window? contentWindow;
     [CEReactions] attribute DOMString partition;
-    [CEReactions] attribute DOMString navigation;
-    [CEReactions] attribute DOMString dialogs;
+    [CEReactions] attribute DOMString behavior;
     [CEReactions] attribute boolean isolated;
     attribute boolean contextMenuEnabled;
     [CallWith=ScriptState] Promise<ExplorerHandle> detach();
@@ -29,8 +28,11 @@
     attribute EventHandler onnavigation;
     attribute EventHandler onnewwindow;
     attribute EventHandler ondialog;
+    attribute EventHandler onexternalprotocol;
     void load(USVString url);
     [CallWith=ScriptState] Promise<boolean> cancelDownload(unsigned long id);
+    [CallWith=ScriptState] Promise<boolean> pauseDownload(unsigned long id);
+    [CallWith=ScriptState] Promise<boolean> resumeDownload(unsigned long id);
     [CallWith=ScriptState] Promise<boolean> download(USVString url);
     [CallWith=ScriptState] Promise<any> getDownloads();
     [CallWith=ScriptState] Promise<DOMString> readDownload(unsigned long id);

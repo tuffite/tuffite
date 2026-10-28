@@ -13,25 +13,26 @@ directly, chooses an executable, or binds a raw Mojo interface.
 
 ## 2. Trust and registration
 
-A service is available only when both declarations agree:
-
-1. the Rust application statically registers a concrete implementation;
-2. the signed application manifest allowlists the same stable service name and
-   sandbox class.
+The Rust embedding statically registers each concrete implementation. Its setup
+builder configures the stable service name and startup data; runtime origin rules
+independently authorize renderer access to utility methods. Service registration
+does not itself grant a renderer permission.
 
 Rust registration:
 
 ```rust
 use tuffite::{
-    ApplicationResult, CommandError, CommandResult,
+    Result, CommandError, CommandResult,
     UtilityRequest, Utility,
 };
 
 struct ProjectIndexer;
 
-#[tuffite::utility(name = "project_indexer")]
 impl Utility for ProjectIndexer {
-    async fn new(context: tuffite::utility::UtilityContext) -> ApplicationResult<Self> {
+    fn setup(builder: tuffite::utility::Builder<Self>) -> tuffite::Result<tuffite::utility::Builder<Self>> {
+        Ok(builder.name("project_indexer"))
+    }
+    async fn new(context: tuffite::utility::UtilityContext) -> Result<Self> {
         Ok(Self)
     }
 
@@ -44,26 +45,28 @@ impl Utility for ProjectIndexer {
     }
 }
 
-#[tuffite::main(browser = AppBrowser, utilities(ProjectIndexer))]
-fn main() -> tuffite::app::Builder<AppBrowser> {
-    tuffite::app::Builder::new()
+#[tuffite::main]
+fn main() -> tuffite::Embedding<App> {
+    tuffite::Embedding::new().browser::<MyBrowser>().utility::<ProjectIndexer>()
 }
 ```
 
-The utility attribute defines a stable name and factory; the main macro selects
-which implementations are exported and checks duplicate names at compile time.
+`Utility::setup` configures the stable name and typed interfaces. The embedding
+selects the exported types. Setup first collects registration metadata after
+Application setup, then runs again before the selected service is constructed.
+Names and interface ownership must match the frozen registration. Duplicate
+names/interfaces reject process preparation without constructing service state.
 The definition factory runs separately in each process. It constructs no
 process state: browser and utility startup call `Browser::new` and
-`Utility::new`, respectively. The signed manifest independently authorizes
-launching a registered service. Renderer access is constrained by ShellAPI
-origin authorization.
+`Utility::new`, respectively. Renderer access is constrained by ShellAPI origin
+authorization in the Rust runtime configuration.
 
 ## 3. Process and call path
 
 ```text
 authorized primary document
   -> ShellAPI binary request
-  -> browser origin and manifest checks
+  -> browser origin and registration checks
   -> UtilityServiceManager
   -> Chromium ServiceProcessHost
   -> generic tuffite.mojom.UtilityService
@@ -83,7 +86,7 @@ schema; JSON is not introduced by the transport.
 
 ## 4. Current implementation
 
-The browser owns one reusable host per allowlisted service. Each host launches
+The browser owns one reusable host per registered service. Each host launches
 a sandboxed utility process on demand, permits up to eight concurrent unary
 invocations, bounds total active and queued work at 64 requests, and shuts an
 idle process down after 30 seconds when it has no live session. Each invocation
@@ -135,13 +138,13 @@ can use `async fn` directly):
 ```rust
 pub trait Utility: Send + Sync + 'static {
     fn new(context: UtilityContext)
-        -> impl Future<Output = ApplicationResult<Self>> + Send where Self: Sized;
+        -> impl Future<Output = Result<Self>> + Send where Self: Sized;
     fn invoke(&self, request: UtilityRequest)
         -> impl Future<Output = CommandResult> + Send;
     fn create_session(&self, request: UtilitySessionRequest)
-        -> ApplicationResult<Box<dyn UtilitySession>>;
+        -> Result<Box<dyn UtilitySession>>;
     fn shutdown(&self, context: ShutdownContext)
-        -> impl Future<Output = ApplicationResult<()>> + Send;
+        -> impl Future<Output = Result<()>> + Send;
 }
 ```
 
@@ -152,11 +155,11 @@ internally; applications do not use `UtilityFuture` or `LifecycleFuture`.
 `UtilityContext` owns the service name and service-local startup configuration,
 and reports shutdown through `is_stopping()` or the awaitable
 `stop_signal().cancelled()`. Put business state in the service
-instance; session init and session state remain separate. Declare startup JSON in
-`app.utilities.<name>.configuration` (64 KiB serialized maximum). ABI 0.1.0 copies
-only that configuration over Mojo when a child starts, including after restart.
-An omitted configuration yields empty bytes. This map configures services already
-registered in main; it cannot register a new service or share Browser pointers.
+instance; session init and session state remain separate. Configure startup data
+in Rust `setup(builder)` (64 KiB maximum). Setup starts with empty bytes and runs
+again after a child restart. Applications can read their own external configuration
+in this initialization path. No manifest utility map or Browser pointers are sent
+to the child.
 
 `UtilityRequest` owns its payload and exposes cooperative cancellation plus the
 host deadline, so no borrowed request pointer outlives the ABI call. Async here
@@ -186,8 +189,8 @@ long-running Playground fixture are implemented.
 
 - only primary documents whose committed origins are explicitly authorized may
   request a service; an Explorer or remote page is denied unless the business
-  manifest deliberately grants that origin;
-- both static Rust registration and manifest policy are required;
+  runtime configuration deliberately grants that origin;
+- both static Rust registration and runtime origin authorization are required;
 - service names, payload sizes, concurrency, deadlines, and output sizes are
   bounded before work is accepted;
 - the browser owns launch, receiver binding, cancellation, and termination;
@@ -213,9 +216,9 @@ have implementation coverage.
 ### Startup configuration builders
 
 Rust Utility and V8 implementations may override the synchronous static hook
-`fn setup(builder: Builder) -> ApplicationResult<Builder>`. Use `utility::Builder`
-for Rust and `utility::v8::Builder` for V8. Framework supplies the named service's
-manifest configuration; `configuration_bytes()` reads it and the consuming
+`fn setup(builder: utility::Builder<Self>) -> Result<utility::Builder<Self>>`
+for Rust, or the non-generic `utility::v8::Builder` signature for V8. Framework supplies empty startup data;
+`configuration_bytes()` reads it and the consuming
 `configuration(bytes)` method replaces service-local data. Framework validates
 the 64 KiB limit and freezes the returned builder before constructing state.
 V8 defaults to `entry.mjs`; select another module using `builder.entry(path)`.

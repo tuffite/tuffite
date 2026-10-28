@@ -1,5 +1,4 @@
-export type ExplorerNavigationPolicy = "emit" | "allow";
-export type ExplorerDialogPolicy = "emit" | "suppress";
+export type ExplorerBehaviorMode = "browser" | "delegate" | "block";
 export type ExplorerJavaScriptWorld = "isolated" | "main";
 export type ExplorerPartitionMode = "shared" | "persist" | "memory";
 
@@ -90,6 +89,15 @@ export interface ExplorerDialogController {
   dismiss(): Promise<boolean>;
 }
 
+export interface ExplorerExternalProtocolController {
+  readonly signal: AbortSignal;
+  readonly url: string;
+  readonly initiatingOrigin: string;
+  readonly from: string;
+  accept(): Promise<boolean>;
+  dismiss(): Promise<boolean>;
+}
+
 export type ExplorerHandleState = "pending" | "attaching" | "transferred" | "closed";
 
 /** Exclusive native page ownership; no serializable credential is exposed. */
@@ -118,6 +126,7 @@ export interface ExplorerEventMap {
   newwindow: CustomEvent<ExplorerNewWindowController>;
   navigation: CustomEvent<ExplorerOpenDetail>;
   dialog: CustomEvent<ExplorerDialogController>;
+  externalprotocol: CustomEvent<ExplorerExternalProtocolController>;
 }
 
 export interface HTMLExplorerElement extends HTMLElement {
@@ -127,8 +136,8 @@ export interface HTMLExplorerElement extends HTMLElement {
   partition: string;
   /** Fixed at creation. Isolated keeps window.parent/top within this Explorer's frame tree. */
   isolated: boolean;
-  navigation: ExplorerNavigationPolicy;
-  dialogs: ExplorerDialogPolicy;
+  /** CSS-style declarations, e.g. `navigation: delegate; dialog: browser;`. */
+  behavior: string;
   contextMenuEnabled: boolean;
   detach(): Promise<ExplorerHandle>;
   attach(handle: ExplorerHandle): Promise<void>;
@@ -150,11 +159,14 @@ export interface HTMLExplorerElement extends HTMLElement {
   onnavigation: ((event: ExplorerEventMap["navigation"]) => void) | null;
   onnewwindow: ((event: ExplorerEventMap["newwindow"]) => void) | null;
   ondialog: ((event: ExplorerEventMap["dialog"]) => void) | null;
+  onexternalprotocol: ((event: ExplorerEventMap["externalprotocol"]) => void) | null;
   /** Starts navigation; completion is reported by load events. */
   load(url: string): void;
   download(url: string): Promise<boolean>;
   getDownloads(): Promise<ExplorerDownload[]>;
   cancelDownload(id: number): Promise<boolean>;
+  pauseDownload(id: number): Promise<boolean>;
+  resumeDownload(id: number): Promise<boolean>;
   /** Base64 bytes of an owned completed download, bounded to 64 MiB. */
   readDownload(id: number): Promise<string>;
   /** A compositor PNG data URL, or an empty string when unavailable. */
@@ -235,6 +247,8 @@ export type ExplorerDownload = {
   path: string;
   mimeType: string;
   state: "in-progress" | "complete" | "cancelled" | "interrupted";
+  paused?: boolean;
+  canResume?: boolean;
   receivedBytes: number;
   totalBytes: number;
   error: number;

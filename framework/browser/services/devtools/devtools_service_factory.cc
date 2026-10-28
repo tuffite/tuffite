@@ -16,9 +16,7 @@ DevToolsServiceFactory* DevToolsServiceFactory::Get() {
 DevToolsServiceFactory::DevToolsServiceFactory()
     : BrowserContextKeyedServiceFactory(
           "TuffiteDevTools",
-          BrowserContextDependencyManager::GetInstance()) {
-  DependsOn(window::WindowServiceFactory::Get());
-}
+          BrowserContextDependencyManager::GetInstance()) {}
 DevToolsService* DevToolsServiceFactory::GetForBrowserContext(
     content::BrowserContext* context,
     bool create) {

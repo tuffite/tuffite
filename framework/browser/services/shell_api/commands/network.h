@@ -4,13 +4,13 @@
 #ifndef TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_NETWORK_H_
 #define TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_NETWORK_H_
 
-#include "tuffite/framework/shell_api/network.mojom.h"
+#include "tuffite/framework/public/shell_api/network.mojom.h"
 
 namespace tuffite::shell_api::net {
 
 class NetImpl final : public generated::Net {
  public:
-  void Request(const dispatch::Context& context,
+  void Request(const dispatch::RendererRequestContext& context,
                generated::Net::RequestRequestPtr request,
                generated::Net::RequestCallback callback) override;
 };

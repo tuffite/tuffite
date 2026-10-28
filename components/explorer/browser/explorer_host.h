@@ -90,6 +90,12 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
                      bool canceled);
   void CompleteOpen(uint64_t request_id, bool propagate) override;
   void CompleteDialog(uint64_t request_id, bool propagate) override;
+  void SetBehavior(const std::string&, SetBehaviorCallback) override;
+  static bool DelegateExternalProtocol(content::WebContents*,
+                                       const GURL&,
+                                       const std::string& origin,
+                                       content::RenderFrameHost*,
+                                       base::OnceClosure);
   void SetContextMenuEnabled(bool enabled) override;
   void SetFramePolicy(const blink::FramePolicy&) override;
   static std::string DownloadDetail(const download::DownloadItem& item);
@@ -97,6 +103,8 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
   void Download(const std::string& url, DownloadCallback callback) override;
   void GetDownloads(GetDownloadsCallback callback) override;
   void CancelDownload(uint32_t id, CancelDownloadCallback callback) override;
+  void PauseDownload(uint32_t id, PauseDownloadCallback callback) override;
+  void ResumeDownload(uint32_t id, ResumeDownloadCallback callback) override;
   void ReadDownload(uint32_t id, ReadDownloadCallback callback) override;
   void CapturePreview(CapturePreviewCallback callback) override;
 
@@ -267,6 +275,7 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
   std::optional<blink::LocalFrameToken> pending_frame_token_;
   std::optional<int> primary_navigation_error_;
   std::optional<ExplorerPolicy> policy_;
+  std::optional<ExplorerPolicy> attaching_policy_;
   std::string created_partition_domain_;
   std::string created_partition_name_;
   bool created_partition_in_memory_ = false;

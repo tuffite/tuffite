@@ -69,7 +69,7 @@ impl<'a> DevelopmentSession<'a> {
             ensure_loopback_port_available(port)?;
             tracing::info!(endpoint = %format_args!("http://127.0.0.1:{port}/"),
                 targets = %format_args!("http://127.0.0.1:{port}/json/list"),
-                inspect = "edge://inspect/#devices", "DevTools is enabled");
+                inspect = "edge://inspect/#devices", "DevTools requested; runtime policy decides availability");
         }
         let token = DevelopmentToken::new()?;
         let mut server = WebServer::start(&self.runtime, &self.configuration.server, &token)?;

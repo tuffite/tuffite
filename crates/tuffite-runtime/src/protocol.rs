@@ -141,11 +141,15 @@ pub fn dispatch_with(
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum CommandError {
+    #[error("unknown command")]
     UnknownCommand,
+    #[error("invalid argument: {0}")]
     InvalidArgument(String),
+    #[error("schema mismatch: {0}")]
     SchemaMismatch(String),
+    #[error("{0}")]
     Failed(String),
 }
 

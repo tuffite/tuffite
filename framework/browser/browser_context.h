@@ -17,11 +17,17 @@ namespace tuffite {
 
 class ExplorerRouter;
 class ManifestService;
+class UtilityService;
 class ApplicationContext;
+class HostDispatch;
 
 class BrowserContext final : public content::BrowserContext {
  public:
-  BrowserContext(base::FilePath path, ApplicationContext& application);
+  BrowserContext(base::FilePath path,
+                 ApplicationContext& application,
+                 HostDispatch& host_dispatch,
+                 base::FilePath network_storage_root = {},
+                 UtilityService* utilities = nullptr);
 
   // Live profile roots granted to the sandboxed network process.
   static std::vector<base::FilePath> GetNetworkStoragePaths();
@@ -29,10 +35,13 @@ class BrowserContext final : public content::BrowserContext {
   static BrowserContext& GetFrom(content::RenderFrameHost&);
 
   ManifestService& manifest_service() const;
+  UtilityService& utility_service() const;
   base::WeakPtr<BrowserContext> GetWeakPtr() {
     return weak_factory_.GetWeakPtr();
   }
   ApplicationContext& application_context() const { return *application_; }
+
+  HostDispatch& host_dispatch() const { return *host_dispatch_; }
 
   BrowserContext(const BrowserContext&) = delete;
   BrowserContext& operator=(const BrowserContext&) = delete;
@@ -63,7 +72,10 @@ class BrowserContext final : public content::BrowserContext {
       override;
 
   const raw_ref<ApplicationContext> application_;
+  const raw_ref<HostDispatch> host_dispatch_;
+  raw_ptr<UtilityService> utilities_ = nullptr;
   const base::FilePath path_;
+  const base::FilePath network_storage_root_;
   std::unique_ptr<ExplorerRouter> explorer_router_;
   base::WeakPtrFactory<BrowserContext> weak_factory_{this};
 };

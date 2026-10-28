@@ -5,12 +5,13 @@
 #define TUFFITE_FRAMEWORK_BROWSER_SERVICES_EXPLORER_EXPLORER_NAVIGATION_THROTTLE_H_
 
 #include <string>
+#include <vector>
 
 namespace content {
 class NavigationThrottleRegistry;
 }
 namespace tuffite {
 void AddExplorerNavigationThrottles(content::NavigationThrottleRegistry&,
-                                    std::string app_scheme);
+                                    std::vector<std::string> app_schemes);
 }
 #endif  // TUFFITE_FRAMEWORK_BROWSER_SERVICES_EXPLORER_EXPLORER_NAVIGATION_THROTTLE_H_

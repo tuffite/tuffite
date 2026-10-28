@@ -9,18 +9,18 @@
 #include "base/containers/span.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
-#include "tuffite/framework/app/abi_host_bridge.h"
+#include "tuffite/framework/app/abi/application.h"
 #include "tuffite/framework/app/main_delegate.h"
 #include "tuffite/framework/app/process_launch.h"
-#include "tuffite/framework/public/abi.h"
+#include "tuffite/framework/public/c_api/application.h"
 
 // DLL-side C ABI entry. Owns the process composition root for this run.
 extern "C" int tuffite_run_application(const tuffite_application* application,
                                        int argc,
                                        const char* const* argv,
                                        void* sandbox_info) {
-  auto bridge = tuffite::AbiHostBridge::Create(application);
-  if (!bridge) {
+  auto app = tuffite::abi::Application::Create(application);
+  if (!app) {
     return 64;
   }
   std::vector<std::string> args;
@@ -46,7 +46,7 @@ extern "C" int tuffite_run_application(const tuffite_application* application,
     args.emplace_back(arg);
   }
 #endif
-  if (!tuffite::PrepareProcessLaunch(bridge->application(), &args)) {
+  if (!tuffite::PrepareProcessLaunch(app->table(), &args)) {
     return 64;
   }
 #if BUILDFLAG(IS_WIN)
@@ -61,6 +61,7 @@ extern "C" int tuffite_run_application(const tuffite_application* application,
     pointers.push_back(arg.c_str());
   }
   pointers.push_back(nullptr);
-  tuffite::MainDelegate app(std::move(bridge));
-  return app.Run(static_cast<int>(args.size()), pointers.data(), sandbox_info);
+  tuffite::MainDelegate delegate(std::move(app));
+  return delegate.Run(static_cast<int>(args.size()), pointers.data(),
+                      sandbox_info);
 }

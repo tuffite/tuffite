@@ -84,8 +84,10 @@
       const name = options?.name;
       if (typeof name !== 'string' || !name || name.length > 128)
         throw new TypeError('A registered world name is required');
-      const source = await load(name);
-      const id = native('create', name, source);
+      const entry = await load(name);
+      let id;
+      try { id = await native('create', name, entry); }
+      catch (error) { load('release', entry); throw error; }
       const target = new EventTarget();
       const state = {target, disposed: false};
       worlds.set(id, state);
@@ -122,7 +124,7 @@
             if (view.worldId === id) closeView(view, false);
           }
           try { native('disposeWorld', id); }
-          finally { worlds.delete(id); }
+          finally { worlds.delete(id); load('release', entry); }
         }},
       });
       return Object.freeze(target);

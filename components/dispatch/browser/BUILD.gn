@@ -1,18 +1,18 @@
 source_set("browser") {
   public = [
-    "context.h",
     "dispatch_host.h",
     "host_dispatch.h",
+    "renderer_request_context.h",
     "request_registry.h",
     "rpc.h",
     "rpc_handler.h",
   ]
   sources = [
-    "context.cc",
-    "context.h",
     "dispatch_host.cc",
     "dispatch_host.h",
     "host_dispatch.h",
+    "renderer_request_context.cc",
+    "renderer_request_context.h",
     "request_registry.cc",
     "request_registry.h",
     "rpc.cc",

@@ -1,0 +1,27 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/build/shell_api_protocol.gni")
+import("//tuffite/tuffite_in_chromium.gni")
+
+assert(tuffite_in_chromium)
+
+shell_api_protocol("protocol") {
+  definitions = [
+    "//tuffite/framework/public/shell_api/common.mojom",
+    "//tuffite/framework/public/shell_api/dialog.mojom",
+    "//tuffite/framework/public/shell_api/path.mojom",
+    "//tuffite/framework/public/shell_api/remoting.mojom",
+    "//tuffite/framework/public/shell_api/fs.mojom",
+    "//tuffite/framework/public/shell_api/storage.mojom",
+    "//tuffite/framework/public/shell_api/log.mojom",
+    "//tuffite/framework/public/shell_api/network.mojom",
+    "//tuffite/framework/public/shell_api/utility.mojom",
+    "//tuffite/framework/public/shell_api/window.mojom",
+  ]
+  visibility = [
+    "//tuffite/framework/app/services/remoting:protocol",
+    "//tuffite/framework/browser/services/shell_api/commands",
+    "//tuffite/framework/test:*",
+  ]
+}

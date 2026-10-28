@@ -10,7 +10,9 @@
 #include "base/strings/utf_string_conversions.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/weak_document_ptr.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_contents_observer.h"
 #include "tuffite/framework/browser/services/javascript_dialog/javascript_dialog_service.h"
 #include "ui/base/models/dialog_model.h"
 #include "ui/views/bubble/bubble_dialog_model_host.h"
@@ -21,13 +23,18 @@
 
 namespace tuffite {
 namespace {
-class DialogView final : public views::View {
+class DialogView final : public views::View,
+                         public content::WebContentsObserver {
  public:
-  DialogView(const std::u16string& message,
+  DialogView(content::RenderFrameHost* frame,
+             const std::u16string& message,
              const std::u16string& prompt,
              bool is_prompt,
              content::JavaScriptDialogManager::DialogClosedCallback callback)
-      : callback_(std::move(callback)) {
+      : content::WebContentsObserver(
+            content::WebContents::FromRenderFrameHost(frame)),
+        document_(frame->GetWeakDocumentPtr()),
+        callback_(std::move(callback)) {
     SetUseDefaultFillLayout(true);
     message_ = AddChildView(
         std::make_unique<views::MessageBoxView>(message.substr(0, 4096), true));
@@ -41,6 +48,7 @@ class DialogView final : public views::View {
     if (!callback_) {
       return;
     }
+    accept = accept && document_.AsRenderFrameHostIfValid();
     std::u16string input =
         accept ? (override_text ? *override_text
                                 : std::u16string(message_->GetInputText()))
@@ -53,6 +61,13 @@ class DialogView final : public views::View {
   }
 
  private:
+  void DidFinishNavigation(content::NavigationHandle*) override {
+    if (!document_.AsRenderFrameHostIfValid()) {
+      Finish(false);
+    }
+  }
+  void WebContentsDestroyed() override { Finish(false); }
+  content::WeakDocumentPtr document_;
   raw_ptr<views::MessageBoxView> message_ = nullptr;
   content::JavaScriptDialogManager::DialogClosedCallback callback_;
   base::WeakPtrFactory<DialogView> weak_factory_{this};
@@ -69,7 +84,8 @@ class JavaScriptDialogServiceImpl final : public JavaScriptDialogService {
                            bool* suppressed) override {
     *suppressed = shutting_down_ || dialogs_.contains(contents) ||
                   contents->GetVisibility() != content::Visibility::VISIBLE ||
-                  !contents->GetTopLevelNativeWindow();
+                  !views::Widget::GetTopLevelWidgetForNativeView(
+                      contents->GetNativeView());
     if (*suppressed) {
       return;
     }
@@ -79,7 +95,8 @@ class JavaScriptDialogServiceImpl final : public JavaScriptDialogService {
                              content::RenderFrameHost* frame,
                              bool is_reload,
                              DialogClosedCallback callback) override {
-    if (shutting_down_ || !contents->GetTopLevelNativeWindow()) {
+    if (shutting_down_ || !views::Widget::GetTopLevelWidgetForNativeView(
+                              contents->GetNativeView())) {
       std::move(callback).Run(false, u"");
       return;
     }
@@ -122,7 +139,7 @@ class JavaScriptDialogServiceImpl final : public JavaScriptDialogService {
             const std::u16string& prompt,
             DialogClosedCallback callback) {
     auto view = std::make_unique<DialogView>(
-        message, prompt, type == content::JAVASCRIPT_DIALOG_TYPE_PROMPT,
+        frame, message, prompt, type == content::JAVASCRIPT_DIALOG_TYPE_PROMPT,
         base::BindOnce(
             [](base::WeakPtr<JavaScriptDialogServiceImpl> service,
                content::WebContents* contents, DialogClosedCallback callback,
@@ -166,7 +183,9 @@ class JavaScriptDialogServiceImpl final : public JavaScriptDialogService {
     auto host = views::BubbleDialogModelHost::CreateModal(
         builder.Build(), ui::mojom::ModalType::kWindow);
     views::DialogDelegate::CreateDialogWidget(
-        std::move(host), contents->GetTopLevelNativeWindow(),
+        std::move(host),
+        views::Widget::GetTopLevelWidgetForNativeView(contents->GetNativeView())
+            ->GetNativeWindow(),
         contents->GetNativeView())
         ->Show();
   }

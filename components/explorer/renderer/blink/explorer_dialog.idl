@@ -6,6 +6,8 @@
     readonly attribute AbortSignal signal;
   readonly attribute DOMString type;
     readonly attribute DOMString message;
+    readonly attribute DOMString url;
+    readonly attribute DOMString initiatingOrigin;
     readonly attribute DOMString defaultValue;
     readonly attribute boolean isReload;
     readonly attribute DOMString from;

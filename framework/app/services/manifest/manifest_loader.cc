@@ -3,6 +3,7 @@
 
 #include <algorithm>
 
+#include "base/files/file_enumerator.h"
 #include "base/files/file_util.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
@@ -39,50 +40,12 @@ bool IsSafeRelativePath(std::string_view value) {
   return !path.IsAbsolute() && !path.ReferencesParent();
 }
 
-bool IsIdentifier(std::string_view value) {
-  if (value.empty() || value.size() > 128 ||
-      !(base::IsAsciiAlpha(value.front()) || value.front() == '_' ||
-        value.front() == '$')) {
-    return false;
-  }
-  for (char character : value.substr(1)) {
-    if (!(base::IsAsciiAlphaNumeric(character) || character == '_' ||
-          character == '$')) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool IsCapabilityName(std::string_view value) {
   return !value.empty() && value.size() <= 128 &&
          std::ranges::all_of(value, [](char character) {
            return base::IsAsciiAlphaNumeric(character) || character == '-' ||
                   character == '_';
          });
-}
-
-bool IsUtilityName(std::string_view value) {
-  if (value.size() > 128) {
-    return false;
-  }
-  while (true) {
-    const size_t separator = value.find_first_of(".:");
-    if (!IsIdentifier(value.substr(0, separator))) {
-      return false;
-    }
-    if (separator == std::string_view::npos) {
-      return true;
-    }
-    if (value[separator] == ':') {
-      if (value.substr(separator, 2) != "::") {
-        return false;
-      }
-      value.remove_prefix(separator + 2);
-    } else {
-      value.remove_prefix(separator + 1);
-    }
-  }
 }
 
 bool IsWindowLabel(std::string_view value) {
@@ -96,6 +59,29 @@ bool IsWindowLabel(std::string_view value) {
 }
 
 bool IsApplicationScheme(std::string_view value) {
+  constexpr std::string_view reserved[] = {"http",
+                                           "https",
+                                           "ws",
+                                           "wss",
+                                           "ftp",
+                                           "file",
+                                           "filesystem",
+                                           "blob",
+                                           "data",
+                                           "javascript",
+                                           "about",
+                                           "chrome",
+                                           "chrome-untrusted",
+                                           "chrome-extension",
+                                           "devtools",
+                                           "view-source",
+                                           "vbscript",
+                                           "shell",
+                                           "ms-msdt",
+                                           "search-ms"};
+  if (std::ranges::contains(reserved, value)) {
+    return false;
+  }
   if (value.empty() || !base::IsAsciiLower(value.front())) {
     return false;
   }
@@ -119,11 +105,67 @@ bool IsValidApplicationId(std::string_view value) {
   return true;
 }
 
+std::optional<std::vector<std::string>> ParseApplicationSchemes(
+    const base::DictValue& app,
+    std::string* error) {
+  const auto* values = app.FindList("schemes");
+  std::vector<std::string> schemes;
+  if (values && !values->empty() && values->size() <= 16) {
+    for (const auto& value : *values) {
+      const auto* scheme = value.GetIfString();
+      if (!scheme || scheme->size() > 64 || !IsApplicationScheme(*scheme) ||
+          std::ranges::contains(schemes, *scheme)) {
+        break;
+      }
+      schemes.push_back(*scheme);
+    }
+    if (schemes.size() == values->size()) {
+      return schemes;
+    }
+  }
+  if (error) {
+    *error =
+        "app.schemes requires 1..16 unique lowercase non-reserved schemes (up "
+        "to 64 bytes)";
+  }
+  return std::nullopt;
+}
+bool MergeConfiguration(std::string* serialized,
+                        std::string_view runtime_configuration) {
+  if (runtime_configuration.empty()) {
+    return true;
+  }
+  auto root = base::JSONReader::ReadDict(*serialized, base::JSON_PARSE_RFC);
+  auto runtime =
+      base::JSONReader::ReadDict(runtime_configuration, base::JSON_PARSE_RFC);
+  if (!root || !runtime || !root->FindDict("app") ||
+      !runtime->FindDict("app") || !runtime->FindDict("browser")) {
+    return false;
+  }
+  for (const auto* key :
+       {"schemes", "assets", "windows", "network", "isolatedWorlds"}) {
+    root->FindDict("app")->Remove(key);
+  }
+  for (const auto [key, value] : *runtime->FindDict("app")) {
+    if (key == "identifier" || key == "shellApi") {
+      return false;
+    }
+    root->FindDict("app")->Set(key, value.Clone());
+  }
+  root->Set("browser", runtime->FindDict("browser")->Clone());
+  auto merged = base::WriteJson(*root);
+  if (!merged || merged->size() > kMaxManifestBytes) {
+    return false;
+  }
+  *serialized = std::move(*merged);
+  return true;
+}
 }  // namespace
 // static
-std::optional<std::string> ManifestLoader::ReadApplicationScheme(
+std::optional<std::vector<std::string>> ManifestLoader::ReadApplicationSchemes(
     const base::FilePath& package_root,
-    std::string* error) {
+    std::string* error,
+    std::string_view runtime_configuration) {
   const base::FilePath manifest_path =
       package_root.Append(FILE_PATH_LITERAL("tuffite.json"));
   std::string serialized;
@@ -134,41 +176,33 @@ std::optional<std::string> ManifestLoader::ReadApplicationScheme(
     }
     return std::nullopt;
   }
+  if (!MergeConfiguration(&serialized, runtime_configuration)) {
+    return {};
+  }
   auto parsed = base::JSONReader::Read(serialized, base::JSON_PARSE_RFC);
-  const base::ListValue* windows =
-      parsed && parsed->is_dict() && parsed->GetDict().FindDict("app")
-          ? parsed->GetDict().FindDict("app")->FindList("windows")
-          : nullptr;
-  const base::DictValue* first =
-      windows && !windows->empty() ? (*windows)[0].GetIfDict() : nullptr;
-  const std::string* url = first ? first->FindString("url") : nullptr;
-  if (!url) {
+  const auto* app =
+      parsed && parsed->is_dict() ? parsed->GetDict().FindDict("app") : nullptr;
+  if (!app) {
     if (error) {
-      *error = "app.windows[0].url is required";
+      *error = "app must be an object";
     }
     return std::nullopt;
   }
-  const size_t separator = url->find("://");
-  const std::string scheme = separator == std::string::npos
-                                 ? std::string()
-                                 : url->substr(0, separator);
-  if (!IsApplicationScheme(scheme) || scheme == "http" || scheme == "https") {
-    if (error) {
-      *error = "app.windows[0].url has an invalid application scheme";
-    }
-    return std::nullopt;
-  }
-  return scheme;
+  return ParseApplicationSchemes(*app, error);
 }
 
 // static
 bool ManifestLoader::ReadNetworkDisableHttp2(
-    const base::FilePath& package_root) {
+    const base::FilePath& package_root,
+    std::string_view runtime_configuration) {
   std::string serialized;
   if (!base::ReadFileToStringWithMaxSize(
           package_root.Append(FILE_PATH_LITERAL("tuffite.json")), &serialized,
           kMaxManifestBytes)) {
     return false;
+  }
+  if (!MergeConfiguration(&serialized, runtime_configuration)) {
+    return {};
   }
   auto parsed = base::JSONReader::Read(serialized, base::JSON_PARSE_RFC);
   const base::DictValue* app =
@@ -180,7 +214,8 @@ bool ManifestLoader::ReadNetworkDisableHttp2(
 // static
 std::optional<ManifestDefinition> ManifestLoader::Load(
     const base::FilePath& package_root,
-    std::string* error) {
+    std::string* error,
+    std::string_view runtime_configuration) {
   auto fail =
       [error](std::string message) -> std::optional<ManifestDefinition> {
     if (error) {
@@ -195,6 +230,9 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
   if (!base::ReadFileToStringWithMaxSize(manifest_path, &serialized,
                                          kMaxManifestBytes)) {
     return fail("unable to read tuffite.json or manifest exceeds 1 MiB");
+  }
+  if (!MergeConfiguration(&serialized, runtime_configuration)) {
+    return fail("invalid application runtime configuration");
   }
   base::JSONReader::Result parsed =
       base::JSONReader::ReadAndReturnValueWithError(serialized,
@@ -216,27 +254,35 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
   }
 
   static constexpr std::string_view kAppKeys[] = {
-      "identifier", "security", "shellApi",  "assets",
-      "windows",    "network",  "utilities", "isolatedWorlds"};
+      "identifier", "shellApi",       "assets", "windows",
+      "network",    "isolatedWorlds", "schemes"};
   for (const auto [key, value] : *app) {
     if (!std::ranges::contains(kAppKeys, key)) {
       return fail("unknown app field: " + std::string(key));
     }
   }
   auto manifest = std::make_unique<ManifestData>();
+  auto schemes = ParseApplicationSchemes(*app, error);
+  if (!schemes) {
+    return std::nullopt;
+  }
+  manifest->assets_.schemes = std::move(*schemes);
   manifest->package_root_ = package_root;
   manifest->assets_.root = package_root.AppendASCII("assets");
-  const base::DictValue* security = app ? app->FindDict("security") : nullptr;
-  if (!security) {
-    return fail("app.security must be an object");
+  const auto* browser = root.FindDict("browser");
+  if (!browser || !browser->FindList("rules")) {
+    return fail("browser requires a rules array");
   }
-  if (const std::string* policy =
-          security ? security->FindString("csp") : nullptr) {
-    if (policy->empty() || policy->size() > 4096 ||
-        policy->find_first_of("\r\n") != std::string::npos) {
-      return fail("app.security.csp is invalid");
+  for (const auto [key, value] : *browser) {
+    if (key != "rules" && key != "devtools") {
+      return fail("unknown browser field: " + std::string(key));
     }
-    manifest->assets_.content_security_policy = *policy;
+  }
+  if (const auto* devtools = browser->Find("devtools")) {
+    if (!devtools->is_bool()) {
+      return fail("browser.devtools must be a boolean");
+    }
+    manifest->devtools_enabled_ = devtools->GetBool();
   }
   manifest->application_id_ = *application_id;
   if (root.contains("productName") && !root.FindString("productName")) {
@@ -251,29 +297,6 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
       manifest->product_name_.find('\0') != std::string::npos) {
     return fail("productName is invalid");
   }
-  if (const auto* utilities_value = app->Find("utilities")) {
-    const auto* utilities = utilities_value->GetIfDict();
-    if (!utilities) {
-      return fail("app.utilities must be an object");
-    }
-    for (const auto [name, definition] : *utilities) {
-      if (!IsUtilityName(name) || !definition.is_dict()) {
-        return fail(
-            "app.utilities requires valid names and object definitions");
-      }
-      for (const auto [key, value] : definition.GetDict()) {
-        if (key != "configuration") {
-          return fail("unknown app.utilities option");
-        }
-        auto json = base::WriteJson(value);
-        if (!json || json->size() > 64 * 1024) {
-          return fail("utility startup configuration exceeds 64 KiB");
-        }
-        manifest->utility_configurations_.emplace(
-            name, std::vector<uint8_t>(json->begin(), json->end()));
-      }
-    }
-  }
   if (const auto* value = app->Find("isolatedWorlds")) {
     const auto* worlds = value->GetIfDict();
     if (!worlds || worlds->size() > 32) {
@@ -287,8 +310,9 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
       const auto& config = definition.GetDict();
       const auto* entry = config.FindString("entry");
       const auto* origins = config.FindList("origins");
-      if (config.size() != 2 || !entry || !IsSafeRelativePath(*entry) ||
-          !origins || origins->empty() || origins->size() > 32) {
+      if ((config.size() != 2 && config.size() != 3) || !entry ||
+          !IsSafeRelativePath(*entry) || !origins || origins->empty() ||
+          origins->size() > 32) {
         return fail(
             "isolated worlds require a package-relative entry and origins");
       }
@@ -301,17 +325,64 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
         }
         world.origins.push_back(std::move(normalized));
       }
-      const auto path =
-          manifest->assets_.root.Append(base::FilePath::FromUTF8Unsafe(*entry));
-      if (!access::HasNoSymlinkComponents(manifest->assets_.root, path) ||
-          !base::ReadFileToStringWithMaxSize(path, &world.source, 8 * 1024 * 1024) ||
-          world.source.empty() || !base::IsStringUTF8(world.source)) {
+      const auto* isolated_directory = config.FindString("directory");
+      if (config.contains("directory") &&
+          (!isolated_directory || !IsSafeRelativePath(*isolated_directory))) {
+        return fail("invalid isolated world directory");
+      }
+      auto entry_path = base::FilePath::FromUTF8Unsafe(*entry);
+      const auto isolated_root =
+          isolated_directory
+              ? manifest->assets_.root.Append(
+                    base::FilePath::FromUTF8Unsafe(*isolated_directory))
+              : manifest->assets_.root.Append(entry_path.DirName());
+      world.entry =
+          isolated_directory ? *entry : entry_path.BaseName().AsUTF8Unsafe();
+      if (!isolated::IsValidResourcePath(world.entry) ||
+          !access::HasNoSymlinkComponents(manifest->assets_.root,
+                                          isolated_root) ||
+          !base::DirectoryExists(isolated_root)) {
+        return fail("invalid isolated world package root");
+      }
+      base::FileEnumerator files(
+          isolated_root, true,
+          base::FileEnumerator::FILES | base::FileEnumerator::DIRECTORIES
+#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
+              | base::FileEnumerator::SHOW_SYM_LINKS
+#endif
+      );
+      for (auto path = files.Next(); !path.empty(); path = files.Next()) {
+        if (!access::HasNoSymlinkComponents(isolated_root, path)) {
+          return fail("isolated world package contains a symlink");
+        }
+        if (base::DirectoryExists(path)) {
+          continue;
+        }
+        base::FilePath relative;
+        if (!isolated_root.AppendRelativePath(path, &relative)) {
+          return fail("invalid isolated resource path");
+        }
+        auto resource_path = relative.AsUTF8Unsafe();
+        std::replace(resource_path.begin(), resource_path.end(), '\\', '/');
+        std::string contents;
+        if (!isolated::IsValidResourcePath(resource_path) ||
+            world.resources.size() >= 1024 ||
+            !base::ReadFileToStringWithMaxSize(path, &contents,
+                                               8 * 1024 * 1024)) {
+          return fail("invalid or oversized isolated resource");
+        }
+        total_source_bytes += contents.size();
+        if (total_source_bytes > 32 * 1024 * 1024) {
+          return fail("isolated world packages exceed 32 MiB");
+        }
+        world.resources.emplace(resource_path, std::move(contents));
+      }
+      const auto source = world.resources.find(world.entry);
+      if (source == world.resources.end() || source->second.empty() ||
+          !base::IsStringUTF8(source->second)) {
         return fail("unable to read isolated world entry: " + *entry);
       }
-      total_source_bytes += world.source.size();
-      if (total_source_bytes > 32 * 1024 * 1024) {
-        return fail("isolated world entries exceed 32 MiB");
-      }
+
       manifest->isolated_worlds_.emplace(name, std::move(world));
     }
   }
@@ -371,13 +442,11 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
     manifest->windows_.push_back(std::move(configured));
   }
   manifest->entry_url_ = manifest->windows_.front().url;
-  manifest->assets_.scheme = manifest->entry_url_.scheme();
   manifest->app_host_ = manifest->entry_url_.host();
-  if (!std::ranges::all_of(
-          manifest->windows_, [&](const app::AppWindow& window) {
-            return window.url.scheme() == manifest->assets_.scheme;
-          })) {
-    return fail("all app.windows URLs must use the application scheme");
+  if (!std::ranges::all_of(manifest->windows_, [&](const auto& window) {
+        return manifest->assets_.HandlesScheme(window.url.scheme());
+      })) {
+    return fail("app.windows URLs must use a declared app.schemes entry");
   }
   const url::Origin entry_origin = url::Origin::Create(manifest->entry_url_);
   manifest->shell_api_origin_patterns_.push_back(entry_origin.Serialize());
@@ -437,8 +506,11 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
       return fail("invalid app.assets route");
     }
     for (const auto& pattern : route.origins) {
-      if (!pattern.starts_with(manifest->assets_.scheme + "://")) {
-        return fail("assets must use the application scheme");
+      if (!std::ranges::any_of(manifest->assets_.schemes,
+                               [&](const auto& scheme) {
+                                 return pattern.starts_with(scheme + "://");
+                               })) {
+        return fail("assets must use a declared app.schemes entry");
       }
     }
     route.directory = directory != nullptr;
@@ -498,31 +570,38 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
         "utilityRoutes is no longer supported; register Mojom interfaces in "
         "code");
   }
-  const auto* rules = security->FindList("capabilities");
+  const auto* rules = browser->FindList("rules");
   if (!rules) {
-    return fail("app.security.capabilities must be an array");
+    return fail("browser.rules must be an array");
   }
   // The new policy is default-deny, including the entry document.
   manifest->shell_api_origin_patterns_.clear();
   manifest->explorer_origin_patterns_.clear();
   for (const auto& rule_value : *rules) {
     const auto* rule = rule_value.GetIfDict();
-    const auto* identifier = rule ? rule->FindString("identifier") : nullptr;
-    if (!identifier || !IsCapabilityName(*identifier) ||
+    if (!rule) {
+      return fail("browser rule must be an object");
+    }
+    const auto* identifier = rule->FindString("identifier");
+    if ((rule->contains("identifier") &&
+         (!identifier || !IsCapabilityName(*identifier))) ||
         !rule->FindList("origins") || rule->FindList("origins")->empty() ||
-        std::ranges::any_of(manifest->origin_capabilities_, [&](const auto& c) {
-          return c.identifier == *identifier;
-        })) {
-      return fail("capability requires unique identifier and origins");
+        (identifier &&
+         std::ranges::any_of(manifest->origin_rules_, [&](const auto& c) {
+           return c.identifier == *identifier;
+         }))) {
+      return fail(
+          "browser rule requires origins and an optional unique identifier");
     }
     for (const auto [key, value] : *rule) {
       if (key != "identifier" && key != "description" && key != "origins" &&
-          key != "shellApi" && key != "explorer" && key != "devtools") {
+          key != "shellApi" && key != "explorer" && key != "devtools" &&
+          key != "csp") {
         return fail("unknown capability field: " + std::string(key));
       }
     }
-    OriginCapability capability;
-    capability.identifier = *identifier;
+    OriginRule capability;
+    capability.identifier = identifier ? *identifier : std::string();
     if (const auto* devtools = rule->Find("devtools")) {
       if (!devtools->is_bool()) {
         return fail("capability devtools must be a boolean");
@@ -533,15 +612,66 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
                       &capability.origins)) {
       return std::nullopt;
     }
+    if (const auto* csp = rule->Find("csp")) {
+      if (!csp->is_string() || csp->GetString().empty() ||
+          csp->GetString().size() > 4096 ||
+          csp->GetString().find_first_of("\r\n") != std::string::npos ||
+          csp->GetString().find('\0') != std::string::npos) {
+        return fail("browser rule csp must be a nonempty header value");
+      }
+      capability.csp = csp->GetString();
+      manifest->assets_.csp_rules.push_back(
+          {capability.origins, capability.csp});
+    }
     if (const auto* value = rule->Find("explorer")) {
       const auto* explorer = value->GetIfDict();
       if (!explorer) {
         return fail("explorer grant must be an object");
       }
       for (const auto [key, flag] : *explorer) {
+        if (key == "behavior") {
+          continue;
+        }
         if (!flag.is_bool() ||
             (key != "create" && key != "executeJavaScript")) {
           return fail("invalid explorer grant");
+        }
+      }
+      if (const auto* behavior_value = explorer->Find("behavior")) {
+        const auto* behavior = behavior_value->GetIfDict();
+        if (!behavior) {
+          return fail("explorer.behavior must be an object");
+        }
+        for (const auto [name, configuration] : *behavior) {
+          auto action = ParseExplorerAction(name == "externalProtocol"
+                                                ? "external-protocol"
+                                            : name == "newWindow" ? "new-window"
+                                                                  : name);
+          if (name == "external-protocol" || name == "new-window") {
+            return fail("manifest behavior names must use camelCase");
+          }
+          const auto* object = configuration.GetIfDict();
+          const auto* mode = object ? object->FindString("mode") : nullptr;
+          auto parsed_mode = mode ? ParseExplorerMode(*mode) : std::nullopt;
+          if (!action || !object || !parsed_mode) {
+            return fail("invalid explorer behavior");
+          }
+          for (const auto [key, ignored] : *object) {
+            if (key != "mode" && key != "timeoutMs") {
+              return fail("unknown behavior parameter");
+            }
+          }
+          ExplorerBehaviorEntry entry{.mode = *parsed_mode};
+          if (const auto* timeout = object->Find("timeoutMs")) {
+            if (!timeout->is_int() || timeout->GetInt() < 1 ||
+                timeout->GetInt() > 300000 ||
+                *parsed_mode != ExplorerMode::kDelegate ||
+                *action == ExplorerAction::kNavigation) {
+              return fail("invalid behavior timeoutMs");
+            }
+            entry.timeout_ms = timeout->GetInt();
+          }
+          capability.behavior.insert_or_assign(*action, entry);
         }
       }
       capability.create_explorer = explorer->FindBool("create").value_or(false);
@@ -646,7 +776,7 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
         manifest->shell_api_origin_patterns_.push_back(origin);
       }
     }
-    manifest->origin_capabilities_.push_back(std::move(capability));
+    manifest->origin_rules_.push_back(std::move(capability));
   }
   const auto* network = app->FindDict("network");
   if (network) {

@@ -1,0 +1,32 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+import("//tuffite/tuffite_in_chromium.gni")
+assert(tuffite_in_chromium)
+source_set("profile") {
+  sources = [
+    "profile_manager.cc",
+    "profile_manager.h",
+    "profile_service_factory.cc",
+    "profile_service_factory.h",
+  ]
+  public_deps = [
+    "//base",
+    "//components/keyed_service/core",
+    "//tuffite/framework/app:context",
+    "//tuffite/framework/app/services:factory",
+    "//tuffite/framework/public/c_api:abi",
+  ]
+  deps = [
+    "//content/public/browser",
+    "//net",
+    "//third_party/blink/public:blink",
+    "//tuffite/framework/app:abi_headers",
+    "//tuffite/framework/app/services/manifest",
+    "//tuffite/framework/app/services/utility",
+    "//tuffite/framework/browser:support",
+    "//tuffite/framework/browser/services/window",
+    "//tuffite/framework/common:languages",
+    "//ui/base",
+    "//url",
+  ]
+}

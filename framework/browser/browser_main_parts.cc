@@ -17,10 +17,11 @@
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
 #include "tuffite/buildflags.h"
-#include "tuffite/framework/app/abi_host_bridge.h"
+#include "tuffite/framework/app/abi/application.h"
+#include "tuffite/framework/app/abi/host.h"
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
-#include "tuffite/framework/app/services/utility/utility_service.h"
+#include "tuffite/framework/app/services/profile/profile_manager.h"
 #include "tuffite/framework/browser/browser_context.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service_factory.h"
@@ -35,6 +36,7 @@
 #if BUILDFLAG(IS_MAC)
 #include "content/public/browser/context_factory.h"
 #endif
+#include "content/public/browser/child_process_security_policy.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/web_contents.h"
@@ -85,9 +87,16 @@ class TuffiteViewsDelegate final : public views::ViewsDelegate {
 
 }  // namespace
 
-BrowserMainParts::BrowserMainParts(AbiHostBridge& bridge,
-                                   ApplicationContext& application)
-    : bridge_(bridge), application_(application) {}
+BrowserMainParts::BrowserMainParts(abi::Application& application,
+                                   abi::Host& host,
+                                   base::RepeatingClosure prepare_browser,
+                                   base::RepeatingClosure begin_shutdown,
+                                   base::RepeatingClosure shutdown)
+    : application_(application),
+      host_(host),
+      prepare_browser_(std::move(prepare_browser)),
+      begin_shutdown_(std::move(begin_shutdown)),
+      shutdown_(std::move(shutdown)) {}
 BrowserMainParts::~BrowserMainParts() = default;
 
 void BrowserMainParts::ToolkitInitialized() {
@@ -111,7 +120,17 @@ void BrowserMainParts::ToolkitInitialized() {
 }
 
 int BrowserMainParts::PreMainMessageLoopRun() {
-  const ManifestService* manifest = application_->GetService<ManifestService>();
+  // Application resources use ordinary web origins. Allow requests across the
+  // declared internal schemes while retaining Chromium's per-process commit
+  // grants. Origin policy and resource loaders still authorize each operation.
+  auto* security = content::ChildProcessSecurityPolicy::GetInstance();
+  for (const auto& scheme : ApplicationSchemes()) {
+    if (!security->IsWebSafeScheme(scheme)) {
+      security->RegisterWebSafeIsolatedScheme(scheme);
+    }
+  }
+  const ManifestService* manifest =
+      host_->application_context()->GetService<ManifestService>();
   CHECK(manifest);
   base::FilePath profile =
       base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
@@ -121,14 +140,25 @@ int BrowserMainParts::PreMainMessageLoopRun() {
     CHECK(data);
     profile = data->AppendASCII("profile");
   }
+  if (application_->table().start_profile) {
+    auto* profiles = host_->application_context()->GetService<ProfileManager>();
+    if (!profiles->Configure(*application_, profile)) {
+      return 64;
+    }
+    prepare_browser_.Run();
+    application_->InitializeBrowser(base::BindOnce(
+        &BrowserMainParts::OnBrowserInitialized, weak_factory_.GetWeakPtr()));
+    return 0;
+  }
   CHECK(base::CreateDirectory(profile));
-  browser_context_ =
-      std::make_unique<BrowserContext>(std::move(profile), *application_);
-  DevToolsServiceFactory::GetForBrowserContext(browser_context_.get())
-      ->StartIfRequested(browser_context_.get());
-  bridge_->BindBrowserContext(browser_context_->GetWeakPtr());
-  bridge_->BindBrowserTaskRunner();
-  bridge_->InitializeBrowser(base::BindOnce(
+  browser_context_ = std::make_unique<BrowserContext>(
+      std::move(profile), *host_->application_context(), *application_);
+  startup_context_ = browser_context_->GetWeakPtr();
+  DevToolsServiceFactory::GetForBrowserContext(startup_context_.get())
+      ->StartIfRequested(startup_context_.get());
+  host_->BindBrowserContext(browser_context_->GetWeakPtr());
+  prepare_browser_.Run();
+  application_->InitializeBrowser(base::BindOnce(
       &BrowserMainParts::OnBrowserInitialized, weak_factory_.GetWeakPtr()));
   return 0;
 }
@@ -137,7 +167,7 @@ void BrowserMainParts::WillRunMainMessageLoop(
     std::unique_ptr<base::RunLoop>& run_loop) {
   quit_ = run_loop->QuitClosure();
   Window::SetQuitClosure(quit_);
-  if (bridge_->initialization_failed()) {
+  if (application_->initialization_failed()) {
     quit_.Run();
   }
 }
@@ -146,16 +176,21 @@ void BrowserMainParts::PostMainMessageLoopRun() {
   weak_factory_.InvalidateWeakPtrs();
   window_surface_test_observer_.reset();
   smoke_test_observer_.reset();
-  if (auto* devtools = DevToolsServiceFactory::GetForBrowserContext(
-          browser_context_.get(), false)) {
+  if (auto* devtools = startup_context_
+                           ? DevToolsServiceFactory::GetForBrowserContext(
+                                 startup_context_.get(), false)
+                           : nullptr) {
     devtools->Shutdown();
   }
-  bridge_->BeginShutdown();
-  application_->GetService<UtilityService>()->Shutdown();
-  bridge_->Stop();
+  begin_shutdown_.Run();
   Window::SetQuitClosure({});
   Window::Shutdown();
+  if (application_->table().start_profile) {
+    host_->application_context()->GetService<ProfileManager>()->Shutdown();
+  }
+  startup_context_ = nullptr;
   browser_context_.reset();
+  shutdown_.Run();
   screen_.reset();
 #if !BUILDFLAG(IS_MAC)
   wm_state_.reset();
@@ -172,11 +207,35 @@ void BrowserMainParts::OnBrowserInitialized(bool ok) {
     }
     return;
   }
-  InitializeMessageLoopContext();
+  if (application_->table().start_profile) {
+    host_->application_context()->GetService<ProfileManager>()->Open(
+        "default",
+        base::BindOnce(
+            [](base::WeakPtr<BrowserMainParts> self, BrowserContext* context) {
+              if (!self) {
+                return;
+              }
+              if (!context) {
+                LOG(ERROR) << "Unable to open startup profile";
+                if (self->quit_) {
+                  self->quit_.Run();
+                }
+                return;
+              }
+              self->startup_context_ = context->GetWeakPtr();
+              DevToolsServiceFactory::GetForBrowserContext(context)
+                  ->StartIfRequested(context);
+              self->InitializeMessageLoopContext();
+            },
+            weak_factory_.GetWeakPtr()));
+  } else {
+    InitializeMessageLoopContext();
+  }
 }
 
 void BrowserMainParts::InitializeMessageLoopContext() {
-  const ManifestService* manifest = application_->GetService<ManifestService>();
+  const ManifestService* manifest =
+      host_->application_context()->GetService<ManifestService>();
   CHECK(manifest);
   const base::CommandLine* command_line =
       base::CommandLine::ForCurrentProcess();
@@ -206,8 +265,9 @@ void BrowserMainParts::InitializeMessageLoopContext() {
     });
   }
   Window* primary_window =
-      window::WindowServiceFactory::GetForBrowserContext(browser_context_.get())
-          ->CreateStartupWindows(std::move(startup_windows), primary_size);
+      window::WindowServiceFactory::GetForBrowserContext(startup_context_.get())
+          ->CreateStartupWindows(*startup_context_, std::move(startup_windows),
+                                 primary_size);
 
   if (command_line->HasSwitch(kSmokeTestSwitch)) {
     base::FilePath marker = command_line->GetSwitchValuePath(kSmokeTestSwitch);

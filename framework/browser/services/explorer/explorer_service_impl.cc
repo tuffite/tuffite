@@ -10,6 +10,7 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "tuffite/components/explorer/browser/explorer_partition.h"
+#include "tuffite/components/explorer/browser/explorer_surface_data.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/services/explorer/explorer_navigation_throttle.h"
 #include "tuffite/framework/browser/services/window/window_service.h"
@@ -20,6 +21,24 @@
 namespace tuffite {
 ExplorerServiceImpl::ExplorerServiceImpl(const ManifestService& manifest)
     : manifest_(manifest) {}
+content::WebContents* ExplorerServiceImpl::OpenBrowserWindow(
+    std::unique_ptr<content::WebContents> contents) const {
+  if (stopped_ || !contents) {
+    return nullptr;
+  }
+  if (const auto* inherited =
+          WebContentsRoleData::GetExplorerPolicy(contents.get())) {
+    auto policy = *inherited;
+    // There is no owning Explorer element after adoption into a native window.
+    policy.behavior = ExplorerBehavior();
+    policy.navigation = ExplorerNavigationPolicy::kAllow;
+    policy.dialogs = ExplorerDialogPolicy::kBrowser;
+    ExplorerSurfaceData::UpdateExplorerBehavior(contents.get(), policy);
+  }
+  auto* service = window::WindowServiceFactory::GetForBrowserContext(
+      contents->GetBrowserContext());
+  return service ? service->OpenBrowserContents(std::move(contents)) : nullptr;
+}
 bool ExplorerServiceImpl::IsApp(const content::WebContents* contents) const {
   return !stopped_ &&
          WebContentsRoleData::GetRole(contents) == WebContentsRole::kApp;
@@ -81,6 +100,8 @@ bool ExplorerServiceImpl::Resolve(content::RenderFrameHost& frame,
   }
   ExplorerPolicy resolved;
   resolved.partition = partition;
+  resolved.behavior =
+      manifest_->ExplorerDefaults(frame.GetLastCommittedOrigin());
   resolved.inherit_partition_storage = parsed->inherit;
   resolved.execute_javascript_origins =
       manifest_->ExecuteJavaScriptOrigins(frame.GetLastCommittedOrigin());
@@ -99,7 +120,7 @@ bool ExplorerServiceImpl::Resolve(content::RenderFrameHost& frame,
 void ExplorerServiceImpl::AddNavigationThrottles(
     content::NavigationThrottleRegistry& registry) {
   if (!stopped_) {
-    AddExplorerNavigationThrottles(registry, manifest_->app_info().scheme);
+    AddExplorerNavigationThrottles(registry, manifest_->app_info().schemes);
   }
 }
 void ExplorerServiceImpl::Shutdown() {

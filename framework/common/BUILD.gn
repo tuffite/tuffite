@@ -4,6 +4,7 @@ import("//tuffite/tuffite_in_chromium.gni")
 assert(tuffite_in_chromium)
 import("//testing/test.gni")
 source_set("switches") {
+  public_deps = [ "//base" ]
   public = [ "switches.h" ]
   sources = public
 }

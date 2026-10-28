@@ -21,8 +21,8 @@ def abi_version():
     return tuple(int(value) for value in match.groups())
 
 
-def header():
-    major, minor, patch = abi_version()
+def header(version=None):
+    major, minor, patch = version or abi_version()
     return (
         "// Generated from crates/tuffite-abi/Cargo.toml; do not edit.\n"
         "#ifndef TUFFITE_ABI_VERSION_H_\n#define TUFFITE_ABI_VERSION_H_\n"
@@ -36,8 +36,13 @@ def header():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     text = header()
+    if args.check:
+        if not args.output.is_file() or args.output.read_text() != text:
+            parser.exit(1, f"stale ABI version header: {args.output}\n")
+        parser.exit()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if not args.output.exists() or args.output.read_text() != text:
-        args.output.write_text(text)
+        args.output.write_text(text, encoding="utf-8", newline="\n")

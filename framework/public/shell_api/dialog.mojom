@@ -1,0 +1,21 @@
+// Shell API contract. JS/TS, Rust and C++ adapters are generated.
+module tuffite;
+
+import "tuffite/framework/public/shell_api/common.mojom";
+
+struct OpenFileDialogOptions {
+  string? title;
+  string? defaultPath;
+  array<array<string>>? extensions;
+};
+
+struct OpenDirectoryDialogOptions {
+  string? title;
+};
+
+interface Dialog {
+  OpenFile@0(OpenFileDialogOptions? options) => (string? result);
+  OpenDirectory@1(OpenDirectoryDialogOptions? options) => (string? result);
+  // Writes only to the path explicitly selected in the native save dialog.
+  SaveFile@2(OpenFileDialogOptions? options, array<uint8> contents) => (string? result);
+};

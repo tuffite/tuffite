@@ -231,15 +231,15 @@ class OneShotDesktopCapture final
       // RPC deadline on a high-resolution desktop.
       SkBitmap bitmap;
       const bool installed = bitmap.installPixels(
-        SkImageInfo::Make(frame->size().width(), frame->size().height(),
-          kBGRA_8888_SkColorType, kOpaque_SkAlphaType),
-        frame->data(), frame->stride());
+          SkImageInfo::Make(frame->size().width(), frame->size().height(),
+                            kBGRA_8888_SkColorType, kOpaque_SkAlphaType),
+          frame->data(), frame->stride());
       auto encoded = installed
-        ? gfx::PNGCodec::FastEncodeBGRASkBitmap(bitmap, true)
-        : std::nullopt;
+                         ? gfx::PNGCodec::FastEncodeBGRASkBitmap(bitmap, true)
+                         : std::nullopt;
       VLOG(1) << "One-shot PNG encoding completed: " << frame->size().width()
-        << "x" << frame->size().height()
-        << ", bytes=" << (encoded ? encoded->size() : 0);
+              << "x" << frame->size().height()
+              << ", bytes=" << (encoded ? encoded->size() : 0);
       if (encoded) {
         status = api::Status::kOk;
         snapshot.width = static_cast<uint32_t>(frame->size().width());

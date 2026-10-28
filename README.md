@@ -13,7 +13,7 @@ The repository owns:
 
 - `framework/`: browser, renderer, utility, window, shell, and ABI code;
 - `components/`: reusable features, including Explorer Content/Blink integration;
-- `crates/`, `framework/public/abi.h`, and `packages/`: the Rust SDK, public ABI, generator,
+- `crates/`, `framework/public/c_api/`, and `packages/`: the Rust SDK, public ABI, generator,
   CLI, and JavaScript runtime;
 - `playground/`: the end-to-end application fixture and smoke test;
 - `build/`, `scripts/`, `x.py`, and `docs/`: native profiles, build/package tooling,
@@ -101,12 +101,16 @@ src/tuffite/
 |       |                     / tuffite_in_chromium.gni
 |       `-- test/ explorer_browser_support_unittest.cc / explorer_{test,target}.html
 |-- framework/
-|   |-- public/ abi.h
+|   |-- public/
+|   |   |-- c_api/ types.h / version.h / application.h / host.h
+|   |   |          / browser.h / shell_api.h / utility.h / isolated.h
+|   |   `-- shell_api/ *.mojom
 |   |-- bootstrap.cc / runtime.cc
 |   |-- common/ app_manifest.* / scope_pattern.* / constants.h / content_client.*
 |   |          / utility/utility_service.mojom / utility_service_name.h
 |   |-- app/ application_context.* / main_delegate.*
-|   |   |    abi_host_bridge.* / process_launch.*
+|   |   |    process_launch.*
+|   |   |-- abi/ application.{h,cc} / host.{h,cc}
 |   |   `-- services/ application_dependency* / application_keyed_service_factory.h
 |   |                  asset/ / policy/ / remoting/ / utility/
 |   |-- browser/ browser_context.* / browser_main_parts.* / content_browser_client.*
@@ -116,7 +120,7 @@ src/tuffite/
 |   |                  permission/ / shell_api/ / webauthn/ / window/
 |   |-- renderer/ content_renderer_client.*
 |   |-- utility/ content_utility_client.* / utility_service.* / js_extension_session.*
-|   `-- test/ abi_host_bridge_unittest.cc
+|   `-- test/ abi_unittest.cc
 |                 / utility_service_unittest.cc / utility_test_main.cc
 |-- patches/ config.json / chromium/.patches / chromium/*.patch
 `-- scripts/ # Python Framework development commands
@@ -187,7 +191,7 @@ responsibility.
 
 ### Generated builtin ShellAPI protocol
 
-Builtin ShellAPI contracts are `.mojom` files under `framework/shell_api`, listed
+Builtin ShellAPI contracts are `.mojom` files under `framework/public/shell_api`, listed
 explicitly in `packages/tuffite/tuffite.json` and the GN target. Mojom modules
 and exact Interface/Method names define method identity and permissions; there
 is no namespace or facade configuration in the manifest.
@@ -265,8 +269,8 @@ templates.
 process-lifetime addresses. Service instances remain scoped to one
 `ApplicationContext`; they are not process-wide singletons.
 
-`MainDelegate` owns the host bridge, MainDelegate, frozen manifest, and one
-application service context. `ApplicationDependencyManager::Get()` is a
+`MainDelegate` owns abi::Application, abi::Host and one application service context with its
+frozen manifest. `ApplicationDependencyManager::Get()` is a
 `base::NoDestructor` singleton. Each
 `ApplicationKeyedServiceFactory<Service>` registers its service-interface
 type with that manager and remains an explicit node in Chromium's dependency
@@ -400,7 +404,8 @@ file changed in the follow-up refactor.
 
 ### Startup composition and entry linkage
 
-`framework/app` contains MainDelegate, ApplicationContext and the ABI host bridge.
+`framework/app` contains MainDelegate and ApplicationContext; `app/abi` contains
+abi::Application and abi::Host for the two call directions.
 MainDelegate is the process composition root for every Chromium role; only the
 browser role creates the application keyed-service graph. It owns the Content
 clients and application state in `app:app`. ContentBrowserClient and
@@ -411,7 +416,7 @@ sandbox initialization. `framework/bootstrap.cc` owns host library loading in
 the shared `:framework` runtime, avoiding a second allocator in the executable.
 `runtime.cc` is the DLL-side C ABI entry, compiled in `:core` with
 `TUFFITE_FRAMEWORK_IMPLEMENTATION`; it supplies the exported `tuffite_run_application`
-and constructs and runs Application. These two translation units preserve the
+and constructs and runs MainDelegate. These two translation units preserve the
 executable/runtime sandbox boundary without a separate entry archive.
 
 
@@ -420,13 +425,16 @@ executable/runtime sandbox boundary without a separate entry archive.
 The public runtime entry is `tuffite_run_application`.
 `main.cc` initializes executable-level sandbox state and enters the shared
 launcher implementation; `runtime.cc` creates `MainDelegate`.
-`app/abi_host_bridge.*` adapts the host ABI and coordinates host start,
-stop, and callback delivery.
+`app/abi/application.*` owns the native-to-Rust connection and runtime handle.
+`app/abi/host.*` implements Rust-to-native capabilities and owns native pending
+replies. MainDelegate directly owns both objects and ApplicationContext, and
+coordinates startup, service teardown and runtime stop.
 
-Posted ABI work retains the owning `ApplicationContext`, then calls
+Posted ABI work resolves a weak binding to its `ApplicationContext`, then calls
 `GetService<UtilityService>()` on the browser sequence. It does not retain a
-UtilityService pointer across shutdown. `MainDelegate` destroys its keyed
-services before destroying the context, manifest, or bridge.
+UtilityService pointer across shutdown. `MainDelegate` first closes ABI business admission and tears down BrowserContext
+consumers, then releases ApplicationContext and its service graph before
+stopping Rust. Host callback tables and scheduling survive through Rust stop.
 
 Framework build ownership follows the implementation directories:
 

@@ -2,23 +2,26 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use tuffite::{ApplicationResult, Browser, BrowserContext, Utility, UtilityRequest};
+use tuffite::{Browser, BrowserContext, Result, Utility, UtilityRequest};
 
 static BROWSER_STARTS: AtomicUsize = AtomicUsize::new(0);
 
 struct Backend;
-#[tuffite::browser]
 impl Browser for Backend {
-    fn new(_: BrowserContext) -> ApplicationResult<Self> {
+    fn new(_: BrowserContext) -> Result<Self> {
         BROWSER_STARTS.fetch_add(1, Ordering::SeqCst);
         Ok(Self)
     }
 }
 
 struct Indexer;
-#[tuffite::utility(name = "indexer")]
 impl Utility for Indexer {
-    async fn new(_: tuffite::UtilityContext) -> ApplicationResult<Self> {
+    fn setup(
+        builder: tuffite::utility::Builder<Self>,
+    ) -> tuffite::Result<tuffite::utility::Builder<Self>> {
+        Ok(builder.name("indexer"))
+    }
+    async fn new(_: tuffite::UtilityContext) -> Result<Self> {
         Ok(Self)
     }
     async fn invoke(&self, _: UtilityRequest) -> tuffite::CommandResult {
@@ -27,9 +30,13 @@ impl Utility for Indexer {
 }
 
 struct Parser;
-#[tuffite::utility(name = "parser")]
 impl Utility for Parser {
-    async fn new(_: tuffite::UtilityContext) -> ApplicationResult<Self> {
+    fn setup(
+        builder: tuffite::utility::Builder<Self>,
+    ) -> tuffite::Result<tuffite::utility::Builder<Self>> {
+        Ok(builder.name("parser"))
+    }
+    async fn new(_: tuffite::UtilityContext) -> Result<Self> {
         Ok(Self)
     }
     async fn invoke(&self, _: UtilityRequest) -> tuffite::CommandResult {
@@ -38,9 +45,13 @@ impl Utility for Parser {
 }
 
 struct V8Parser;
-#[tuffite::utility(name = "v8_parser")]
 impl tuffite::utility::V8 for V8Parser {
-    fn new(_: tuffite::V8Context) -> ApplicationResult<Self> {
+    fn setup(
+        builder: tuffite::utility::v8::Builder,
+    ) -> tuffite::Result<tuffite::utility::v8::Builder> {
+        Ok(builder.name("v8_parser"))
+    }
+    fn new(_: tuffite::V8Context) -> Result<Self> {
         Ok(Self)
     }
 
@@ -57,16 +68,41 @@ impl tuffite::utility::V8 for V8Parser {
 }
 
 struct AssetsParser;
-#[tuffite::utility(name = "assets_parser")]
 impl tuffite::utility::V8 for AssetsParser {
-    fn new(_: tuffite::V8Context) -> ApplicationResult<Self> {
+    fn setup(
+        builder: tuffite::utility::v8::Builder,
+    ) -> tuffite::Result<tuffite::utility::v8::Builder> {
+        Ok(builder.name("assets_parser"))
+    }
+    fn new(_: tuffite::V8Context) -> Result<Self> {
         Ok(Self)
     }
 }
 
-#[tuffite::main(browser = Backend, utilities(Indexer, Parser, V8Parser, AssetsParser))]
-fn entry() -> tuffite::app::Builder<Backend> {
-    tuffite::app::Builder::new()
+struct App;
+impl tuffite::Application for App {
+    fn setup(builder: tuffite::app::Builder<Self>) -> tuffite::Result<tuffite::app::Builder<Self>> {
+        Ok(builder.configuration(tuffite::configuration::Configuration::new(["test"])))
+    }
+    fn new(_: tuffite::ApplicationContext) -> Result<Self> {
+        unreachable!()
+    }
+}
+#[tuffite::main]
+fn entry() -> tuffite::Embedding<App> {
+    tuffite::Embedding::new()
+        .browser::<Backend>()
+        .utility::<Indexer>()
+        .utility::<Parser>()
+        .v8_utility::<V8Parser>()
+        .v8_utility::<AssetsParser>()
+}
+
+unsafe extern "C" fn emit(
+    _: *mut std::ffi::c_void,
+    _: tuffite_abi::ByteSlice,
+) -> tuffite_abi::Status {
+    tuffite_abi::Status::Ok
 }
 
 #[test]
@@ -76,6 +112,20 @@ fn main_exports_only_explicit_named_utilities_and_a_stable_table() {
     assert_eq!(table, tuffite_get_application());
     // SAFETY: The getter returns immutable static storage on success.
     let table = unsafe { &*table };
+    let args = [tuffite_abi::ByteSlice::from_slice(b"test")];
+    // SAFETY: Input bytes and the copying-free sink live through synchronous preparation.
+    assert_eq!(
+        unsafe {
+            table.prepare_process.unwrap()(
+                0,
+                args.as_ptr(),
+                args.len(),
+                std::ptr::null_mut(),
+                Some(emit),
+            )
+        },
+        tuffite_abi::Status::Ok
+    );
     for (name, expected) in [("indexer", 0), ("parser", 0), ("v8_parser", 1)] {
         let mut runtime = u32::MAX;
         // SAFETY: Name is readable and output remains writable for the call.

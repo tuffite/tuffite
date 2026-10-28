@@ -4,22 +4,22 @@
 #ifndef TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_STORAGE_H_
 #define TUFFITE_FRAMEWORK_BROWSER_SERVICES_SHELL_API_COMMANDS_STORAGE_H_
 
-#include "tuffite/framework/shell_api/storage.mojom.h"
+#include "tuffite/framework/public/shell_api/storage.mojom.h"
 
 namespace tuffite::shell_api::storage {
 
 class StorageImpl final : public generated::Storage {
  public:
-  void Get(const dispatch::Context& context,
+  void Get(const dispatch::RendererRequestContext& context,
            generated::Storage::GetRequestPtr request,
            generated::Storage::GetCallback callback) override;
-  void Set(const dispatch::Context& context,
+  void Set(const dispatch::RendererRequestContext& context,
            generated::Storage::SetRequestPtr request,
            generated::Storage::SetCallback callback) override;
-  void Remove(const dispatch::Context& context,
+  void Remove(const dispatch::RendererRequestContext& context,
               generated::Storage::RemoveRequestPtr request,
               generated::Storage::RemoveCallback callback) override;
-  void Clear(const dispatch::Context& context,
+  void Clear(const dispatch::RendererRequestContext& context,
              generated::Storage::ClearRequestPtr request,
              generated::Storage::ClearCallback callback) override;
 };

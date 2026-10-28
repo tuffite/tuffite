@@ -6,11 +6,7 @@ import("//tuffite/tuffite_in_chromium.gni")
 assert(tuffite_in_chromium)
 
 source_set("commands") {
-  visibility = [
-    "//tuffite/framework/app",
-    "//tuffite/framework/browser/services/shell_api",
-    "//tuffite/framework/test:abi_host_bridge_unittests",
-  ]
+  visibility = [ "//tuffite/framework/browser/services/shell_api" ]
   public = [ "builtin.h" ]
   sources = [
     "builtin.cc",
@@ -37,7 +33,7 @@ source_set("commands") {
   ]
   public_deps = [
     "//tuffite/components/dispatch/browser",
-    "//tuffite/framework/shell_api:protocol",
+    "//tuffite/framework/public/shell_api:protocol",
   ]
   deps = [
     "//base",
@@ -49,11 +45,12 @@ source_set("commands") {
     "//tuffite/framework/app:context",
     "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/app/services/remoting",
+    "//tuffite/framework/app/services/remoting:protocol",
     "//tuffite/framework/app/services/utility",
     "//tuffite/framework/browser:support",
     "//tuffite/framework/browser/services/window",
     "//tuffite/framework/common:access",
-    "//tuffite/framework/public:abi",
+    "//tuffite/framework/public/c_api:abi",
     "//ui/shell_dialogs",
     "//url",
   ]

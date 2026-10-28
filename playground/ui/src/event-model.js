@@ -26,8 +26,8 @@ const record = (layer, event) => {
 };
 const source = document.createElement("explorer");
 source.id = "event-source";
-source.navigation = "allow";
-source.dialogs = "emit";
+source.behavior = "navigation: browser;";
+source.behavior += " dialog: delegate;";
 source.style.cssText = "display:block;width:100%;height:330px";
 const handle = (layer, event) => {
   record(layer, event);
@@ -56,8 +56,8 @@ const handle = (layer, event) => {
       return;
     }
     const target = document.createElement("explorer");
-    target.navigation = source.navigation;
-    target.dialogs = source.dialogs;
+    target.behavior = source.behavior;
+
     target.id = `event-window-${requests.length}`;
     target.style.cssText = "display:block;width:100%;height:180px";
     document.querySelector("#event-windows").append(target);
@@ -92,7 +92,7 @@ for (const type of [
 }
 window.tuffite.addEventListener("message", (event) => record("message", event));
 window.eventLab = { events, requests, source, holdDialog: false };
-source.src = new URL("./event-fixture.html", location.href).href;
+source.src = new URL("./fixtures/events.html", location.href).href;
 document.querySelector("#event-owner").append(source);
 document.querySelector("#event-open").onclick = () => {
   void source.executeJavaScript(
@@ -106,7 +106,7 @@ document.querySelector("#event-dialog").onclick = () => {
 };
 document.querySelector("#event-reset").onclick = () => {
   source.src = new URL(
-    "./event-fixture.html?reset=" + Date.now(),
+    "./fixtures/events.html?reset=" + Date.now(),
     location.href,
   ).href;
 };

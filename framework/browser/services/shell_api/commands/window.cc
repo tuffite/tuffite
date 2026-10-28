@@ -98,11 +98,12 @@ struct WindowCall {
 // Shared authorization and serialization, without dispatching native
 // operations.
 template <typename Callback>
-std::optional<WindowCall> Authorize(const ::tuffite::dispatch::Context& context,
-                                    std::string_view command,
-                                    std::optional<WindowId> id,
-                                    Callback& callback,
-                                    bool check_scope = true) {
+std::optional<WindowCall> Authorize(
+    const ::tuffite::dispatch::RendererRequestContext& context,
+    std::string_view command,
+    std::optional<WindowId> id,
+    Callback& callback,
+    bool check_scope = true) {
   if (!context.sender()) {
     rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return std::nullopt;
@@ -126,6 +127,14 @@ std::optional<WindowCall> Authorize(const ::tuffite::dispatch::Context& context,
     rpc::Reject(callback, rpc::Status::kInvalidArgument);
     return std::nullopt;
   }
+  // The registry is application-scoped, while renderer window capabilities
+  // retain their original BrowserContext boundary. Cross-profile orchestration
+  // is an explicit trusted Application operation.
+  if (!target->web_contents() || target->web_contents()->GetBrowserContext() !=
+                                     frame.GetBrowserContext()) {
+    rpc::Reject(callback, rpc::Status::kAccessDenied);
+    return std::nullopt;
+  }
   if (!manifest->IsShellApiScopeAllowed(
           origin, command, target == current ? "current" : "others",
           check_scope ? "window" : "")) {
@@ -143,7 +152,7 @@ void ReplyInfo(const WindowCall& call,
                           info ? ToInfo(*info) : nullptr);
 }
 }  // namespace
-void WindowImpl::Current(const dispatch::Context& context,
+void WindowImpl::Current(const dispatch::RendererRequestContext& context,
                          CurrentRequestPtr,
                          CurrentCallback callback) {
   if (auto call = Authorize(context, generated::Window::kCurrent, {}, callback,
@@ -151,19 +160,24 @@ void WindowImpl::Current(const dispatch::Context& context,
     ReplyInfo(*call, std::move(callback));
   }
 }
-void WindowImpl::List(const dispatch::Context& context,
+void WindowImpl::List(const dispatch::RendererRequestContext& context,
                       ListRequestPtr,
                       ListCallback callback) {
   if (auto call =
           Authorize(context, generated::Window::kList, {}, callback, false)) {
     std::vector<generated::WindowInfoPtr> result;
     for (const auto& info : call->service->List()) {
-      result.push_back(ToInfo(info));
+      auto* target = call->service->FindById(info.id);
+      if (target && target->web_contents() &&
+          target->web_contents()->GetBrowserContext() ==
+              context.frame().GetBrowserContext()) {
+        result.push_back(ToInfo(info));
+      }
     }
     std::move(callback).Run(rpc::Status::kOk, std::move(result));
   }
 }
-void WindowImpl::Create(const dispatch::Context& context,
+void WindowImpl::Create(const dispatch::RendererRequestContext& context,
                         CreateRequestPtr request,
                         CreateCallback callback) {
   auto call =
@@ -202,7 +216,8 @@ void WindowImpl::Create(const dispatch::Context& context,
     return;
   }
   ::tuffite::Window* created =
-      call->service->Create(bounds ? bounds->size() : gfx::Size());
+      call->service->Create(*context.frame().GetBrowserContext(),
+                            bounds ? bounds->size() : gfx::Size());
   if (!created) {
     rpc::Reject(callback, rpc::Status::kUnavailable);
     return;
@@ -227,7 +242,7 @@ void WindowImpl::Create(const dispatch::Context& context,
   call->target = created;
   ReplyInfo(*call, std::move(callback));
 }
-void WindowImpl::Focus(const dispatch::Context& context,
+void WindowImpl::Focus(const dispatch::RendererRequestContext& context,
                        FocusRequestPtr request,
                        FocusCallback callback) {
   if (auto call = Authorize(context, generated::Window::kFocus, request->id,
@@ -236,7 +251,7 @@ void WindowImpl::Focus(const dispatch::Context& context,
     ReplyInfo(*call, std::move(callback), succeeded);
   }
 }
-void WindowImpl::Minimize(const dispatch::Context& context,
+void WindowImpl::Minimize(const dispatch::RendererRequestContext& context,
                           MinimizeRequestPtr request,
                           MinimizeCallback callback) {
   if (auto call = Authorize(context, generated::Window::kMinimize, request->id,
@@ -245,7 +260,7 @@ void WindowImpl::Minimize(const dispatch::Context& context,
     ReplyInfo(*call, std::move(callback), succeeded);
   }
 }
-void WindowImpl::Maximize(const dispatch::Context& context,
+void WindowImpl::Maximize(const dispatch::RendererRequestContext& context,
                           MaximizeRequestPtr request,
                           MaximizeCallback callback) {
   if (auto call = Authorize(context, generated::Window::kMaximize, request->id,
@@ -254,7 +269,7 @@ void WindowImpl::Maximize(const dispatch::Context& context,
     ReplyInfo(*call, std::move(callback), succeeded);
   }
 }
-void WindowImpl::Restore(const dispatch::Context& context,
+void WindowImpl::Restore(const dispatch::RendererRequestContext& context,
                          RestoreRequestPtr request,
                          RestoreCallback callback) {
   if (auto call = Authorize(context, generated::Window::kRestore, request->id,
@@ -263,7 +278,7 @@ void WindowImpl::Restore(const dispatch::Context& context,
     ReplyInfo(*call, std::move(callback), succeeded);
   }
 }
-void WindowImpl::SetFullscreen(const dispatch::Context& context,
+void WindowImpl::SetFullscreen(const dispatch::RendererRequestContext& context,
                                SetFullscreenRequestPtr request,
                                SetFullscreenCallback callback) {
   if (auto call = Authorize(context, generated::Window::kSetFullscreen,
@@ -273,7 +288,7 @@ void WindowImpl::SetFullscreen(const dispatch::Context& context,
     ReplyInfo(*call, std::move(callback), succeeded);
   }
 }
-void WindowImpl::Close(const dispatch::Context& context,
+void WindowImpl::Close(const dispatch::RendererRequestContext& context,
                        CloseRequestPtr request,
                        CloseCallback callback) {
   if (auto call = Authorize(context, generated::Window::kClose, request->id,
@@ -299,7 +314,7 @@ void WindowImpl::Close(const dispatch::Context& context,
             service, info->id));
   }
 }
-void WindowImpl::SetTitle(const dispatch::Context& context,
+void WindowImpl::SetTitle(const dispatch::RendererRequestContext& context,
                           SetTitleRequestPtr request,
                           SetTitleCallback callback) {
   if (request->title.size() > kMaxTitleBytes) {
@@ -313,7 +328,7 @@ void WindowImpl::SetTitle(const dispatch::Context& context,
     ReplyInfo(*call, std::move(callback), succeeded);
   }
 }
-void WindowImpl::GetBounds(const dispatch::Context& context,
+void WindowImpl::GetBounds(const dispatch::RendererRequestContext& context,
                            GetBoundsRequestPtr request,
                            GetBoundsCallback callback) {
   if (auto call = Authorize(context, generated::Window::kGetBounds, request->id,
@@ -323,7 +338,7 @@ void WindowImpl::GetBounds(const dispatch::Context& context,
                             info ? ToBounds(info->state.bounds) : nullptr);
   }
 }
-void WindowImpl::SetBounds(const dispatch::Context& context,
+void WindowImpl::SetBounds(const dispatch::RendererRequestContext& context,
                            SetBoundsRequestPtr request,
                            SetBoundsCallback callback) {
   auto bounds = ToRect(*request->bounds);
@@ -342,7 +357,7 @@ void WindowImpl::SetBounds(const dispatch::Context& context,
   }
 }
 void WindowImpl::SetConstraints(
-    const dispatch::Context& context,
+    const dispatch::RendererRequestContext& context,
     generated::Window::SetConstraintsRequestPtr request,
     generated::Window::SetConstraintsCallback callback) {
   auto call = Authorize(context, generated::Window::kSetConstraints,

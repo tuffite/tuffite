@@ -1,0 +1,16 @@
+:host { --card-border: rgb(136, 136, 136); }
+
+:host {
+  display: block;
+  padding: 16px;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background-image: url('./weather.svg');
+  background-repeat: no-repeat;
+  background-position: right 16px top 16px;
+  background-size: 24px;
+}
+
+button { font: inherit; }
+h2 { margin-top: 0; }
+img { width: 24px; height: 24px; }

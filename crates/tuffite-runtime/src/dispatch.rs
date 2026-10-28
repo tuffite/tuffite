@@ -114,7 +114,7 @@ pub(crate) struct DispatchScheduler {
     initialize: Option<mpsc::Sender<InitializeCallback>>,
 }
 
-type InitializeCallback = Box<dyn FnOnce(Result<(), crate::ApplicationError>) + Send>;
+type InitializeCallback = Box<dyn FnOnce(Result<(), crate::Error>) + Send>;
 
 impl DispatchScheduler {
     pub(crate) fn start(
@@ -163,9 +163,7 @@ impl DispatchScheduler {
                             Instant::now() + crate::lifecycle::LIFECYCLE_TIMEOUT,
                         )
                     }))
-                    .unwrap_or_else(|_| {
-                        Err(crate::ApplicationError::new("Browser initialize panicked"))
-                    });
+                    .unwrap_or_else(|_| Err(crate::Error::new("Browser initialize panicked")));
                     worker_ready.store(result.is_ok(), Ordering::Release);
                     reply(result);
                 }
@@ -339,7 +337,7 @@ mod tests {
 
     struct NeverDispatch;
     impl Browser for NeverDispatch {
-        fn new(_: crate::BrowserContext) -> crate::ApplicationResult<Self> {
+        fn new(_: crate::BrowserContext) -> crate::Result<Self> {
             Ok(Self)
         }
         fn dispatch(&mut self, _: Command<'_>) -> crate::CommandResult {
