@@ -1306,7 +1306,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "playground"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "futures-channel",
  "futures-executor",
@@ -1638,7 +1638,7 @@ dependencies = [
 
 [[package]]
 name = "spo"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1890,7 +1890,7 @@ dependencies = [
 
 [[package]]
 name = "tuffite"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1929,7 +1929,7 @@ dependencies = [
 
 [[package]]
 name = "tuffite-abi"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bindgen",
  "prettyplease",
@@ -1938,11 +1938,11 @@ dependencies = [
 
 [[package]]
 name = "tuffite-ioc"
-version = "0.1.1"
+version = "0.1.2"
 
 [[package]]
 name = "tuffite-macros"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1951,7 +1951,7 @@ dependencies = [
 
 [[package]]
 name = "tuffite-mojom"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "miette",
  "serde_json",
@@ -1960,7 +1960,7 @@ dependencies = [
 
 [[package]]
 name = "tuffite-runtime"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
  "futures-executor",
