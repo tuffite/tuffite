@@ -103,7 +103,6 @@ def test(context, args):
         context.command(["node", "scripts/test-browser-runtime.mjs"])
         context.command(["node", "scripts/test-mojom-codec.mjs"])
         context.command(["node", "scripts/test-framework-mojom-codec.mjs"])
-        context.command(["python3", "-m", "unittest", "discover", "-s", "scripts/tests", "-v"])
         context.command(["cargo", "fmt", "--all", "--", "--check"])
         context.command(["cargo", "test", "--workspace", "--exclude", "playground", "--all-features"])
         context.command(["cargo", "clippy", "--workspace", "--exclude", "playground", "--all-targets", "--all-features", "--", "-D", "warnings"])

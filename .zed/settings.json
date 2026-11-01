@@ -1,0 +1,225 @@
+{
+  "file_scan_exclusions": [
+    "**/.git",
+    "**/.sccache",
+    "**/node_modules",
+    "**/target",
+    "**/target-*",
+    "**/out",
+    "**/dist"
+  ],
+  "lsp": {
+    "clangd": {
+      "binary": {
+        "arguments": [
+          "--background-index",
+          "--clang-tidy",
+          "--completion-style=detailed",
+          "--header-insertion=never"
+        ]
+      }
+    },
+    "rust-analyzer": {
+      "initialization_options": {
+        "linkedProjects": [
+          "Cargo.toml"
+        ],
+        "check": {
+          "command": "clippy"
+        }
+      }
+    }
+  },
+  "languages": {
+    "C": {
+      "tab_size": 2,
+      "format_on_save": "on",
+      "formatter": {
+        "external": {
+          "command": "clang-format",
+          "arguments": [
+            "--style=file",
+            "--assume-filename",
+            "{buffer_path}"
+          ]
+        }
+      }
+    },
+    "C++": {
+      "tab_size": 2,
+      "format_on_save": "on",
+      "formatter": {
+        "external": {
+          "command": "clang-format",
+          "arguments": [
+            "--style=file",
+            "--assume-filename",
+            "{buffer_path}"
+          ]
+        }
+      }
+    },
+    "Objective-C": {
+      "tab_size": 2,
+      "format_on_save": "on",
+      "formatter": {
+        "external": {
+          "command": "clang-format",
+          "arguments": [
+            "--style=file",
+            "--assume-filename",
+            "{buffer_path}"
+          ]
+        }
+      }
+    },
+    "Objective-C++": {
+      "tab_size": 2,
+      "format_on_save": "on",
+      "formatter": {
+        "external": {
+          "command": "clang-format",
+          "arguments": [
+            "--style=file",
+            "--assume-filename",
+            "{buffer_path}"
+          ]
+        }
+      }
+    },
+    "GN": {
+      "tab_size": 2,
+      "format_on_save": "on",
+      "formatter": {
+        "external": {
+          "command": "gn",
+          "arguments": [
+            "format",
+            "--stdin"
+          ]
+        }
+      }
+    },
+    "Rust": {
+      "tab_size": 4,
+      "format_on_save": "on",
+      "formatter": "language_server"
+    },
+    "JavaScript": {
+      "tab_size": 2,
+      "format_on_save": "on",
+      "formatter": {
+        "language_server": {
+          "name": "oxfmt"
+        }
+      },
+      "language_servers": [
+        "vtsls",
+        "oxlint",
+        "oxfmt",
+        "!eslint",
+        "..."
+      ]
+    },
+    "TypeScript": {
+      "tab_size": 2,
+      "format_on_save": "on",
+      "formatter": {
+        "language_server": {
+          "name": "oxfmt"
+        }
+      },
+      "language_servers": [
+        "vtsls",
+        "oxlint",
+        "oxfmt",
+        "!eslint",
+        "..."
+      ]
+    },
+    "TSX": {
+      "tab_size": 2,
+      "format_on_save": "on",
+      "formatter": {
+        "language_server": {
+          "name": "oxfmt"
+        }
+      },
+      "language_servers": [
+        "vtsls",
+        "oxlint",
+        "oxfmt",
+        "!eslint",
+        "..."
+      ]
+    },
+    "HTML": {
+      "tab_size": 2,
+      "format_on_save": "on",
+      "formatter": {
+        "language_server": {
+          "name": "oxfmt"
+        }
+      },
+      "language_servers": [
+        "oxfmt",
+        "..."
+      ]
+    },
+    "CSS": {
+      "tab_size": 2,
+      "format_on_save": "on",
+      "formatter": {
+        "language_server": {
+          "name": "oxfmt"
+        }
+      },
+      "language_servers": [
+        "oxfmt",
+        "..."
+      ]
+    },
+    "JSON": {
+      "tab_size": 2,
+      "format_on_save": "on",
+      "formatter": {
+        "language_server": {
+          "name": "oxfmt"
+        }
+      },
+      "language_servers": [
+        "oxfmt",
+        "..."
+      ]
+    },
+    "JSONC": {
+      "tab_size": 2,
+      "format_on_save": "on",
+      "formatter": {
+        "language_server": {
+          "name": "oxfmt"
+        }
+      },
+      "language_servers": [
+        "oxfmt",
+        "..."
+      ]
+    },
+    "JSX": {
+      "tab_size": 2,
+      "format_on_save": "on",
+      "formatter": {
+        "language_server": {
+          "name": "oxfmt"
+        }
+      },
+      "language_servers": [
+        "vtsls",
+        "oxlint",
+        "oxfmt",
+        "!eslint",
+        "..."
+      ]
+    }
+  }
+}

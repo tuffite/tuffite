@@ -3,5 +3,19 @@
   "private": true,
   "type": "module",
   "packageManager": "bun@1.4.2",
-  "workspaces": ["packages/*", "playground/ui"]
+  "workspaces": [
+    "packages/*",
+    "playground/ui"
+  ],
+  "devDependencies": {
+    "oxfmt": "0.42.0",
+    "oxlint": "1.80.0"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings packages playground/ui crates/tuffite/src/build/mojom scripts",
+    "lint:fix": "oxlint --deny-warnings --fix packages playground/ui crates/tuffite/src/build/mojom scripts",
+    "format": "oxfmt --write \"{packages,playground/ui,crates/tuffite/src/build/mojom,scripts}/**/*.{js,mjs,ts,html,css,json}\"",
+    "format:check": "oxfmt --check \"{packages,playground/ui,crates/tuffite/src/build/mojom,scripts}/**/*.{js,mjs,ts,html,css,json}\"",
+    "check": "bun run lint && bun run format:check"
+  }
 }

@@ -1,0 +1,6 @@
+# Relative to this file, independent of the editor's workspace root.
+# Keep Chromium's parent .clangd diagnostics and flag filtering.
+CompileFlags:
+  CompilationDatabase: .
+Completion:
+  HeaderInsertion: Never

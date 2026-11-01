@@ -1,0 +1,3 @@
+# Use Chromium's curated checks and options without duplicating its rule list.
+# Future Tuffite-specific overrides belong here, on top of ../.clang-tidy.
+InheritParentConfig: true

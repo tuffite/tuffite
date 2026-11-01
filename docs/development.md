@@ -637,6 +637,94 @@ Chromium checkout’s pinned clang-format and GN tools.
 files. Format Chromium-owned patch targets in the parent checkout before
 committing and exporting the patches with spo.
 
+## Editors, linting, and Web formatting
+
+Open the outer workspace or `src/tuffite` in Zed. Both contain project settings;
+the independent `www` repository also has its own settings. Zed invokes formatter
+commands and language servers directly, without Mise or the Framework task runner.
+Put this checkout's `depot_tools` and
+`src/third_party/llvm-build/Release+Asserts/bin` ahead of system tools on the
+editor's PATH. Then launch with `zed .` or `zed src/tuffite` from the outer root.
+For Web editing, use `src/tuffite` and `www` as separate Zed project folders,
+including when viewing the outer checkout. The Oxc extension discovers local
+dependencies from each project folder's `package.json`; opening only the outer
+folder can select the extension's own tool version instead of the locked one.
+Mise may still manage build tools, but is optional when launching the editor. Zed's
+language-server binary override requires an absolute machine-specific path, so
+the shared settings leave binary discovery to PATH. If launching from the dock,
+set your personal Zed `lsp.clangd.binary.path` to the absolute path of
+`src/third_party/llvm-build/Release+Asserts/bin/clangd` in this checkout.
+
+The outer `.gclient` enables `checkout_clangd` and `checkout_clang_tidy`, so future
+syncs fetch versions matching Chromium. Refresh an existing checkout using the
+normal `python3 x.py roll` workflow. For a manual tool-only refresh, run the
+following commands sequentially from Chromium's `src`. The first command replaces
+the LLVM directory, so install the extra tools after the compiler:
+
+```sh
+python3 tools/clang/scripts/update.py --package=clang
+python3 tools/clang/scripts/update.py --package=objdump
+python3 tools/clang/scripts/update.py --package=clangd
+python3 tools/clang/scripts/update.py --package=clang-tidy
+```
+
+Run `python3 x.py compdb` from `src/tuffite` after changing native build flags or
+targets. Its focused `compile_commands.json` is discovered through `.clangd`
+regardless of the editor's workspace root. Chromium's parent `.clangd` still
+filters unsupported flags and disables include-cleaner noise. Tuffite's
+`.clang-format` explicitly uses `BasedOnStyle: InheritParentConfig`, and its
+`.clang-tidy` sets `InheritParentConfig: true`, keeping Chromium's full rules and
+options as the source of truth without duplicating them. Do not replace those rules
+with generic LLVM or Google presets. For standalone native analysis, run
+`../third_party/llvm-build/Release+Asserts/bin/clang-tidy -p . path/to/file.cc`
+from `src/tuffite` (use `clang-tidy.exe` on Windows).
+The upstream `.clang-tidy` currently names `misc-homoglyph`, which is absent from
+the packaged tool. `--verify-config` reports that upstream mismatch; normal
+analysis still runs the supported checks.
+
+Zed's Format action and format on save pass the current buffer to `clang-format`
+for C/C++/Objective-C, with its absolute path supplied via `--assume-filename`.
+Use the checkout's Depot Tools launcher on PATH so this resolves Chromium's
+pinned clang-format and the file's inherited style. GN directly invokes
+`gn format --stdin`. Rust uses rust-analyzer and the workspace's Rust 1.91.0
+rustfmt component with `rustfmt.toml`. Rust SDK crates use stable rustfmt defaults
+for edition 2024; Chromium's nightly-only Rust options are intentionally scoped
+to the parent checkout. Rust diagnostics use Clippy.
+
+Install Framework Web tools with `bun install --frozen-lockfile` in `src/tuffite`:
+
+```sh
+bun run lint          # SDK, Mojo runtime, Playground UI, and JS tooling
+bun run lint:fix
+bun run format:check  # JS/TS, HTML, CSS, and JSON in those directories
+bun run format
+cargo fmt --all -- --check
+cargo clippy --workspace --exclude playground --all-targets --all-features -- -D warnings
+```
+
+Oxlint uses `.oxlintrc.json` with explicit JavaScript and TypeScript rules migrated
+from the recommended ESLint presets, browser/worker globals for UI and runtime
+code, and Node globals for tooling. Duplicate arguments and legacy octal literals
+are parser errors in these ES modules rather than separate lint rules.
+Oxfmt owns Web formatting through `.oxfmtrc.json` (two spaces, single quotes, trailing commas,
+100 columns). Generated bindings, build output, dependencies, and Chromium patch
+mailboxes are excluded. The Web check reports existing formatting differences;
+format-only migration can be reviewed separately before making it a CI gate.
+
+Framework Web buffers use the Oxc extension's `oxfmt` language server, which
+discovers the project's locally installed tool and configuration. The website
+uses Zed's Prettier integration with that repository's existing configuration
+and Astro plugin. Run
+`bun run check` there for the existing format, generated-reference, and Astro
+type checks. Install the Oxc extension in Zed for Oxlint diagnostics, and the
+Astro extension for `.astro` language support. Zed retains vtsls for TypeScript
+language features; Oxlint does not replace the language server or type checker.
+For VS Code, launch `mise exec -- code tuffite.code-workspace` from the outer root;
+the recommended extensions provide clang-format, rust-analyzer, Oxc, and Prettier.
+Framework and Playground folder settings select Oxc; the website keeps Prettier.
+The clang-format extension resolves its executable through PATH (it does
+not support named `${workspaceFolder:root}` substitutions).
+
 ### Selecting a Framework release in build.rs
 
 Resolver supports a custom GitHub repository and release tag. To use a managed
