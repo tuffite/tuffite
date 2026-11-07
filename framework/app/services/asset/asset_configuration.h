@@ -26,6 +26,7 @@ struct AssetRoute {
   std::string path;
   std::string source;
   bool directory = false;
+  bool resolver = false;
 };
 
 // Copyable resource-only snapshot, safe to retain after application shutdown.
@@ -39,8 +40,11 @@ struct AssetConfiguration {
   std::string ContentSecurityPolicy(const GURL& url,
                                     bool fallback = true) const;
   bool IsAppUrl(const GURL&) const;
-  std::string ResolveAssetRoute(const GURL&) const;
-  std::optional<base::FilePath> ResolveAssetFile(const GURL&) const;
+  const AssetRoute* FindRoute(const GURL&, bool skip_resolvers = false) const;
+  bool IsResolverUrl(const GURL&) const;
+  std::string ResolveAssetRoute(const GURL&, bool fallback = false) const;
+  std::optional<base::FilePath> ResolveAssetFile(const GURL&,
+                                                 bool fallback = false) const;
 };
 }  // namespace tuffite::asset
 #endif  // TUFFITE_FRAMEWORK_APP_SERVICES_ASSET_ASSET_CONFIGURATION_H_

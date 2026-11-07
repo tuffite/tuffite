@@ -17,10 +17,10 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/app/services/window/window.h"
+#include "tuffite/framework/app/services/window/window_service.h"
+#include "tuffite/framework/app/services/window/window_service_factory.h"
 #include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
-#include "tuffite/framework/browser/services/window/window.h"
-#include "tuffite/framework/browser/services/window/window_service.h"
-#include "tuffite/framework/browser/services/window/window_service_factory.h"
 #include "tuffite/framework/browser/web_contents_role.h"
 #include "url/gurl.h"
 namespace tuffite::shell_api::window {

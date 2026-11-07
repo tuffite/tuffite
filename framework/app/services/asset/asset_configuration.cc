@@ -9,13 +9,14 @@
 #include "tuffite/framework/common/access.h"
 #include "url/origin.h"
 namespace tuffite::asset {
-std::string AssetConfiguration::ResolveAssetRoute(const GURL& url) const {
-  if (url.path() == "/tuffite.js") {
-    return std::string(url.path());
-  }
+const AssetRoute* AssetConfiguration::FindRoute(const GURL& url,
+                                                bool skip_resolvers) const {
   const auto origin = url::Origin::Create(url);
   const AssetRoute* best = nullptr;
   for (const auto& route : routes) {
+    if (skip_resolvers && route.resolver) {
+      continue;
+    }
     if (!std::ranges::any_of(route.origins, [&](const auto& pattern) {
           return access::MatchesOrigin(origin, pattern);
         })) {
@@ -33,7 +34,19 @@ std::string AssetConfiguration::ResolveAssetRoute(const GURL& url) const {
       best = &route;
     }
   }
-  if (!best) {
+  return best;
+}
+bool AssetConfiguration::IsResolverUrl(const GURL& url) const {
+  const auto* route = FindRoute(url);
+  return IsAppUrl(url) && route && route->resolver;
+}
+std::string AssetConfiguration::ResolveAssetRoute(const GURL& url,
+                                                  bool fallback) const {
+  if (url.path() == "/tuffite.js") {
+    return std::string(url.path());
+  }
+  const auto* best = FindRoute(url, fallback);
+  if (!best || best->resolver) {
     return {};
   }
   if (!best->directory) {
@@ -44,11 +57,12 @@ std::string AssetConfiguration::ResolveAssetRoute(const GURL& url) const {
 }
 
 std::optional<base::FilePath> AssetConfiguration::ResolveAssetFile(
-    const GURL& url) const {
+    const GURL& url,
+    bool fallback) const {
   if (!IsAppUrl(url)) {
     return std::nullopt;
   }
-  const std::string escaped = ResolveAssetRoute(url);
+  const std::string escaped = ResolveAssetRoute(url, fallback);
   std::string decoded;
   if (escaped.empty() || escaped.front() != '/' ||
       !base::UnescapeBinaryURLComponentSafe(escaped.substr(1), true,

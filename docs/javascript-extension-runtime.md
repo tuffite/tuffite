@@ -17,19 +17,21 @@ Framework supplies empty service-local configuration and the default `entry.mjs`
 `builder.entry(path)` selects a different logical entry. The returned options are
 validated and frozen before provider construction.
 
-`resolve(&self, request)` asynchronously returns
-`Result<Option<utility::v8::ModuleSource>, utility::v8::Error>`. The owned
-`ModuleRequest` exposes `url()`, `session_id()`, `deadline()` and `stop_signal()`.
-Closing a native session cancels its outstanding module requests; Browser stop
-cancels all sessions before joining resolver workers. Session IDs are correlation
-identities, not authorization credentials.
+`resolve(&self, url: &tuffite::Url, context: tuffite::ResolveContext)`
+asynchronously returns `tuffite::Result<tuffite::Resolution>`, matching Browser
+URL resolution. The context exposes `session_id()`, `deadline()` and
+`stop_signal()`. Closing a native session cancels its outstanding module requests;
+Browser stop cancels all sessions before joining resolver workers. Session IDs
+are correlation identities, not authorization credentials.
 The native utility loader requests its entry and discovered static imports over
-Mojo. Browser dispatches each canonical application, HTTPS or file URL to a supervised Rust worker
-through ABI 0.1.0 `Application.resolve_v8`. ModuleSource accepts embedded, owned
-file-loaded or generated source text. Sources are copied and compiled once per
-session; utility processes never open these files themselves. Definitions are
-listed explicitly in main, alongside Rust services. Some(source) overrides resources; None falls back to explicit app.assets
-Origin/path routes; Err fails without fallback. The default resolve returns None.
+Mojo. Browser dispatches each canonical application, HTTPS or file URL to a
+supervised Rust worker through ABI 0.1.0 `Application.resolve_v8`.
+`Resolution::Resource(Resource::bytes(...))` or `Resource::file(absolute_path)`
+supplies module source; `Pass` falls back to explicit app.assets origin/path
+routes. Consumed/Discard are invalid for modules, and errors fail without fallback.
+The default resolver returns Pass. Module resources must contain nonempty UTF-8
+ECMAScript, status 200, bounded to 512 KiB. Utility processes never open these
+files themselves. Sources are copied and compiled once per session.
 Fallback uses the shared packaged resource path resolver and bounded native
 worker reads. HTTPS/file require a resolver response and never load ambient I/O.
 The native Framework selects V8
@@ -45,8 +47,9 @@ service-local configuration frozen by `V8::setup(builder)`, the full application
 manifest, Browser executor, and a cooperative stopping signal. Setup starts with
 empty configuration; applications supply defaults or read their own configuration
 in Rust instead of declaring utility startup data in the manifest.
-`BrowserContext::set_state(Arc<T>)` installs typed state retrieved with
-`V8Context::state::<T>()`; these Arcs stay in Browser. Provider methods can run
+Browser setup `.context(...)` installs a business context retrieved with
+`V8Context::browser_context::<T>()`; these Arcs stay in Browser. V8 setup also
+accepts `.context(...)` for provider-owned fields, accessed through `downcast::<T>()`. Provider methods can run
 concurrently and constructor failure is retained for that runtime. Session init
 is independent. Module requests carry native session identity and cancellation.
 After resolver workers drain, the shared provider receives one asynchronous
@@ -54,7 +57,7 @@ After resolver workers drain, the shared provider receives one asynchronous
 
 ## Host boundary
 
-The Browser supplies only explicitly registered resources. `resolve(request)` must
+The Browser supplies only explicitly registered resources. `resolve(url, context)` must
 map logical names to trusted embedded sources or an application-controlled store.
 If reading a directory, the application must enforce its canonical root and
 symlink policy. The Framework rejects invalid or foreign resource URLs before invoking the

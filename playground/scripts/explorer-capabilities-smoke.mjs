@@ -44,12 +44,12 @@ try {
   }
   const fileScopes = await artifact.evaluate(async () => {
     const frameworkApi = await import('/tuffite.js');
-    const allowed = await frameworkApi.fs.readFile(frameworkApi.BaseDirectory.Resource, "ui/dist/fixtures/transfer.html");
+    const allowed = await frameworkApi.fs.readFile(frameworkApi.BaseDirectory.Resource, "ui/fixtures/transfer.html");
     const denied = async (path) => {
       try { await frameworkApi.fs.readFile(frameworkApi.BaseDirectory.Resource, path); return false; }
       catch (error) { return (error.status ?? error.cause?.status) === 2; }
     };
-    return { allowed: allowed.length > 0, explicitDeny: await denied("ui/dist/index.html"), outsideScope: await denied("shell_api.js") };
+    return { allowed: allowed.length > 0, explicitDeny: await denied("ui/index.html"), outsideScope: await denied("shell_api.js") };
   });
   assert.deepEqual(fileScopes, { allowed: true, explicitDeny: true, outsideScope: true });
 

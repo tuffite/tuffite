@@ -3,7 +3,12 @@
 //! Resource resolution runs on Browser workers when modules are requested. Native caches
 //! each source per session and executes it in a sandboxed utility process.
 
-use tuffite::utility::v8::{Error, ModuleSource};
+use tuffite::{Resolution, Resource};
+
+struct ParserContext {
+    base: tuffite::V8Context,
+    fixture: String,
+}
 
 pub struct Parser {
     context: tuffite::V8Context,
@@ -21,16 +26,26 @@ impl tuffite::utility::V8 for Parser {
         builder: tuffite::utility::v8::Builder,
     ) -> tuffite::Result<tuffite::utility::v8::Builder> {
         Ok(builder
+            .context(|base| {
+                Ok(ParserContext {
+                    base,
+                    fixture: "parser-provider".into(),
+                })
+            })
             .name("parser")
             .entry("extension/entry.mjs")
             .configuration(br#"{"fixtureId":"io.tuffite.playground"}"#.to_vec()))
     }
 
     fn new(context: tuffite::V8Context) -> tuffite::Result<Self> {
+        let business = context.downcast::<ParserContext>()?;
+        assert_eq!(business.fixture, "parser-provider");
+        assert_eq!(business.base.name(), context.name());
         let config: serde_json::Value = serde_json::from_slice(context.configuration())?;
         let shared = context
-            .state::<ParserState>()
-            .ok_or_else(|| tuffite::Error::new("Browser shared state is missing"))?;
+            .browser_context::<crate::browser::PlaygroundBrowserContext>()?
+            .parser
+            .clone();
         let fixture_id = config["fixtureId"]
             .as_str()
             .ok_or_else(|| tuffite::Error::new("Parser configuration is missing"))?
@@ -47,9 +62,10 @@ impl tuffite::utility::V8 for Parser {
 
     async fn resolve(
         &self,
-        request: tuffite::utility::v8::ModuleRequest,
-    ) -> Result<Option<ModuleSource>, Error> {
-        let url = request.url();
+        url: &tuffite::Url,
+        _context: tuffite::ResolveContext,
+    ) -> tuffite::Result<Resolution> {
+        let url = url.as_str();
         if self.context.is_stopping() {
             return Err(std::io::Error::from(std::io::ErrorKind::Interrupted).into());
         }
@@ -67,8 +83,10 @@ impl tuffite::utility::V8 for Parser {
             "file:///tuffite-fixtures/sdk/local.mjs" => {
                 "export const localFixture = true;".to_owned()
             }
-            _ => return Ok(None), // Entry/runtime/cycles use app.assets.
+            _ => return Ok(Resolution::Pass), // Entry/runtime/cycles use app.assets.
         };
-        Ok(Some(ModuleSource::new(url.to_owned(), source)))
+        Ok(Resolution::Resource(
+            Resource::bytes(source.into_bytes()).mime_type("text/javascript"),
+        ))
     }
 }

@@ -263,6 +263,9 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
                  bool final_update) override;
   void ContentsZoomChange(bool zoom_in) override;
   void ActivateContents(content::WebContents* contents) override;
+  content::KeyboardEventProcessingResult PreHandleKeyboardEvent(
+      content::WebContents*,
+      const input::NativeWebKeyboardEvent&) override;
   bool HandleKeyboardEvent(content::WebContents* source,
                            const input::NativeWebKeyboardEvent& event) override;
   std::optional<gfx::Rect> GetWindowBoundsInScreen() override;

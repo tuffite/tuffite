@@ -76,6 +76,7 @@ struct Prepared<A: Application, B: Browser> {
     registry: FrozenRegistry<A, B>,
     configuration: Vec<u8>,
     denied_origins: Vec<String>,
+    context_factory: crate::context_data::Factory<ApplicationContext>,
 }
 static STARTUP: OnceLock<crate::Startup> = OnceLock::new();
 pub(crate) fn startup() -> Option<crate::Startup> {
@@ -125,6 +126,7 @@ fn collect<A: Application, B: Browser>(
     Ok((
         Prepared {
             registry,
+            context_factory: builder.context_factory,
             configuration,
             denied_origins: browser.devtools_denied_origins,
         },
@@ -160,27 +162,56 @@ unsafe extern "C" fn configuration<A: Application, B: Browser>() -> ByteSlice {
     )
 }
 unsafe extern "C" fn command_scope<A: Application, B: Browser>(id: u64) -> u32 {
+    if id == crate::url_handler::URL_COMMAND {
+        return 2;
+    }
+    if id == crate::url_handler::SHORTCUT_COMMAND {
+        return 1;
+    }
     prepared::<A, B>()
         .ok()
         .and_then(|p| p.registry.scopes.get(&id))
         .copied()
         .unwrap_or(0)
 }
-pub(crate) struct ApplicationBackend<A, B>(A, PhantomData<fn() -> B>);
+pub(crate) struct ApplicationBackend<A, B>(A, ApplicationContext, PhantomData<fn() -> B>);
 impl<A: Application, B: Browser> Browser for ApplicationBackend<A, B> {
     fn setup(mut builder: crate::browser::Builder<Self>) -> Result<crate::browser::Builder<Self>> {
         builder
             .devtools_denied_origins
             .clone_from(&prepared::<A, B>()?.denied_origins);
+        builder.context_factory = crate::context_data::Factory::erased(|base| {
+            prepared::<A, B>()?
+                .context_factory
+                .build(ApplicationContext::new(base))
+        });
         Ok(builder)
     }
     fn new(context: BrowserContext) -> Result<Self> {
         if !context.context_client().is_available() {
             return Err(Error::new("Application requires multi-profile support"));
         }
-        A::new(ApplicationContext::new(context)).map(|a| Self(a, PhantomData))
+        let context = ApplicationContext::new(context);
+        A::new(context.clone()).map(|a| Self(a, context, PhantomData))
     }
     fn dispatch(&mut self, command: Command<'_>) -> CommandResult {
+        if command.id() == crate::url_handler::SHORTCUT_COMMAND {
+            if let Some(event) = self
+                .1
+                .shortcuts()
+                .deliver(command.payload())
+                .map_err(|e| crate::CommandError::Failed(e.to_string()))?
+            {
+                let stop = self.1.stop_signal();
+                crate::lifecycle::run_until(
+                    self.0.shortcut(event),
+                    &stop.0,
+                    std::time::Instant::now() + std::time::Duration::from_secs(30),
+                )
+                .map_err(|e| crate::CommandError::Failed(e.to_string()))?;
+            }
+            return Ok(Vec::new());
+        }
         dispatch(
             &mut self.0,
             &prepared::<A, B>()
@@ -199,10 +230,10 @@ impl<A: Application, B: Browser> Browser for ApplicationBackend<A, B> {
 }
 struct ProfileBackend<A, B>(B, PhantomData<fn() -> A>);
 impl<A: Application, B: Browser> Browser for ProfileBackend<A, B> {
-    fn new(context: BrowserContext) -> Result<Self> {
+    fn setup(mut builder: crate::browser::Builder<Self>) -> Result<crate::browser::Builder<Self>> {
         let setup = B::setup(crate::browser::Builder {
-            profile_id: context.profile_id().cloned(),
-            ..crate::browser::Builder::default()
+            profile_id: builder.profile_id.clone(),
+            ..Default::default()
         })?;
         let frozen = prepared::<A, B>()?;
         let actual: Vec<_> = setup
@@ -222,7 +253,18 @@ impl<A: Application, B: Browser> Browser for ProfileBackend<A, B> {
                 "profile setup cannot change frozen interfaces or native policy",
             ));
         }
+        builder.context_factory = setup.context_factory;
+        Ok(builder)
+    }
+    fn new(context: BrowserContext) -> Result<Self> {
         B::new(context).map(|b| Self(b, PhantomData))
+    }
+    async fn resolve(
+        &mut self,
+        url: &crate::Url,
+        context: crate::ResolveContext,
+    ) -> Result<crate::Resolution> {
+        self.0.resolve(url, context).await
     }
     fn dispatch(&mut self, command: Command<'_>) -> CommandResult {
         dispatch(

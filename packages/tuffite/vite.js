@@ -1,7 +1,7 @@
-import { createReadStream, existsSync, readFileSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { dirname, resolve, sep } from "node:path";
+import { basename, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = dirname(fileURLToPath(import.meta.url));
@@ -19,16 +19,12 @@ export function tuffite(options = {}) {
   const mounts = [
     ["/tuffite.js", resolve(packageRoot, "generated/index.js")],
   ];
-  const manifestStatic = Object.fromEntries(
-    (manifest?.bundle?.resources ?? []).map((root) => [
-      `/${root.replaceAll("\\", "/").replace(/^\/+|\/+$/g, "")}/`,
-      root,
-    ]),
-  );
-  const staticRoots = Object.entries(options.static ?? manifestStatic).map(([prefix, root]) => [
-    prefix.endsWith("/") ? prefix : prefix + "/",
-    resolve(applicationRoot, root),
-  ]);
+  const staticRoots = options.static
+    ? Object.entries(options.static).map(([prefix, root]) => ({
+        prefix: prefix.endsWith("/") ? prefix : prefix + "/",
+        root: resolve(applicationRoot, root), file: false, excludes: [], source: root,
+      }))
+    : resourceMounts(manifest?.bundle?.resources ?? {}, applicationRoot);
   const shellApi = options.shellApi ??
     (manifest?.build?.mojomSources?.length
       ? { url: "/shell_api.js", file: "generated/index.js" }
@@ -87,21 +83,77 @@ export function tuffite(options = {}) {
         if (framework) return sendJavaScript(framework[1], response, next);
         const generated = generatedMounts.find(([url]) => pathname === url);
         if (generated) return sendJavaScript(generated[1], response, next);
-        for (const [prefix, root] of staticRoots) {
-          if (!pathname.startsWith(prefix)) continue;
-          const relative = pathname.slice(prefix.length);
-          const candidate = resolve(root, relative || "index.html");
+        for (const mount of staticRoots) {
+          const { prefix, root } = mount;
+          if (mount.file ? pathname !== prefix : !pathname.startsWith(prefix)) continue;
+          const child = mount.file ? "" : pathname.slice(prefix.length) || "index.html";
+          const candidate = mount.file ? root : resolve(root, child);
+          if (resourceExcluded(mount.excludes, [mount.source + (child ? "/" + child : ""), child])) continue;
           if (candidate !== root && !candidate.startsWith(root + sep)) {
             response.statusCode = 403;
             response.end("Forbidden");
             return;
           }
-          return sendStaticFile(candidate, response, next, root);
+          if (!existsSync(candidate)) continue;
+          return sendStaticFile(candidate, response, next, mount.file ? dirname(root) : root);
         }
         next();
       });
     },
   };
+}
+
+// Mirror packaging aliases when publishing resources through the development server.
+export function resourceMounts(resources, applicationRoot) {
+  if (!resources || typeof resources !== "object" || Array.isArray(resources)) throw new TypeError("bundle.resources must be an alias object");
+  const mounts = [];
+  for (const [alias, sources] of Object.entries(resources)) {
+    if (alias !== "." && !safeResourcePath(alias)) throw new TypeError("unsafe resource alias");
+    if (!Array.isArray(sources) || sources.some(source => typeof source !== "string" || !source)) throw new TypeError("resource sources must be nonempty strings");
+    const excludes = sources.filter(source => source.startsWith("!")).map(source => source.slice(1));
+    if (excludes.some(pattern => !pattern)) throw new TypeError("empty resource exclusion");
+    for (const source of sources.filter(source => !source.startsWith("!"))) {
+      if (!safeResourcePath(source)) throw new TypeError("unsafe resource source");
+      const root = resolve(applicationRoot, source);
+      const file = existsSync(root) && statSync(root).isFile();
+      const prefix = (alias === "." ? "/" : "/" + alias.replace(/\/$/, "") + "/") + (file ? basename(root) : "");
+      mounts.push({ prefix, root, file, excludes, source });
+    }
+  }
+  return mounts;
+}
+function safeResourcePath(path) {
+  return !path.includes("\\") && !path.includes(":") && !path.startsWith("/") && path.split("/").every(part => part && part !== "." && part !== "..");
+}
+export function resourceExcluded(patterns, paths) {
+  const expressions = patterns.map(globExpression);
+  return paths.some(path => {
+    const segments = path.split("/");
+    return segments.some((_, index) => expressions.some(expression => expression.test(segments.slice(0, index + 1).join("/"))));
+  });
+}
+function globExpression(pattern) {
+  let expression = "^";
+  const segments = pattern.split("/");
+  for (const [index, segment] of segments.entries()) {
+    if (segment === "**") {
+      expression += index === segments.length - 1 ? ".*" : "(?:[^/]+/)*";
+      continue;
+    }
+    for (let cursor = 0; cursor < segment.length; cursor++) {
+      const character = segment[cursor];
+      if (character === "*") expression += "[^/]*";
+      else if (character === "?") expression += "[^/]";
+      else if (character === "[") {
+        const end = segment.indexOf("]", cursor + 1);
+        if (end < 0) throw new TypeError("invalid resource exclusion");
+        expression += "[" + segment.slice(cursor + 1, end).replace(/^!/, "^") + "]";
+        cursor = end;
+      } else expression += character.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+    if (index !== segments.length - 1) expression += "/";
+  }
+  return new RegExp(expression + "$");
 }
 
 export function findManifest(start) {

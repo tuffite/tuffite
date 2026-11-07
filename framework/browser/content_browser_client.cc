@@ -10,6 +10,7 @@
 #include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "components/embedder_support/user_agent_utils.h"
 #include "components/version_info/version_info.h"
@@ -26,6 +27,7 @@
 #include "net/http/http_response_headers.h"
 #include "net/http/http_util.h"
 #include "services/network/public/cpp/content_security_policy/content_security_policy.h"
+#include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/web_sandbox_flags.h"
 #include "services/network/public/mojom/fetch_api.mojom.h"
 #include "services/network/public/mojom/network_context.mojom.h"
@@ -43,9 +45,10 @@
 #include "tuffite/framework/app/abi/application.h"
 #include "tuffite/framework/app/abi/host.h"
 #include "tuffite/framework/app/application_context.h"
-#include "tuffite/framework/app/services/asset/app_url_loader_factory.h"
-#include "tuffite/framework/app/services/asset/asset_service.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/app/services/window/video_overlay_window.h"
+#include "tuffite/framework/app/services/window/window.h"
+#include "tuffite/framework/app/services/window/window_service.h"
 #include "tuffite/framework/browser/browser_context.h"
 #include "tuffite/framework/browser/browser_main_parts.h"
 #include "tuffite/framework/browser/services/context_menu/context_menu_service.h"
@@ -59,9 +62,10 @@
 #include "tuffite/framework/browser/services/network_context/network_context_service_factory.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service_factory.h"
+#include "tuffite/framework/browser/services/url/url_service.h"
+#include "tuffite/framework/browser/services/url/url_service_factory.h"
 #include "tuffite/framework/browser/services/webauthn/web_authentication_service.h"
 #include "tuffite/framework/browser/services/webauthn/web_authentication_service_factory.h"
-#include "tuffite/framework/browser/services/window/video_overlay_window.h"
 #include "tuffite/framework/browser/web_contents_role.h"
 #include "tuffite/framework/browser/web_contents_view_delegate.h"
 #include "tuffite/framework/common/languages.h"
@@ -71,6 +75,7 @@
 #include "url/url_constants.h"
 
 namespace tuffite {
+
 namespace {
 // Own a configuration snapshot, never a service pointer across loader lifetime.
 class OriginCspThrottle final : public blink::URLLoaderThrottle {
@@ -374,9 +379,12 @@ ContentBrowserClient::CreateNonNetworkNavigationURLLoaderFactory(
           ? application_context()->GetService<ManifestService>()
           : nullptr;
   if (manifest && std::ranges::contains(manifest->app_info().schemes, scheme)) {
-    return application_context()
-        ->GetService<AssetService>()
-        ->CreateLoaderFactory();
+    auto* contents =
+        content::WebContents::FromFrameTreeNodeId(frame_tree_node_id);
+    return contents ? URLServiceFactory::GetForBrowserContext(
+                          contents->GetBrowserContext())
+                          ->CreateNavigationLoaderFactory(*contents)
+                    : mojo::PendingRemote<network::mojom::URLLoaderFactory>();
   }
   return {};
 }
@@ -400,9 +408,9 @@ void ContentBrowserClient::
     return;
   }
   for (const auto& scheme : manifest->app_info().schemes) {
-    factories->insert_or_assign(scheme, application_context()
-                                            ->GetService<AssetService>()
-                                            ->CreateLoaderFactory());
+    factories->insert_or_assign(
+        scheme, URLServiceFactory::GetForBrowserContext(browser_context)
+                    ->CreateWorkerLoaderFactory());
   }
 }
 
@@ -419,23 +427,13 @@ void ContentBrowserClient::RegisterNonNetworkSubresourceURLLoaderFactories(
     for (const auto& scheme : manifest->app_info().schemes) {
       auto* frame =
           content::RenderFrameHost::FromID(render_process_id, render_frame_id);
-      asset::MemoryAssetResolver resolver;
-      if (frame) {
-        auto* service = IsolatedServiceFactory::GetForBrowserContext(
-            frame->GetBrowserContext());
-        resolver = base::BindRepeating(
-            [](base::WeakPtr<IsolatedService> service,
-               content::GlobalRenderFrameHostId id,
-               const GURL& url) -> std::optional<asset::MemoryAsset> {
-              auto* frame = content::RenderFrameHost::FromID(id);
-              return service && frame ? service->ResourceForFrame(*frame, url)
-                                      : std::nullopt;
-            },
-            service->GetWeakPtr(), frame->GetGlobalId());
+      if (!frame) {
+        continue;
       }
       factories->insert_or_assign(
           scheme,
-          AppURLLoaderFactory::Create(manifest->assets(), std::move(resolver)));
+          URLServiceFactory::GetForBrowserContext(frame->GetBrowserContext())
+              ->CreateSubresourceLoaderFactory(*frame));
     }
   }
 }

@@ -359,9 +359,16 @@ or export a runtime inventory. Packaging never executes the target application.
 The field paths below describe the in-memory native runtime descriptor, not source
 manifest keys. See [embedding and startup](embedding.md).
 
-Application assets are typed `configuration::Asset::{file,directory}` declarations,
+`bundle.resources` is an object mapping package resource directory aliases to
+arrays of source files/directories and `!glob` exclusions. A source directory's
+contents are mounted at the alias; `.` means the resource root. For example,
+`"ui": ["ui/dist", "!**/*.map"]` produces `ui/index.html`, without an extra
+`dist` directory. Top-level arrays are not accepted. See
+[Framework extensions](framework-extensions.md#packaging-aliases-and-exclusions).
+
+Application routes use `configuration::Protocol` and `Route` builders,
 serialized as `app.assets[]` origin/path rules. Each rule
-maps paths to one project-relative `file` or `directory`; those sources must be included explicitly in `bundle.resources`. Exact paths take
+maps paths to a packaged `file`, `directory`, or business `resolver`. File paths refer to alias targets under `bundle.resources`. Exact paths take
 priority over prefix paths, and ambiguous equal-priority mappings fail validation.
 SPA routes explicitly map to their index file; no `frontend` or generated
 `assetRoutes` index is used. See the
@@ -556,10 +563,10 @@ Manifest schema v2 separates runtime application policy from packaging:
   },
   "bundle": {
     "executable": "demo",
-    "resources": [
-      "index.html",
-      "generated/shell_api.js"
-    ]
+    "resources": {
+      ".": ["index.html"],
+      "generated": ["generated/shell_api.js"]
+    }
   },
   "browser": {
     "rules": [

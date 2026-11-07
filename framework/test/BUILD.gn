@@ -77,6 +77,7 @@ test("abi_unittests") {
     "//tuffite/framework/app",
     "//tuffite/framework/app:abi_headers",
     "//tuffite/framework/app/services/remoting",
+    "//tuffite/framework/app/services/shortcut:interfaces",
     "//tuffite/framework/browser",
     "//tuffite/framework/browser:support",
     "//tuffite/framework/browser/services/isolated:registry",

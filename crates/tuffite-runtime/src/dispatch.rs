@@ -175,6 +175,7 @@ impl DispatchScheduler {
                     &worker_in_flight,
                     queue_deadline,
                     &worker_stopping,
+                    &stop,
                 )
             })
             .expect("tuffite dispatch worker thread spawn");
@@ -233,7 +234,7 @@ impl DispatchScheduler {
 // The worker takes ownership of `rx` so the receiver lives on the worker
 // thread and is dropped when the loop exits. Clippy sees `&self`-taking
 // methods and cannot prove consumption, so we opt out of the lint here.
-#[allow(clippy::needless_pass_by_value)]
+#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
 fn run_worker(
     runtime_identity: &Arc<AtomicU64>,
     rx: mpsc::Receiver<DispatchTask>,
@@ -242,6 +243,7 @@ fn run_worker(
     in_flight: &Arc<AtomicU64>,
     queue_deadline: Duration,
     stopping: &AtomicBool,
+    stop: &crate::StopSignal,
 ) -> Box<dyn ErasedBrowser> {
     while let Ok(task) = rx.recv() {
         let _span =
@@ -258,7 +260,27 @@ fn run_worker(
             protocol::encode_scheduler_failure(task.request_id, SCHEDULER_TIMEOUT_MSG)
         } else {
             protocol::dispatch_with(&task.event, |id, schema_fingerprint, payload| {
-                application.dispatch(Command::new(id, schema_fingerprint, payload))
+                if id == crate::url_handler::URL_COMMAND {
+                    let request: crate::url_handler::Request = serde_json::from_slice(payload)
+                        .map_err(|e| crate::CommandError::InvalidArgument(e.to_string()))?;
+                    let url = crate::Url::parse(&request.url)
+                        .map_err(|e| crate::CommandError::InvalidArgument(e.to_string()))?;
+                    let context = crate::ResolveContext {
+                        request,
+                        stop: stop.clone(),
+                        session: None,
+                        deadline: task.enqueued_at + queue_deadline,
+                    };
+                    crate::lifecycle::run_until(
+                        application.resolve(&url, context),
+                        &stop.0,
+                        task.enqueued_at + queue_deadline,
+                    )
+                    .and_then(crate::Resolution::encode)
+                    .map_err(|e| crate::CommandError::Failed(e.to_string()))
+                } else {
+                    application.dispatch(Command::new(id, schema_fingerprint, payload))
+                }
             })
         };
         let runtime_handle = runtime_identity.load(Ordering::Acquire);
@@ -396,6 +418,7 @@ mod tests {
             &in_flight,
             deadline,
             &AtomicBool::new(stopping),
+            &crate::StopSignal(crate::supervisor::CancellationToken::new()),
         );
         let replies = replies.into_inner().unwrap();
         assert_eq!(replies.len(), 1);

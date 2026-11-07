@@ -48,6 +48,7 @@ use crate::{Error, Result};
 /// Framework supplies empty startup data before `setup`.
 /// The returned builder is validated and frozen before constructing service state.
 pub struct Builder<S = ()> {
+    pub(crate) context_factory: crate::context_data::Factory<crate::UtilityContext>,
     pub(super) configuration: Vec<u8>,
     pub(super) interfaces: InterfaceRegistry<S>,
     pub(super) name: Option<String>,
@@ -57,6 +58,7 @@ pub struct Builder<S = ()> {
 impl<S> Default for Builder<S> {
     fn default() -> Self {
         Self {
+            context_factory: crate::context_data::Factory::default(),
             configuration: Vec::new(),
             interfaces: InterfaceRegistry::default(),
             name: None,
@@ -65,6 +67,15 @@ impl<S> Default for Builder<S> {
     }
 }
 impl<S> Builder<S> {
+    #[must_use]
+    pub fn context<C: std::any::Any + Send + Sync>(
+        mut self,
+        factory: impl Fn(crate::UtilityContext) -> crate::Result<C> + Send + Sync + 'static,
+    ) -> Self {
+        self.context_factory = crate::context_data::Factory::new(factory);
+        self
+    }
+
     #[must_use]
     pub fn startup(&self) -> &crate::Startup {
         &self.startup
@@ -131,10 +142,19 @@ mod tests {
     impl Utility for ConfiguredUtility {
         fn setup(builder: Builder<Self>) -> Result<Builder<Self>> {
             assert_eq!(builder.configuration_bytes(), b"manifest");
-            Ok(builder.configuration(b"effective".to_vec()))
+            Ok(builder
+                .configuration(b"effective".to_vec())
+                .context(|base| {
+                    assert_eq!(base.configuration(), b"effective");
+                    Ok((base, String::from("injected")))
+                }))
         }
         async fn new(context: UtilityContext) -> Result<Self> {
             assert_eq!(context.configuration(), b"effective");
+            assert_eq!(
+                context.downcast::<(UtilityContext, String)>()?.1,
+                "injected"
+            );
             Ok(Self)
         }
         async fn invoke(&self, _: UtilityRequest) -> crate::CommandResult {
@@ -149,6 +169,25 @@ mod tests {
             futures_executor::block_on(super::super::create_utility::<ConfiguredUtility>(context))
                 .is_ok()
         );
+    }
+
+    struct FactoryRejected;
+    impl Utility for FactoryRejected {
+        fn setup(builder: Builder<Self>) -> Result<Builder<Self>> {
+            Ok(builder.context(|_| Err::<(), _>(Error::new("factory rejected"))))
+        }
+        async fn new(_: UtilityContext) -> Result<Self> {
+            panic!("factory failure must precede new")
+        }
+    }
+    #[test]
+    fn context_factory_failure_rejects_before_backend_construction() {
+        let context = UtilityContext::new_for_test("rejected", Vec::new());
+        let error =
+            futures_executor::block_on(super::super::create_utility::<FactoryRejected>(context))
+                .err()
+                .unwrap();
+        assert!(error.to_string().contains("factory rejected"));
     }
 
     struct InvalidUtility;

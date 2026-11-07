@@ -38,16 +38,23 @@ impl ApplicationContext {
     pub fn stop_signal(&self) -> crate::StopSignal {
         self.context.stop_signal()
     }
-    pub fn set_state<T: Send + Sync + 'static>(&self, value: std::sync::Arc<T>) {
-        self.context.set_state(value);
+    pub fn downcast<T: std::any::Any + Send + Sync>(&self) -> Result<std::sync::Arc<T>> {
+        self.context.downcast()
     }
     #[must_use]
-    pub fn state<T: Send + Sync + 'static>(&self) -> Option<std::sync::Arc<T>> {
-        self.context.state()
+    pub fn try_downcast<T: std::any::Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
+        self.context.try_downcast()
     }
     #[must_use]
     pub fn profiles(&self) -> crate::ProfileManager {
         crate::ProfileManager::new(self.context.context_client())
+    }
+    #[must_use]
+    pub fn shortcuts(&self) -> crate::Shortcuts {
+        crate::Shortcuts::new(
+            self.context.context_client(),
+            self.context.shortcut_callbacks.clone(),
+        )
     }
     #[must_use]
     pub fn windows(&self) -> crate::Windows {
@@ -79,6 +86,13 @@ pub trait Application: Send + Sized + 'static {
         Ok(builder)
     }
     fn new(context: ApplicationContext) -> Result<Self>;
+    /// Receives activations without a shortcut-specific callback.
+    fn shortcut(
+        &mut self,
+        _event: crate::ShortcutEvent,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async { Ok(()) }
+    }
     fn initialize(&mut self) -> impl std::future::Future<Output = Result<()>> + Send {
         async { Ok(()) }
     }

@@ -33,6 +33,8 @@ vertical slice. Chromium customizations, including `<explorer>`, live under
   cancellation, and the Rust authority boundary.
 - [Window management](window-management.md): typed multi-window APIs, opaque
   IDs, manifest permissions, platform adapters, and lifecycle semantics.
+- [Desktop capability design](desktop-capability-design.md): independent local
+  desktop observation and actions, upstream reuse, remoting boundaries, and phased delivery.
 - [`<explorer>`](explorer.md): ordinary inner `WebContents` embedding, storage
   behavior, security boundaries, and Chromium integration.
 - [Build and distribution](build-and-distribution.md): developer workflow,
@@ -96,3 +98,5 @@ See [Implementation plan](implementation-plan.md#10-review-checklist) for the fu
 review checklist and unresolved policy choices.
 
 - [DOM isolated worlds](isolated.md): scoped Web Components, host handles, and instance communication.
+
+[Framework extensions](framework-extensions.md): business Context factories, protocol resolvers, scoped shortcuts and package resource aliases.

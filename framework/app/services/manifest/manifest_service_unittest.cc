@@ -275,6 +275,58 @@ TEST(ExplorerBehaviorTest, ParsesAtomicDeclarationsAndDurations) {
   EXPECT_EQ(behavior[ExplorerAction::kNavigation].mode, ExplorerMode::kBrowser);
 }
 
+TEST_F(OriginCapabilityTest, RouteProvidersAreExclusiveAndTyped) {
+  auto document = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+  ASSERT_TRUE(document);
+  auto* assets = document->FindDict("app")->FindList("assets");
+  assets->Append(
+      base::DictValue()
+          .Set("origins", base::ListValue().Append("originlab://main"))
+          .Set("paths", base::ListValue().Append("/custom"))
+          .Set("directory", "ui")
+          .Set("resolver", false));
+  auto check = [&]() {
+    EXPECT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                                *base::WriteJson(*document)));
+    return LoadManifest(root_.GetPath(), &error_) != nullptr;
+  };
+  EXPECT_FALSE(check());
+  auto& route = assets->back().GetDict();
+  route.Set("resolver", true);
+  EXPECT_FALSE(check());
+  route.Remove("directory");
+  EXPECT_TRUE(check());
+  route.Set("resolver", "true");
+  EXPECT_FALSE(check());
+}
+
+TEST_F(OriginCapabilityTest, DynamicRoutesUseSpecificityAndStaticFallback) {
+  auto document = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
+  ASSERT_TRUE(document);
+  document->FindDict("app")->FindList("assets")->Append(
+      base::DictValue()
+          .Set("origins", base::ListValue().Append("originlab://main"))
+          .Set("paths", base::ListValue().Append("/dialog/open"))
+          .Set("resolver", true));
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(*document)));
+  auto manifest = LoadManifest(root_.GetPath(), &error_);
+  ASSERT_TRUE(manifest) << error_;
+  auto assets = manifest->assets();
+  GURL action("originlab://main/dialog/open?id=image");
+  EXPECT_TRUE(assets.IsResolverUrl(action));
+  EXPECT_FALSE(assets.ResolveAssetFile(action));
+  EXPECT_EQ(assets.ResolveAssetRoute(action, true), "/ui/dialog/open");
+  EXPECT_FALSE(assets.IsResolverUrl(GURL("originlab://main/index.html")));
+  EXPECT_FALSE(assets.IsResolverUrl(GURL("originlab://unknown/dialog/open")));
+  auto duplicate =
+      document->FindDict("app")->FindList("assets")->back().Clone();
+  document->FindDict("app")->FindList("assets")->Append(std::move(duplicate));
+  ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
+                              *base::WriteJson(*document)));
+  EXPECT_FALSE(LoadManifest(root_.GetPath(), &error_));
+}
+
 TEST_F(OriginCapabilityTest, OriginRulesComposeBehaviorAndCspIndependently) {
   auto text = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
   auto* rules = text->FindDict("browser")->FindList("rules");

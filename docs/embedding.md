@@ -67,3 +67,12 @@ Standard IO/JSON/URL failures and Framework domain errors convert with `?`;
 the general error preserves their typed cause through `std::error::Error::source`.
 Domain methods retain their matchable enums, such as `CommandError` and
 `isolated::Error`. `Result<T, DomainError>` can explicitly select that error type.
+
+## Business Context construction
+
+All four setup builders accept `.context(|base| Ok(MyContext { base, ... }))`.
+This registers a lazy factory; it executes only when the corresponding runtime
+is constructed, before backend `new`. Constructors obtain the installed value
+with `base.downcast::<MyContext>()?`. No associated context types are required.
+See [Framework extensions](framework-extensions.md) for protocols, shortcuts,
+resource aliases and complete Context lifecycle rules.

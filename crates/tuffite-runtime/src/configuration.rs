@@ -20,7 +20,7 @@ impl Configuration {
         }
     }
     #[must_use]
-    pub fn asset(mut self, asset: Asset) -> Self {
+    pub fn route(mut self, asset: Route) -> Self {
         self.app.assets.push(asset);
         self
     }
@@ -46,7 +46,7 @@ impl Configuration {
 #[serde(rename_all = "camelCase")]
 pub struct Application {
     pub schemes: Vec<String>,
-    pub assets: Vec<Asset>,
+    pub assets: Vec<Route>,
     pub windows: Vec<Window>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub network: Option<Network>,
@@ -54,40 +54,102 @@ pub struct Application {
     pub isolated_worlds: BTreeMap<String, IsolatedWorld>,
 }
 #[derive(Clone, Debug, Serialize)]
-pub struct Asset {
+pub struct Route {
     pub origins: Vec<String>,
     pub paths: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub directory: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolver: Option<bool>,
 }
-impl Asset {
+impl Default for Route {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+impl Route {
     #[must_use]
-    pub fn directory(
-        origins: impl IntoIterator<Item = impl Into<String>>,
-        paths: impl IntoIterator<Item = impl Into<String>>,
-        directory: impl Into<String>,
-    ) -> Self {
+    pub fn new() -> Self {
         Self {
-            origins: origins.into_iter().map(Into::into).collect(),
-            paths: paths.into_iter().map(Into::into).collect(),
-            directory: Some(directory.into()),
+            origins: vec![],
+            paths: vec![],
+            directory: None,
             file: None,
+            resolver: None,
         }
     }
     #[must_use]
-    pub fn file(
-        origins: impl IntoIterator<Item = impl Into<String>>,
-        paths: impl IntoIterator<Item = impl Into<String>>,
-        file: impl Into<String>,
-    ) -> Self {
+    pub fn origin(mut self, origin: impl Into<String>) -> Self {
+        self.origins.push(origin.into());
+        self
+    }
+    #[must_use]
+    pub fn origins(mut self, origins: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.origins.extend(origins.into_iter().map(Into::into));
+        self
+    }
+    #[must_use]
+    pub fn path(mut self, path: impl Into<String>) -> Self {
+        self.paths.push(path.into());
+        self
+    }
+    #[must_use]
+    pub fn paths(mut self, paths: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.paths.extend(paths.into_iter().map(Into::into));
+        self
+    }
+    #[must_use]
+    pub fn directory(mut self, directory: impl Into<String>) -> Self {
+        self.directory = Some(directory.into());
+        self.file = None;
+        self.resolver = None;
+        self
+    }
+    #[must_use]
+    pub fn file(mut self, file: impl Into<String>) -> Self {
+        self.file = Some(file.into());
+        self.directory = None;
+        self.resolver = None;
+        self
+    }
+    #[must_use]
+    pub fn resolver(mut self) -> Self {
+        self.resolver = Some(true);
+        self.file = None;
+        self.directory = None;
+        self
+    }
+}
+/// One internal application scheme and its resource/action routes.
+#[derive(Clone, Debug)]
+pub struct Protocol {
+    scheme: String,
+    routes: Vec<Route>,
+}
+impl Protocol {
+    #[must_use]
+    pub fn new(scheme: impl Into<String>) -> Self {
         Self {
-            origins: origins.into_iter().map(Into::into).collect(),
-            paths: paths.into_iter().map(Into::into).collect(),
-            directory: None,
-            file: Some(file.into()),
+            scheme: scheme.into(),
+            routes: vec![],
         }
+    }
+    #[must_use]
+    pub fn route(mut self, route: Route) -> Self {
+        self.routes.push(route);
+        self
+    }
+}
+impl Configuration {
+    #[must_use]
+    pub fn protocol(mut self, protocol: Protocol) -> Self {
+        if !self.app.schemes.contains(&protocol.scheme) {
+            self.app.schemes.push(protocol.scheme);
+        }
+        self.app.assets.extend(protocol.routes);
+        self
     }
 }
 #[derive(Clone, Debug, Default, Serialize)]
@@ -237,7 +299,12 @@ mod tests {
     #[test]
     fn declarations_serialize_native_names_without_package_identity() {
         let mut config = Configuration::new(["example", "example-resource"]);
-        config = config.asset(Asset::directory(["example://main"], ["/*"], "ui"));
+        config = config.route(
+            Route::new()
+                .origin("example://main")
+                .path("/*")
+                .directory("ui"),
+        );
         let mut rule = Rule::new(["example://main"]).grant("test.Commands.*");
         rule.explorer = Some(Explorer {
             execute_javascript: Some(true),

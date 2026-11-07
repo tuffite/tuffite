@@ -46,14 +46,14 @@ source_set("browser") {
     "services/network_context",
     "services/permission",
     "services/shell_api",
+    "services/url",
     "services/webauthn",
-    "services/window",
     "//tuffite/framework/app:context",
-    "//tuffite/framework/app/services/asset",
     "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/app/services/profile",
     "//tuffite/framework/app/services/remoting",
     "//tuffite/framework/app/services/utility",
+    "//tuffite/framework/app/services/window",
   ]
   public = [
     "browser_main_parts.h",

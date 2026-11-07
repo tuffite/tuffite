@@ -110,7 +110,11 @@
           "type": "string"
         },
         "resources": {
-          "$ref": "#/$defs/stringArray"
+          "description": "Target directory aliases mapping to project-relative sources. Directory contents are copied into the alias. !glob patterns exclude files within that group; . targets the resource root.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/stringArray"
+          }
         },
         "icons": {
           "type": "object",

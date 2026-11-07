@@ -168,6 +168,7 @@ fn abandon_browser(providers: &crate::utility::V8Providers, executor: &ChromiumE
 
 struct RuntimeInstance {
     context: BrowserContext,
+    _business_context: crate::context_data::Value,
     runtime: Runtime,
     providers: Arc<crate::utility::V8Providers>,
     app_schemes: Option<Vec<String>>,
@@ -314,8 +315,16 @@ pub(crate) unsafe fn start_context<B: Browser>(
         let providers = context.providers();
         let stop = context.stop_signal();
         let initialized = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let browser = match catch_unwind(AssertUnwindSafe(|| B::new(context))) {
-            Ok(Ok(browser)) => Box::new(browser) as Box<dyn ErasedBrowser>,
+        let (browser, business_context) = match catch_unwind(AssertUnwindSafe(|| {
+            let setup = B::setup(crate::browser::Builder {
+                profile_id: context.profile_id().cloned(),
+                ..Default::default()
+            })?;
+            let value = setup.context_factory.build(context.clone())?;
+            context.context_slot.install(&value)?;
+            B::new(context).map(|browser| (browser, value))
+        })) {
+            Ok(Ok((browser, value))) => (Box::new(browser) as Box<dyn ErasedBrowser>, value),
             result => {
                 stop.0.cancel();
                 abandon_browser(&providers, &executor);
@@ -333,6 +342,7 @@ pub(crate) unsafe fn start_context<B: Browser>(
             DispatchScheduler::start(&runtime_identity, browser, callbacks, stop.clone());
         let instance = RuntimeInstance {
             context: retained_context,
+            _business_context: business_context,
             runtime: Runtime::new(),
             providers,
             app_schemes,
@@ -683,6 +693,7 @@ fn finish_stop(mut instance: RuntimeInstance, handle: RuntimeHandle) -> Status {
     // boundary while shutdown joins the worker.
     let _ = post_event(instance.callbacks, handle, RuntimeEventKind::Stopping, &[]);
     instance.stop.0.cancel();
+    instance.context.shortcut_callbacks.clear();
     instance.providers.stop();
     instance.runtime_identity.store(0, Ordering::Release);
     let application = instance.scheduler.shutdown();
@@ -946,37 +957,108 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines)] // Exercise one complete parent/two-profile lifecycle.
     fn application_and_profile_runtimes_keep_state_and_generations_separate() {
+        use base64::Engine;
         struct App;
-        struct Profile;
+        struct Profile {
+            base: BrowserContext,
+        }
+        struct AppContext {
+            base: crate::ApplicationContext,
+            label: String,
+        }
+        struct ProfileContext {
+            base: BrowserContext,
+            field: AtomicU64,
+        }
         impl crate::Application for App {
             fn setup(
                 builder: crate::app::Builder<Self>,
             ) -> crate::Result<crate::app::Builder<Self>> {
-                Ok(builder.configuration(crate::app::Configuration::new(["test"])))
+                Ok(builder
+                    .configuration(crate::app::Configuration::new(["test"]))
+                    .context(|base| {
+                        Ok(AppContext {
+                            base,
+                            label: "shared application".into(),
+                        })
+                    }))
             }
-            fn new(context: crate::ApplicationContext) -> crate::Result<Self> {
-                context.set_state(Arc::new(String::from("shared application")));
+            fn new(base: crate::ApplicationContext) -> crate::Result<Self> {
+                let context = base.downcast::<AppContext>()?;
+                assert_eq!(context.label, "shared application");
+                assert!(context.base.try_downcast::<String>().is_none());
+                assert!(Arc::ptr_eq(
+                    &context,
+                    &context.base.downcast::<AppContext>()?
+                ));
                 Ok(Self)
             }
         }
         impl Browser for Profile {
-            fn new(context: BrowserContext) -> crate::Result<Self> {
-                assert_eq!(
-                    &**context.application().unwrap().state::<String>().unwrap(),
-                    "shared application"
-                );
-                assert!(context.profile_id().is_some());
-                assert!(context.state::<String>().is_none());
-                context.set_state(Arc::new(AtomicU64::new(0)));
-                Ok(Self)
+            fn setup(
+                builder: crate::browser::Builder<Self>,
+            ) -> crate::Result<crate::browser::Builder<Self>> {
+                Ok(builder.context(|base| {
+                    assert_eq!(
+                        base.application().unwrap().downcast::<AppContext>()?.label,
+                        "shared application"
+                    );
+                    Ok(ProfileContext {
+                        base,
+                        field: AtomicU64::new(0),
+                    })
+                }))
             }
+            fn new(base: BrowserContext) -> crate::Result<Self> {
+                let context = base.downcast::<ProfileContext>()?;
+                assert!(context.base.profile_id().is_some());
+                assert!(base.try_downcast::<AppContext>().is_none());
+                Ok(Self { base })
+            }
+            async fn resolve(
+                &mut self,
+                url: &crate::Url,
+                context: crate::ResolveContext,
+            ) -> crate::Result<crate::Resolution> {
+                assert_eq!(
+                    context.profile(),
+                    self.base.profile_id().map(crate::ProfileId::as_str)
+                );
+                Ok(crate::Resolution::Resource(crate::Resource::bytes(
+                    format!(
+                        "{}:{}",
+                        self.base.profile_id().unwrap().as_str(),
+                        url.path()
+                    )
+                    .into_bytes(),
+                )))
+            }
+        }
+        struct Native {
+            capability: tuffite_abi::Contexts,
+            responses: std::sync::mpsc::Sender<(FfiHandle, Vec<u8>)>,
+        }
+        unsafe extern "C" fn capture(
+            data: *mut c_void,
+            runtime: FfiHandle,
+            kind: RuntimeEventKind,
+            payload: ByteSlice,
+        ) -> Status {
+            // SAFETY: Native and callback-only payload live for this entire call.
+            let native = unsafe { &*data.cast::<Native>() };
+            if kind == RuntimeEventKind::CommandResponse {
+                let bytes = unsafe { slice::from_raw_parts(payload.data, payload.len) };
+                native.responses.send((runtime, bytes.to_vec())).unwrap();
+            }
+            Status::Ok
         }
         unsafe extern "C" fn query_contexts(
             data: *mut c_void,
             id: u32,
         ) -> *const tuffite_abi::Header {
             if id == tuffite_abi::TUFFITE_CAPABILITY_CONTEXTS {
-                data.cast()
+                // SAFETY: Host user_data points to the live Native fixture.
+                unsafe { &raw const (*data.cast::<Native>()).capability }.cast()
             } else {
                 ptr::null()
             }
@@ -989,14 +1071,18 @@ mod tests {
         ) -> Status {
             Status::InvalidState
         }
-        let mut capability = tuffite_abi::Contexts {
-            header: tuffite_abi::Header::for_type::<tuffite_abi::Contexts>(),
-            user_data: ptr::null_mut(),
-            apply: Some(unavailable),
+        let (responses, received) = std::sync::mpsc::channel();
+        let mut native = Native {
+            responses,
+            capability: tuffite_abi::Contexts {
+                header: tuffite_abi::Header::for_type::<tuffite_abi::Contexts>(),
+                user_data: ptr::null_mut(),
+                apply: Some(unavailable),
+            },
         };
         let host = Host {
-            post_event: Some(quiet),
-            user_data: ptr::from_mut(&mut capability).cast(),
+            post_event: Some(capture),
+            user_data: ptr::from_mut(&mut native).cast(),
             query_extension: Some(query_contexts),
             ..host()
         };
@@ -1033,21 +1119,56 @@ mod tests {
         };
         let a = open("personal");
         let b = open("work");
+        for (runtime, profile) in [(a, "personal"), (b, "work")] {
+            let payload = serde_json::to_vec(&serde_json::json!({
+                "url": "test://main/image", "method": "GET", "profile": profile,
+            }))
+            .unwrap();
+            let mut request = b"CERM".to_vec();
+            request.extend_from_slice(&1u16.to_le_bytes());
+            request.extend_from_slice(&0u16.to_le_bytes());
+            request.extend_from_slice(&71u64.to_le_bytes());
+            request.extend_from_slice(&crate::url_handler::URL_COMMAND.to_le_bytes());
+            request.extend_from_slice(&0u64.to_le_bytes());
+            request.extend_from_slice(&u32::try_from(payload.len()).unwrap().to_le_bytes());
+            request.extend_from_slice(&payload);
+            // SAFETY: The request remains live while dispatch copies the frame.
+            assert_eq!(
+                unsafe { dispatch_browser(runtime, request.as_ptr(), request.len()) },
+                Status::Ok
+            );
+            let (actual_runtime, response) = received
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            assert_eq!(actual_runtime, runtime);
+            assert_eq!(&response[6..8], &0u16.to_le_bytes());
+            let wire: serde_json::Value = serde_json::from_slice(&response[20..]).unwrap();
+            assert_eq!(wire["kind"], "resource");
+            assert_eq!(
+                base64::engine::general_purpose::STANDARD
+                    .decode(wire["body"].as_str().unwrap())
+                    .unwrap(),
+                format!("{profile}:/image").into_bytes()
+            );
+        }
         let context_a = context_for_runtime(a).unwrap();
         let context_b = context_for_runtime(b).unwrap();
         context_a
-            .state::<AtomicU64>()
+            .downcast::<ProfileContext>()
             .unwrap()
+            .field
             .store(42, Ordering::Release);
         assert_eq!(
             context_b
-                .state::<AtomicU64>()
+                .downcast::<ProfileContext>()
                 .unwrap()
+                .field
                 .load(Ordering::Acquire),
             0
         );
         assert_eq!(stop_browser(a), Status::Ok);
         assert!(context_a.stop_signal().is_stopping());
+        assert!(context_a.try_downcast::<ProfileContext>().is_none());
         assert_eq!(context_a.handle().unwrap().as_u64(), a);
         assert!(context_for_runtime(a).is_err());
         assert!(!context_b.stop_signal().is_stopping());
@@ -1056,8 +1177,9 @@ mod tests {
         assert_eq!(
             context_for_runtime(reopened)
                 .unwrap()
-                .state::<AtomicU64>()
+                .downcast::<ProfileContext>()
                 .unwrap()
+                .field
                 .load(Ordering::Acquire),
             0
         );

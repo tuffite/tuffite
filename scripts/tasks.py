@@ -101,6 +101,7 @@ def test(context, args):
         context.application(["framework", "generate-rust", "packages/tuffite/tuffite.json",
                              "--output", "crates/tuffite/src/shell_api_generated.rs", "--check"], distribution)
         context.command(["node", "scripts/test-browser-runtime.mjs"])
+        context.command(["node", "scripts/test-resource-mounts.mjs"])
         context.command(["node", "scripts/test-mojom-codec.mjs"])
         context.command(["node", "scripts/test-framework-mojom-codec.mjs"])
         context.command(["cargo", "fmt", "--all", "--", "--check"])
@@ -136,6 +137,7 @@ def test(context, args):
         if args.suite == "explorer":
             command.append("--explorer-demo")
         if args.suite == "smoke":
+            context.command([*command, "--framework-extensions"])
             context.command([*command, "--profiles"])
             context.command([*command, "--mojom"])
             context.command([*command, "--explorer-capabilities"])

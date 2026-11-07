@@ -65,6 +65,11 @@ class Application final : public HostDispatch {
   bool Dispatch(std::vector<uint8_t>,
                 DispatchCallback,
                 const base::UnguessableToken&) override;
+  base::WeakPtr<Application> GetWeakPtr() { return weak_factory_.GetWeakPtr(); }
+  // Reserved native Framework commands; payload/result are JSON bytes.
+  void DispatchFramework(uint64_t command,
+                         std::string payload,
+                         DispatchCallback) override;
   void CancelDocument(const base::UnguessableToken&) override;
   void Quiesce();
   void Stop();
@@ -79,6 +84,10 @@ class Application final : public HostDispatch {
   bool is_running() const { return runtime_.load() != 0; }
 
  private:
+  bool DispatchImpl(std::vector<uint8_t>,
+                    DispatchCallback,
+                    const base::UnguessableToken&,
+                    bool framework);
   explicit Application(const tuffite_application& application);
   static bool ReadResponseRequestId(base::span<const uint8_t>, uint64_t*);
   void CompletePending(uint64_t, bool, std::vector<uint8_t>);

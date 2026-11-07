@@ -1,0 +1,31 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+import("//tuffite/tuffite_in_chromium.gni")
+assert(tuffite_in_chromium)
+source_set("interfaces") {
+  public = [ "shortcut_service.h" ]
+  sources = public
+  public_deps = [
+    "//base",
+    "//components/keyed_service/core",
+    "//ui/base",
+  ]
+}
+source_set("shortcut") {
+  public = [ "shortcut_service_factory.h" ]
+  sources = public + [
+              "shortcut_service_factory.cc",
+              "shortcut_service_impl.cc",
+              "shortcut_service_impl.h",
+            ]
+  public_deps = [
+    ":interfaces",
+    "//tuffite/framework/app/services:factory",
+  ]
+  deps = [
+    "//tuffite/framework/app:context",
+    "//tuffite/framework/app/services/window",
+    "//ui/base/accelerators/global_accelerator_listener",
+    "//ui/views",
+  ]
+}

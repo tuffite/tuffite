@@ -496,11 +496,17 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
     const auto* paths = rule ? rule->FindList("paths") : nullptr;
     const auto* file = rule ? rule->FindString("file") : nullptr;
     const auto* directory = rule ? rule->FindString("directory") : nullptr;
+    const bool resolver = rule && rule->FindBool("resolver").value_or(false);
+    const bool invalid_provider =
+        rule && ((rule->Find("resolver") && !resolver) ||
+                 (rule->Find("file") && !file) ||
+                 (rule->Find("directory") && !directory));
     asset::AssetRoute route;
-    if (!rule || !paths || paths->empty() || !rule->FindList("origins") ||
-        rule->FindList("origins")->empty() ||
-        (file != nullptr) == (directory != nullptr) ||
-        !IsSafeRelativePath(file ? *file : *directory) ||
+    if (invalid_provider || !rule || !paths || paths->empty() ||
+        !rule->FindList("origins") || rule->FindList("origins")->empty() ||
+        (int(file != nullptr) + int(directory != nullptr) + int(resolver) !=
+         1) ||
+        (!resolver && !IsSafeRelativePath(file ? *file : *directory)) ||
         !read_origins(rule, "origins", "app.assets.origins", false,
                       &route.origins)) {
       return fail("invalid app.assets route");
@@ -514,7 +520,8 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
       }
     }
     route.directory = directory != nullptr;
-    route.source = file ? *file : *directory;
+    route.resolver = resolver;
+    route.source = resolver ? "" : file ? *file : *directory;
     for (const auto& value : *paths) {
       const auto* path = value.GetIfString();
       if (!path || path->empty() || path->front() != '/' ||

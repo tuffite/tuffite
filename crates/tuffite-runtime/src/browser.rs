@@ -6,40 +6,11 @@ use crate::javascript_extension::JavaScriptExtensionHost;
 use crate::lifecycle::BoxFuture;
 use crate::utility_host::UtilitySessionHost;
 use crate::{CommandResult, Error, Result, ShutdownContext, StopSignal};
-use std::any::{Any, TypeId};
-use std::collections::HashMap;
+use std::any::Any;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use tuffite_abi::{RuntimeEventKind, Status};
-
-/// Typed application state shared only within one Browser runtime.
-#[derive(Clone, Default)]
-pub(crate) struct SharedState(Arc<RwLock<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>>);
-
-impl SharedState {
-    pub(crate) fn get<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
-        self.0
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(&TypeId::of::<T>())
-            .cloned()?
-            .downcast()
-            .ok()
-    }
-    pub(crate) fn set<T: Send + Sync + 'static>(&self, value: Arc<T>) {
-        self.0
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(TypeId::of::<T>(), value);
-    }
-}
-
-impl std::fmt::Debug for SharedState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("SharedState")
-    }
-}
 
 /// Immutable startup data supplied when one browser instance is created.
 #[derive(Clone, Debug)]
@@ -54,7 +25,8 @@ pub struct BrowserContext {
     utility_sessions: UtilitySessionHost,
     javascript_extensions: JavaScriptExtensionHost,
     isolated: crate::isolated::Host,
-    state: SharedState,
+    pub(crate) shortcut_callbacks: crate::shortcuts::Callbacks,
+    pub(crate) context_slot: crate::context_data::Slot,
     providers: Arc<crate::utility::V8Providers>,
     stop: StopSignal,
 }
@@ -77,11 +49,11 @@ impl BrowserContext {
         let utility_sessions = UtilitySessionHost::new(session);
         let javascript_extensions = JavaScriptExtensionHost::new(utility_sessions.clone());
         let configuration: Arc<[u8]> = configuration.into();
-        let state = SharedState::default();
+        let context_slot = crate::context_data::Slot::default();
         let providers = Arc::new(crate::utility::V8Providers::new(
             configuration.clone(),
             executor.clone(),
-            state.clone(),
+            context_slot.clone(),
         ));
         Self {
             application: None,
@@ -90,7 +62,8 @@ impl BrowserContext {
             native_calls: Arc::new(RwLock::new(true)),
             configuration,
             stop: StopSignal(crate::supervisor::CancellationToken::new()),
-            state,
+            context_slot,
+            shortcut_callbacks: crate::shortcuts::Callbacks::default(),
             providers,
             events: EventEmitter { runtime, callbacks },
             executor,
@@ -139,16 +112,13 @@ impl BrowserContext {
         self.stop.clone()
     }
 
-    /// Installs typed state shared with V8 providers in this Browser runtime.
-    /// Existing holders retain their Arc if this type is replaced. No state crosses IPC.
-    pub fn set_state<T: Send + Sync + 'static>(&self, value: Arc<T>) {
-        self.state.set(value);
+    /// Restores the business context installed by the setup Builder's factory.
+    pub fn downcast<T: Any + Send + Sync>(&self) -> Result<Arc<T>> {
+        self.context_slot.require()
     }
-
-    /// Obtains typed Browser-process state.
     #[must_use]
-    pub fn state<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
-        self.state.get()
+    pub fn try_downcast<T: Any + Send + Sync>(&self) -> Option<Arc<T>> {
+        self.context_slot.get()
     }
 
     pub(crate) fn providers(&self) -> Arc<crate::utility::V8Providers> {
@@ -285,6 +255,7 @@ pub struct Builder<B = ()> {
     pub(crate) devtools_denied_origins: Vec<String>,
     pub(crate) interfaces: crate::app::InterfaceRegistry<B>,
     pub(crate) profile_id: Option<crate::ProfileId>,
+    pub(crate) context_factory: crate::context_data::Factory<BrowserContext>,
 }
 impl<B> Default for Builder<B> {
     fn default() -> Self {
@@ -292,10 +263,21 @@ impl<B> Default for Builder<B> {
             devtools_denied_origins: Vec::new(),
             interfaces: crate::app::InterfaceRegistry::default(),
             profile_id: None,
+            context_factory: crate::context_data::Factory::default(),
         }
     }
 }
 impl<B> Builder<B> {
+    /// Registers construction; the closure is evaluated only for a live runtime.
+    #[must_use]
+    pub fn context<C: Any + Send + Sync>(
+        mut self,
+        factory: impl Fn(BrowserContext) -> Result<C> + Send + Sync + 'static,
+    ) -> Self {
+        self.context_factory = crate::context_data::Factory::new(factory);
+        self
+    }
+
     #[must_use]
     pub fn disable_devtools_for_origin(mut self, origin: impl Into<String>) -> Self {
         self.devtools_denied_origins.push(origin.into());
@@ -320,6 +302,7 @@ impl<B> Builder<B> {
     pub(crate) fn retype<T>(self) -> Builder<T> {
         Builder {
             devtools_denied_origins: self.devtools_denied_origins,
+            context_factory: self.context_factory,
             ..Builder::default()
         }
     }
@@ -353,6 +336,15 @@ pub trait Browser: Send + 'static {
         async { Ok(()) }
     }
 
+    /// Resolves resource/action URLs within this profile.
+    fn resolve(
+        &mut self,
+        _url: &crate::Url,
+        _context: crate::ResolveContext,
+    ) -> impl Future<Output = Result<crate::Resolution>> + Send {
+        async { Ok(crate::Resolution::Pass) }
+    }
+
     /// Low-level dispatch hook used by standalone runtime adapters. Embedded
     /// applications dispatch through their explicitly registered interfaces.
     fn dispatch(&mut self, _command: Command<'_>) -> CommandResult {
@@ -370,9 +362,21 @@ pub trait Browser: Send + 'static {
 pub(crate) trait ErasedBrowser: Send {
     fn initialize(&mut self) -> BoxFuture<'_, Result<()>>;
     fn dispatch(&mut self, command: Command<'_>) -> CommandResult;
+    fn resolve<'a>(
+        &'a mut self,
+        url: &'a crate::Url,
+        context: crate::ResolveContext,
+    ) -> BoxFuture<'a, Result<crate::Resolution>>;
     fn shutdown(&mut self, context: ShutdownContext) -> BoxFuture<'_, Result<()>>;
 }
 impl<B: Browser> ErasedBrowser for B {
+    fn resolve<'a>(
+        &'a mut self,
+        url: &'a crate::Url,
+        context: crate::ResolveContext,
+    ) -> BoxFuture<'a, Result<crate::Resolution>> {
+        Box::pin(Browser::resolve(self, url, context))
+    }
     fn initialize(&mut self) -> BoxFuture<'_, Result<()>> {
         Box::pin(Browser::initialize(self))
     }

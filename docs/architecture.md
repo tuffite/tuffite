@@ -381,13 +381,13 @@ runtime feature plus manifest origin policy.
 ### Manifest and Rust configuration responsibilities
 
 Source `tuffite.json` contains identity/display metadata, development/build inputs,
-and `bundle.resources`, the explicit project-relative file inventory. It contains
+and `bundle.resources`, the explicit source-to-package resource alias map. It contains
 no runtime policy. `build::Builder` only resolves the Framework and generates
 bindings; it does not execute or export application configuration.
 
 Rust `Application::setup` supplies typed `app::Configuration`: schemes, URL resource
 maps, network settings, startup windows, isolated-world entries and origin policy.
-Resource maps reference paths in `bundle.resources`; packaging never executes the
+Runtime resource maps reference the packaged alias targets from `bundle.resources`; packaging never executes the
 target application to discover those paths, including for cross-compilation.
 Missing mapped files are diagnosed by native loading. Runtime declarations are
 validated and enforced natively before documents and business IPC.
@@ -409,9 +409,9 @@ and reconstructs child state. The manifest has no utility configuration map.
 
 `V8::new(V8Context)` constructs one Browser-side resource provider lazily per
 name per Browser runtime. `setup(builder)` configures and freezes its entry before construction.
-`resolve(&self, request)` can use its instance fields. The context exposes service configuration, the Browser manifest,
-executor, typed shared state, and stopping. `BrowserContext::set_state(Arc<T>)`
-shares application state with provider `state::<T>()` inside Browser only.
+`resolve(&self, url, context)` returns Resource or Pass and can use its instance fields. The context exposes service configuration, the Browser manifest,
+executor, business Context access, and stopping. Browser setup `.context(...)`
+installs the object retrieved by provider `browser_context::<T>()` inside Browser only.
 Concurrent provider calls require synchronized mutable fields. Each JS session
 has a distinct Utility-side isolate; session-specific resolver state is not
 available through the service/name/URL callback.

@@ -473,9 +473,9 @@ is evaluated by ContextMenuService using ManifestService and browser state, insp
 navigation commands target the session's WebContents. Coordinate conversion and
 menu presentation also belong to the session. Menu state is not shared across
 views. Browser/profile teardown destroys the sessions before application
-services are destroyed; factory dependencies order ContextMenuService shutdown before DevToolsService,
-and DevToolsService before WindowService. ManifestService outlives
-the entire profile graph.
+services are destroyed; factory dependencies order ContextMenuService shutdown before DevToolsService.
+Profile teardown closes its windows before destroying its browser service graph.
+Application WindowService and ManifestService outlive that profile graph.
 
 ## Network and native document dialogs
 
@@ -488,8 +488,7 @@ does not enable a plaintext fallback.
 
 `JavaScriptDialogService` is also BrowserContext-scoped and owns one active native
 dialog per top-level WebContents. Window forwards Chromium's dialog hook to the
-service; its keyed factory depends on the dialog factory so windows shut down
-first. Dialogs display the requesting origin, cancel on navigation/destruction,
+service. Profile teardown closes its windows before destroying dialog services. Dialogs display the requesting origin, cancel on navigation/destruction,
 and complete their callback once. Explorer keeps its existing application event
 bridge and permission policy rather than receiving these native dialogs.
 
@@ -499,7 +498,7 @@ service; Explorer forwards those callbacks through its owning document delegate.
 Each selection session observes the requesting frame and cancels when the
 document navigates, the frame disappears, or the profile shuts down. Native
 selection and recursive directory enumeration complete their listener once.
-WindowService depends on the chooser factory so windows shut down first.
+Profile teardown closes its windows before destroying the chooser service.
 Selection grants remain Chromium-owned; this service does not grant general
 File System Access permissions.
 
@@ -557,15 +556,15 @@ browser request objects and retain only the application scheme. Menu sessions
 query manifest grants through weak pointers and evaluate their own runtime menu
 visibility. ShellApiService evaluates frame authorization and command routing.
 ExplorerService also creates navigation throttles and stops policy admission
-at shutdown. WindowService depends on its factory so window WebContents are
-closed before their provider is destroyed. Application services outlive the
+at shutdown. Profile teardown closes window WebContents before destroying their
+browser providers. Application services outlive the
 profile graph. There is no ApplicationPolicyService or separate manifest model.
 
 Application projections use `app_config.h` and the `tuffite::app` namespace.
 ManifestService returns `app::AppInfo` through `app_info()`, startup windows and
 network limits through specific queries, and `asset::AssetConfiguration` resource
 snapshots. Resource configuration is owned by the asset module's configuration
-target, which is separate from AssetService to keep dependencies acyclic.
+target. Per-profile URLService owns actual URL loading.
 
 Builtin renderer dispatch belongs to BrowserContext's ShellApiService. Application
 services expose domain operations to dedicated native ABI capabilities. Host is
@@ -574,3 +573,10 @@ request identity is a weak document plus connection token and request ID;
 application backend selection uses the frozen Rust registration map. Profile
 retirement retains only closed Host callback tables, not stopped runtime or
 utility service objects.
+
+WindowService lives in `app/services/window` and owns application-wide WindowIds,
+window creation and destruction, and profile window cleanup. ShortcutService in
+`app/services/shortcut` owns window/application/system shortcut registration,
+conflict checks, callbacks and Chromium's global accelerator listener. It borrows
+WindowService and shuts down first. Window only forwards native accelerators and
+window lifecycle notifications; it does not own a shortcut registry.

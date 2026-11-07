@@ -12,9 +12,9 @@
 #include "tuffite/components/explorer/browser/explorer_partition.h"
 #include "tuffite/components/explorer/browser/explorer_surface_data.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/app/services/window/window_service.h"
+#include "tuffite/framework/app/services/window/window_service_factory.h"
 #include "tuffite/framework/browser/services/explorer/explorer_navigation_throttle.h"
-#include "tuffite/framework/browser/services/window/window_service.h"
-#include "tuffite/framework/browser/services/window/window_service_factory.h"
 #include "tuffite/framework/browser/web_contents_role.h"
 #include "tuffite/framework/common/access.h"
 

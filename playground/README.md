@@ -127,7 +127,7 @@ Rust and V8 definitions use the same named utility attribute and are listed
 explicitly in the embedding. Their traits (`Utility` and `V8`) select the backend. V8 runs in the Framework-owned native backend selected
 by the registered service name. Parser is a reusable Browser-side Rust provider
 constructed with V8Context; its generated module uses service configuration and
-typed state installed by BrowserContext::set_state. Each session has an independent
+the business context installed by Browser setup `.context(...)`. Each session has an independent
 JS isolate. Echo receives and validates its own UtilityContext configuration over
 Mojo; it retains that context and observes service stop. The smoke fails if either
 context path is missing. Both examples start supervised Chromium utility processes on demand.
@@ -172,3 +172,14 @@ stale-generation rejection. Runtime declarations stay out of `tuffite.json`.
 Open `isolated.html` from the main lab to run two isolated worlds with the same
 component tags. See [DOM isolated worlds](../docs/isolated.md) for the contract
 and `--isolated-worlds` packaged smoke command.
+
+## Framework extensions lab
+
+Open `framework.html` from the main page. It demonstrates dynamic JSON, SVG and
+file resources, consumed actions and discarded loads, source context metadata,
+Web events, window/application shortcuts, and opt-in system shortcuts.
+Application, Browser, Rust Utility and V8 provider each register a business
+Context factory in their setup Builder. `bundle.resources` mounts `ui/dist` at
+`ui` and excludes sourcemaps. See [Framework extensions](../docs/framework-extensions.md).
+Run the packaged integration check with
+`python3 playground/scripts/smoke.py --package dist/playground --framework-extensions`.

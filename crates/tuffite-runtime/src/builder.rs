@@ -531,8 +531,10 @@ mod tests {
     static BROWSER_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
     impl Browser for Backend {
-        fn new(context: BrowserContext) -> Result<Self> {
-            context.set_state(std::sync::Arc::new(String::from("shared")));
+        fn setup(builder: crate::browser::Builder<Self>) -> Result<crate::browser::Builder<Self>> {
+            Ok(builder.context(|_| Ok(String::from("shared"))))
+        }
+        fn new(_: BrowserContext) -> Result<Self> {
             BROWSER_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(Self)
         }
@@ -864,7 +866,11 @@ mod tests {
             assert_eq!(context.name(), "v8_entry_test");
             assert_eq!(context.configuration(), br#"{"flag":true,"setup":true}"#);
             assert_eq!(
-                context.state::<String>().as_deref().map(String::as_str),
+                context
+                    .browser_context::<String>()
+                    .ok()
+                    .as_deref()
+                    .map(String::as_str),
                 Some("shared")
             );
             assert!(!context.is_stopping());
@@ -884,11 +890,13 @@ mod tests {
 
         async fn resolve(
             &self,
-            request: crate::utility::v8::ModuleRequest,
-        ) -> Result<Option<crate::utility::v8::ModuleSource>, crate::utility::v8::Error> {
-            let url = request.url();
+            url: &crate::Url,
+            context: crate::ResolveContext,
+        ) -> Result<crate::Resolution> {
+            let url = url.as_str();
+            assert!(context.session_id().is_some());
             if url.ends_with("/wait.mjs") {
-                request.stop_signal().cancelled().await;
+                context.stop_signal().cancelled().await;
                 return Err(std::io::Error::from(std::io::ErrorKind::Interrupted).into());
             }
             assert!(!self.context.is_stopping());
@@ -902,12 +910,14 @@ mod tests {
                 return Err(std::io::Error::from(std::io::ErrorKind::NotFound).into());
             }
             if url.ends_with("/asset.mjs") {
-                return Ok(None);
+                return Ok(crate::Resolution::Pass);
             }
-            Ok(Some(crate::utility::v8::ModuleSource::new(
-                url.to_owned(),
-                format!("export default {{ping: () => {count}}};"),
-            )))
+            Ok(crate::Resolution::Resource(
+                crate::Resource::bytes(
+                    format!("export default {{ping: () => {count}}};").into_bytes(),
+                )
+                .mime_type("text/javascript"),
+            ))
         }
     }
 
@@ -941,6 +951,8 @@ mod tests {
     }
 
     fn test_providers() -> std::sync::Arc<crate::utility::V8Providers> {
+        static ROOT: std::sync::OnceLock<crate::context_data::Value> = std::sync::OnceLock::new();
+
         let host = crate::abi::NativeHost(tuffite_abi::Host {
             header: tuffite_abi::Header::for_type::<tuffite_abi::Host>(),
             user_data: std::ptr::null_mut(),
@@ -948,8 +960,10 @@ mod tests {
             post_task: Some(reject_task),
             query_extension: None,
         });
-        let state = crate::browser::SharedState::default();
-        state.set(std::sync::Arc::new(String::from("shared")));
+        let state = crate::context_data::Slot::default();
+        state
+            .install(ROOT.get_or_init(|| std::sync::Arc::new(String::from("shared"))))
+            .unwrap();
         std::sync::Arc::new(crate::utility::V8Providers::new(
             std::sync::Arc::from(PROVIDER_CONFIG),
             crate::ChromiumExecutor::new(host),

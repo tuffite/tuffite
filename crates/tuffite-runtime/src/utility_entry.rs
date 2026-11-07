@@ -987,6 +987,7 @@ mod tests {
         let instance = Arc::new(UtilityInstance {
             implementation: Box::new(crate::utility::ConfiguredUtility {
                 implementation: EchoService,
+                _business_context: Arc::new(()),
                 interfaces: crate::utility::InterfaceRegistry::default(),
             }),
             activity: RwLock::new(()),

@@ -23,12 +23,13 @@
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/main_delegate.h"
 #include "tuffite/framework/app/process_launch.h"
-#include "tuffite/framework/app/services/asset/asset_service.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
 #include "tuffite/framework/app/services/remoting/remoting_service.h"
+#include "tuffite/framework/app/services/shortcut/shortcut_service.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/app/services/utility/utility_service_factory.h"
+#include "tuffite/framework/app/services/window/window_service.h"
 #include "tuffite/framework/browser/services/context_menu/context_menu_service.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service.h"
 #include "tuffite/framework/browser/services/isolated/isolated_service_impl.h"
@@ -385,6 +386,27 @@ TEST_F(AbiTest, OptionalSetupTailPreservesOlderApplicationTables) {
   ASSERT_TRUE(host);
   EXPECT_EQ(host->table().setup_browser, nullptr);
   EXPECT_NE(host->table().resolve_utility_route, nullptr);
+}
+
+TEST_F(AbiTest, ShortcutRegistrationHasScopeAndDuplicateOwnership) {
+  base::test::TaskEnvironment environment;
+  auto table = FakeApplication();
+  MainDelegate delegate(abi::Application::Create(&table));
+  delegate.BindBrowserTaskRunner();
+  ASSERT_TRUE(delegate.StartUp(TestManifest()));
+  auto* shortcuts = delegate.context()->GetService<ShortcutService>();
+  auto callback = base::BindRepeating([](std::string, int64_t) {});
+  ui::Accelerator key(ui::VKEY_P, ui::EF_CONTROL_DOWN | ui::EF_SHIFT_DOWN);
+  EXPECT_TRUE(shortcuts->RegisterShortcut("first", key, 0, callback));
+  EXPECT_FALSE(shortcuts->RegisterShortcut("duplicate", key, 0, callback));
+  EXPECT_FALSE(
+      shortcuts->RegisterShortcut("missing-window", key, 999, callback));
+  EXPECT_TRUE(shortcuts->IsShortcutRegistered("first"));
+  shortcuts->UnregisterShortcuts(0);
+  EXPECT_FALSE(shortcuts->IsShortcutRegistered("first"));
+  EXPECT_FALSE(shortcuts->UnregisterShortcut("first"));
+  EXPECT_TRUE(shortcuts->RegisterShortcut("again", key, 0, callback));
+  delegate.Shutdown();
 }
 
 TEST_F(AbiTest, BrowserInitializationCompletesOnBrowserSequence) {
@@ -913,6 +935,14 @@ TEST_F(AbiTest, BackendScopesRouteAndCancelWithTheirOriginatingDocument) {
                                   *parent.context(), "work", *utilities));
   const auto document = base::UnguessableToken::Create();
   int completed = 0;
+  bool rejected_framework = false;
+  EXPECT_FALSE(child->Dispatch(
+      rpc::EncodeRequest({.command_id = UINT64_MAX}),
+      base::BindOnce([](bool* rejected, bool ok,
+                        std::vector<uint8_t>) { *rejected = !ok; },
+                     &rejected_framework),
+      document));
+  EXPECT_TRUE(rejected_framework);
   for (uint64_t command : {1u, 2u}) {
     auto request =
         rpc::EncodeRequest({.request_id = command, .command_id = command});
@@ -1261,11 +1291,6 @@ TEST(ApplicationServiceTest, IsolatesServicesAcrossApplications) {
       url::Origin::Create(GURL("https://untrusted.example/"))));
   auto resource_snapshot = manifest_a->assets();
   auto manifest_weak = manifest_a->GetWeakPtr();
-  auto* assets_a = application_a.context()->GetService<AssetService>();
-  auto* assets_b = application_b.context()->GetService<AssetService>();
-  ASSERT_NE(assets_a, nullptr);
-  ASSERT_NE(assets_b, nullptr);
-  EXPECT_NE(assets_a, assets_b);
 
   auto* utility_a = application_a.context()->GetService<UtilityService>();
   auto* utility_b = application_b.context()->GetService<UtilityService>();
@@ -1341,7 +1366,6 @@ TEST(ApplicationServiceTest, IsolatesServicesAcrossApplications) {
   application_b.Shutdown();
   EXPECT_EQ(application_b.context(), nullptr);
   EXPECT_EQ(application_a.context()->GetService<UtilityService>(), utility_a);
-  EXPECT_EQ(application_a.context()->GetService<AssetService>(), assets_a);
   application_a.Shutdown();
   EXPECT_EQ(application_a.context(), nullptr);
   EXPECT_FALSE(manifest_weak);

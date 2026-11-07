@@ -10,3 +10,7 @@ export function findManifest(start: string): string | undefined;
 export function contentTypeForPath(path: string): string | undefined;
 export function decodeRequestPath(requestUrl: string | undefined): string | undefined;
 export function resolveConfinedFile(root: string, path: string): Promise<string | undefined>;
+
+export interface ResourceMount { prefix: string; root: string; file: boolean; excludes: string[]; source: string; }
+export function resourceMounts(resources: Readonly<Record<string, readonly string[]>>, applicationRoot: string): ResourceMount[];
+export function resourceExcluded(patterns: readonly string[], paths: readonly string[]): boolean;

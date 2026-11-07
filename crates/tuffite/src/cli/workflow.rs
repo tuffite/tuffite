@@ -89,6 +89,7 @@ struct AppBrowser {
 
 struct App;
 impl tuffite::Application for App {
+
     fn setup(builder: tuffite::app::Builder<Self>) -> Result<tuffite::app::Builder<Self>> {
         Ok(builder.configuration(configuration::configuration()))
     }
@@ -96,6 +97,7 @@ impl tuffite::Application for App {
 }
 
 impl tuffite::Browser for AppBrowser {
+
     fn setup(builder: tuffite::browser::Builder<Self>) -> Result<tuffite::browser::Builder<Self>> {
         Ok(builder.interfaces(|registry| registry.register::<shell_api::interfaces::Commands>()))
     }
@@ -128,13 +130,13 @@ impl shell_api::Commands for AppBrowser {
     write(
         &directory.join("configuration.rs"),
         &format!(
-            r#"use tuffite::configuration::{{Asset, Configuration, Rule, Window}};
+            r#"use tuffite::configuration::{{Route, Configuration, Rule, Window}};
 pub fn configuration() -> Configuration {{
     let mut rule = Rule::new(["{namespace}://main"]).grant("{namespace}.*");
     rule.csp = Some("default-src 'self'".into());
     Configuration::new(["{namespace}"])
         .window(Window {{ label: "main".into(), url: "{namespace}://main/index.html".into(), title: "{package}".into(), width: 1000, height: 700, ..Window::default() }})
-        .asset(Asset::file(["{namespace}://main"], ["/index.html"], "ui/index.html"))
+        .route(Route::new().origin("{namespace}://main").path("/index.html").file("ui/index.html"))
         .rule(rule)
 }}
 "#
@@ -147,7 +149,7 @@ pub fn configuration() -> Configuration {{
             "identifier": identifier,
         },
         "build": {"mojomSources": ["shell_api.mojom"]},
-        "bundle": {"resources": ["ui"]}
+        "bundle": {"resources": {"ui": ["ui"]}}
     });
     write(
         &directory.join("tuffite.json"),

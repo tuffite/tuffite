@@ -119,7 +119,7 @@ struct AppManifest {
 struct Bundle {
     executable: Option<String>,
     #[serde(default)]
-    resources: Vec<String>,
+    resources: resources::BundleResources,
     #[serde(default)]
     icons: icons::Icons,
 }

@@ -131,7 +131,7 @@ void ConfigureUtilityHostRuntime(UtilityService& service,
          tuffite_handle_t runtime, std::string name, uint64_t session_id,
          std::string url, UtilityResponseCallback callback) {
         if (!resolve) {
-          ReadModuleAsset(assets.ResolveAssetFile(GURL(url)),
+          ReadModuleAsset(assets.ResolveAssetFile(GURL(url), true),
                           std::move(callback));
           return;
         }
@@ -139,7 +139,7 @@ void ConfigureUtilityHostRuntime(UtilityService& service,
             std::make_unique<ModuleResolutionReply>(ModuleResolutionReply{
                 std::move(callback),
                 base::SequencedTaskRunner::GetCurrentDefault(),
-                assets.ResolveAssetFile(GURL(url))});
+                assets.ResolveAssetFile(GURL(url), true)});
         // Release before calling: an accepted reply may arrive
         // immediately on a worker.
         auto* context = pending.release();
@@ -430,20 +430,28 @@ void Application::BindBrowserTaskRunner() {
 bool Application::Dispatch(std::vector<uint8_t> event,
                            DispatchCallback callback,
                            const base::UnguessableToken& document) {
+  return DispatchImpl(std::move(event), std::move(callback), document, false);
+}
+bool Application::DispatchImpl(std::vector<uint8_t> event,
+                               DispatchCallback callback,
+                               const base::UnguessableToken& document,
+                               bool framework) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(browser_sequence_checker_);
   const tuffite_handle_t runtime = runtime_.load();
   const auto decoded_request = rpc::DecodeRequest(event);
   // Forwarding an application command must still respect the originating
   // profile's lifecycle admission, not only the parent's admission.
   if (!runtime || !browser_task_runner_ || !decoded_request ||
-      !accepting_requests_ || !browser_initialized_) {
+      !accepting_requests_ || !browser_initialized_ ||
+      (!framework && decoded_request->command_id >= UINT64_MAX - 1)) {
     std::move(callback).Run(false, {});
     return false;
   }
   if (decoded_request && application_.command_scope) {
     const auto scope = application_.command_scope(decoded_request->command_id);
     if (parent_ && scope == 1) {
-      return parent_->Dispatch(std::move(event), std::move(callback), document);
+      return parent_->DispatchImpl(std::move(event), std::move(callback),
+                                   document, framework);
     }
     if (scope != (parent_ ? 2u : 1u)) {
       std::move(callback).Run(false, {});
@@ -498,6 +506,27 @@ bool Application::Dispatch(std::vector<uint8_t> event,
     return false;
   }
   return true;
+}
+
+void Application::DispatchFramework(uint64_t command,
+                                    std::string payload,
+                                    DispatchCallback callback) {
+  rpc::Request request;
+  request.command_id = command;
+  request.payload.assign(payload.begin(), payload.end());
+  DispatchImpl(
+      rpc::EncodeRequest(request),
+      base::BindOnce(
+          [](DispatchCallback callback, bool ok, std::vector<uint8_t> bytes) {
+            auto response = rpc::DecodeResponse(bytes);
+            if (!ok || !response || response->status != 0) {
+              std::move(callback).Run(false, {});
+              return;
+            }
+            std::move(callback).Run(true, std::move(response->payload));
+          },
+          std::move(callback)),
+      base::UnguessableToken::Create(), true);
 }
 
 void Application::CancelDocument(const base::UnguessableToken& document) {

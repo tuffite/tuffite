@@ -2,13 +2,14 @@
 
 This directory owns per-profile browser services: `client_hints`, `download`, `explorer`,
 `file_chooser`, `javascript_dialog`, `network_context`, `permission`, `shell_api`,
-`webauthn` and `window`. Their factories use Chromium's BrowserContext
+`url` and `webauthn`. Their factories use Chromium's BrowserContext
 keyed-service graph.
 `devtools` and `context_menu` also live here because they implement browser and
 WebContents interactions; they use BrowserContext factories. ContextMenu depends
 on DevTools and borrows
-ManifestService through constructor injection. Menus shut down before DevTools,
-and DevTools before windows. The process-wide debugging server uses a
+ManifestService through constructor injection. Menus shut down before DevTools;
+profile teardown closes its windows before destroying browser services.
+WindowService is application scoped and lives in `app/services/window`. The process-wide debugging server uses a
 weak ownership lease, separate from the profile service lifetime.
 Application-scoped services and the shared typed factory infrastructure live in
 [app/services](../../app/services/README.md).
@@ -44,3 +45,10 @@ interface and receives ManifestService through constructor injection. The
 factory creates it with BrowserContext; WindowService depends on its factory so
 window WebContents are destroyed first. Throttles retain their own navigation
 lifetime and a scheme snapshot, and policy admission stops at service shutdown.
+
+URLService owns per-profile custom protocol loading: navigation, subresource and
+worker factories, isolated resources, Browser resolver dispatch and static
+fallback. Its private URLLoaderFactory adapts resolution to Mojo loading. Factories
+retain configuration snapshots and weak service/document references; profile
+shutdown closes resolver admission without retaining the profile. Asset metadata
+remains a copyable application configuration projection.

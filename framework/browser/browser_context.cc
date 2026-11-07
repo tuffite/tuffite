@@ -14,6 +14,8 @@
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
+#include "tuffite/framework/app/services/window/window_service.h"
+#include "tuffite/framework/app/services/window/window_service_factory.h"
 #include "tuffite/framework/browser/services/client_hints/client_hints_service.h"
 #include "tuffite/framework/browser/services/client_hints/client_hints_service_factory.h"
 #include "tuffite/framework/browser/services/context_menu/context_menu_service_factory.h"
@@ -28,9 +30,8 @@
 #include "tuffite/framework/browser/services/permission/permission_service.h"
 #include "tuffite/framework/browser/services/permission/permission_service_factory.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service_factory.h"
+#include "tuffite/framework/browser/services/url/url_service_factory.h"
 #include "tuffite/framework/browser/services/webauthn/web_authentication_service_factory.h"
-#include "tuffite/framework/browser/services/window/window_service.h"
-#include "tuffite/framework/browser/services/window/window_service_factory.h"
 
 namespace tuffite {
 namespace {
@@ -69,6 +70,7 @@ BrowserContext::BrowserContext(base::FilePath path,
   DownloadServiceFactory::Get();
   DevToolsServiceFactory::Get();
   IsolatedServiceFactory::Get();
+  URLServiceFactory::Get();
   ContextMenuServiceFactory::Get();
   WebAuthenticationServiceFactory::Get();
   FileChooserServiceFactory::Get();

@@ -51,6 +51,7 @@ cli = [
     "dep:tracing",
     "dep:tracing-subscriber",
     "dep:getrandom",
+    "dep:glob",
     "dep:processkit",
     "dep:tokio",
 ]
@@ -69,6 +70,7 @@ tracing = { workspace = true, optional = true }
 base64 = { version = "0.22", optional = true }
 blake3 = { version = "1.8.2", optional = true }
 clap = { version = "4.5.53", features = ["derive", "env"], optional = true }
+glob = { version = "0.3", optional = true }
 getrandom = { version = "0.4", optional = true }
 indicatif = { version = "0.18", optional = true }
 oxc_allocator = { version = "=0.116.0", optional = true }

@@ -10,9 +10,9 @@
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
+#include "tuffite/framework/app/services/window/window_service_factory.h"
 #include "tuffite/framework/browser/browser_context.h"
 #include "tuffite/framework/browser/services/shell_api/shell_api_service_impl.h"
-#include "tuffite/framework/browser/services/window/window_service_factory.h"
 
 namespace tuffite {
 ShellApiServiceFactory::~ShellApiServiceFactory() = default;

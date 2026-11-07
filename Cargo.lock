@@ -1897,6 +1897,7 @@ dependencies = [
  "blake3",
  "clap",
  "getrandom 0.4.3",
+ "glob",
  "indicatif",
  "miette",
  "oxc_allocator",

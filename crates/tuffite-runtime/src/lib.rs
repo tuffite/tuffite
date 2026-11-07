@@ -12,6 +12,7 @@ mod builder;
 #[doc(hidden)]
 pub mod codec;
 pub mod configuration;
+mod context_data;
 mod contexts;
 mod dispatch;
 mod executor;
@@ -25,9 +26,16 @@ pub use lifecycle::{ShutdownContext, ShutdownReason, StopSignal};
 pub mod mojom;
 pub mod protocol;
 mod runtime;
+mod shortcuts;
 mod supervisor;
+pub use shortcuts::{
+    Key, Modifiers, ScopedShortcuts, Shortcut, ShortcutEvent, ShortcutScope, ShortcutState,
+    Shortcuts,
+};
+mod url_handler;
 pub mod utility;
 mod utility_entry;
+pub use url_handler::{Resolution, ResolveContext, Resource, Url};
 mod utility_host;
 mod utility_session;
 

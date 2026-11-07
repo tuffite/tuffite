@@ -35,12 +35,14 @@ Application shutdown follows all Browser shutdowns. Cleanup uses the existing
 `ShutdownContext` deadline and cancellation contract. UI-dependent calls reject
 once shutdown admission closes; Chromium executor cleanup remains available.
 
-`ApplicationContext::state` and `BrowserContext::state` are separate typed maps.
-Profile code explicitly obtains shared services through
-`BrowserContext::application()`. The optional return also permits standalone contexts in low-level tests. Utilities keep
-static application-wide definitions but independent per-runtime sessions and
-V8 providers. Browser events reach only that BrowserContext's subscribers;
-Application events deliberately broadcast across the application's contexts.
+Application and Browser setup builders register business Context factories.
+Profiles obtain shared services through `BrowserContext::application()` and
+`downcast::<MyApplicationContext>()`. Each Browser generation has one independent
+business context; V8 providers can access it through `browser_context::<T>()`.
+Rust Utility state remains in its child process. Browser events reach only that
+BrowserContext's subscribers; Application events broadcast across application
+contexts. See [Framework extensions](framework-extensions.md) for construction,
+ownership and examples. The former `set_state`/`state` map has been removed.
 
 ## Profile identity and persistence
 

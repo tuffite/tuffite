@@ -263,14 +263,14 @@ fn reads_product_name_without_source_schema_version() {
                 "identifier": "com.example.demo"
               },
               "bundle": {
-                "resources": ["index.html"]
+                "resources": {".": ["index.html"]}
               }
             }"#,
     )
     .unwrap();
     assert_eq!(manifest.product_name.as_deref(), Some("Demo App"));
     assert_eq!(manifest.app.identifier, "com.example.demo");
-    assert_eq!(manifest.bundle.resources, ["index.html"]);
+    assert_eq!(manifest.bundle.resources["."], ["index.html"]);
 }
 
 #[test]
@@ -281,12 +281,34 @@ fn packaging_uses_only_explicit_file_inventory_and_deduplicates_children() {
     fs::write(project.join("ui/index.html"), "demo").unwrap();
     let resources = configure_resources(
         &project,
-        &["ui".into(), "ui/index.html".into(), "ui".into()],
+        &[(
+            "ui".into(),
+            vec!["ui".into(), "ui/index.html".into(), "ui".into()],
+        )]
+        .into_iter()
+        .collect(),
     )
     .unwrap();
-    assert_eq!(resources, ["ui"]);
-    assert!(configure_resources(&project, &["../escape".into()]).is_err());
-    assert!(configure_resources(&project, &["missing.js".into()]).is_err());
+    assert_eq!(resources.len(), 1);
+    assert_eq!(resources[0].target, Path::new("ui/index.html"));
+    assert!(
+        configure_resources(
+            &project,
+            &[(".".into(), vec!["../escape".into()])]
+                .into_iter()
+                .collect()
+        )
+        .is_err()
+    );
+    assert!(
+        configure_resources(
+            &project,
+            &[(".".into(), vec!["missing.js".into()])]
+                .into_iter()
+                .collect()
+        )
+        .is_err()
+    );
     fs::remove_dir_all(project).unwrap();
 }
 
@@ -335,7 +357,13 @@ fn copies_a_resource_directory_without_symlinks() {
     copy_resources(
         &project,
         Path::new("application"),
-        &["ui/dist".to_owned()],
+        &configure_resources(
+            &project,
+            &[("ui/dist".into(), vec!["ui/dist".into()])]
+                .into_iter()
+                .collect(),
+        )
+        .unwrap(),
         &output,
     )
     .unwrap();
@@ -348,5 +376,56 @@ fn copies_a_resource_directory_without_symlinks() {
         fs::read(output.join("application/ui/dist/assets/app.js")).unwrap(),
         b"app"
     );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn mounts_directory_contents_and_excludes_nested_files() {
+    let root = std::env::temp_dir().join(format!("tuffite-resource-mounts-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("ui/dist/nested")).unwrap();
+    fs::create_dir_all(root.join("ui/dist/ignore")).unwrap();
+    fs::write(root.join("ui/dist/ignore/child.txt"), "excluded directory").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink("/tmp", root.join("ui/dist/ignore/outside-link")).unwrap();
+    for file in [
+        "index.html",
+        "index.js.map",
+        "nested/app.js",
+        "nested/app.js.map",
+        "nested/ignore",
+    ] {
+        fs::write(root.join("ui/dist").join(file), file).unwrap();
+    }
+    let config = serde_json::from_value(serde_json::json!({
+        ".": ["ui/dist", "!**/*.map", "!**/ignore"],
+        "copy": ["ui/dist/index.html"]
+    }))
+    .unwrap();
+    let resources = configure_resources(&root, &config).unwrap();
+    assert_eq!(
+        resources
+            .iter()
+            .map(|r| r.target.to_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["copy/index.html", "index.html", "nested/app.js"]
+    );
+    copy_resources(&root, Path::new("assets"), &resources, &root.join("output")).unwrap();
+    assert!(root.join("output/assets/index.html").is_file());
+    assert!(!root.join("output/assets/ui").exists());
+    assert!(!root.join("output/assets/index.js.map").exists());
+    let collision = serde_json::from_value(
+        serde_json::json!({".":["ui/dist/index.html", "output/assets/index.html"]}),
+    )
+    .unwrap();
+    assert!(
+        configure_resources(&root, &collision)
+            .unwrap_err()
+            .contains("collision")
+    );
+    let escape = serde_json::from_value(serde_json::json!({"../escape":["ui/dist"]})).unwrap();
+    assert!(configure_resources(&root, &escape).is_err());
+    let reserved = serde_json::from_value(serde_json::json!({"app.icns":["ui/dist"]})).unwrap();
+    assert!(configure_resources(&root, &reserved).is_err());
     fs::remove_dir_all(root).unwrap();
 }

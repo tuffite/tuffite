@@ -4,40 +4,8 @@
 import("//tuffite/tuffite_in_chromium.gni")
 assert(tuffite_in_chromium)
 
-source_set("asset") {
-  public = [
-    "app_url_loader_factory.h",
-    "asset_service.h",
-    "asset_service_factory.h",
-  ]
-  sources = [
-    "app_url_loader_factory.cc",
-    "app_url_loader_factory.h",
-    "asset_service.h",
-    "asset_service_factory.cc",
-    "asset_service_factory.h",
-    "asset_service_impl.cc",
-    "asset_service_impl.h",
-  ]
-  public_deps = [
-    "//base",
-    "//components/keyed_service/core",
-    "//mojo/public/cpp/bindings",
-    "//services/network/public/mojom",
-    "//tuffite/framework/app/services:factory",
-  ]
-  deps = [
-    ":configuration",
-    "//mojo/public/cpp/system",
-    "//net",
-    "//services/network/public/cpp",
-    "//tuffite/framework/app/services/manifest",
-    "//url",
-  ]
-}
-
-# Resource snapshots can outlive AssetService. This target also supplies the
-# manifest's asset configuration without a service dependency cycle.
+# Copyable resource snapshots are shared by manifest parsing and profile URL
+# loading.
 source_set("configuration") {
   public = [ "asset_configuration.h" ]
   sources = public + [ "asset_configuration.cc" ]

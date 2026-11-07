@@ -15,9 +15,8 @@ Application configuration belongs to app/services/manifest/app_config.h under
 `tuffite::app`, exposed by the manifest target. AppInfo, AppWindow and NetworkLimits
 are application configuration projections rather than generic common types.
 Resource routing and copyable snapshots belong to app/services/asset under
-`tuffite::asset`, in its configuration target. Separating that target from the
-AssetService implementation lets ManifestService consume resource configuration
-without a service dependency cycle.
+`tuffite::asset`, in its configuration target. ManifestService and per-profile URLService share these snapshots without a
+service dependency cycle.
 
 ContentClient is an embedder adapter owned by MainDelegate in app/content_client.
 The development token environment key is private bootstrap state in MainDelegate.

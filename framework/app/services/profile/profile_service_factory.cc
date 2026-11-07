@@ -3,7 +3,7 @@
 #include "tuffite/framework/app/services/profile/profile_service_factory.h"
 
 #include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
-#include "tuffite/framework/browser/services/window/window_service_factory.h"
+#include "tuffite/framework/app/services/window/window_service_factory.h"
 namespace tuffite {
 ProfileServiceFactory* ProfileServiceFactory::Get() {
   static base::NoDestructor<ProfileServiceFactory> instance;

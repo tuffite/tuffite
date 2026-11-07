@@ -37,6 +37,7 @@ export default defineConfig({
       input: [
         "index.html",
         "profiles.html",
+        "framework.html",
         "isolated.html",
         "capabilities.html",
         "compatibility.html",

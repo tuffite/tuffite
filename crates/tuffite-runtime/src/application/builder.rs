@@ -57,6 +57,9 @@ impl<A: Application, B: Browser> FrozenRegistry<A, B> {
                     .map(|d| (2, d)),
             );
         for (scope, entry) in descriptors {
+            if entry.id() >= crate::url_handler::SHORTCUT_COMMAND {
+                return Err(Error::new("command ID is reserved by Framework"));
+            }
             if entry.channel().is_empty() || !entry.channel().contains('.') {
                 return Err(Error::new("registered command channel is invalid"));
             }
@@ -95,6 +98,7 @@ pub struct Builder<A: Application> {
     pub(crate) interfaces: InterfaceRegistry<A>,
     pub(crate) configuration: Option<crate::app::Configuration>,
     pub(crate) startup: crate::Startup,
+    pub(crate) context_factory: crate::context_data::Factory<crate::ApplicationContext>,
 }
 impl<A: Application> Default for Builder<A> {
     fn default() -> Self {
@@ -108,7 +112,17 @@ impl<A: Application> Builder<A> {
             interfaces: InterfaceRegistry::default(),
             configuration: None,
             startup: crate::Startup::default(),
+            context_factory: crate::context_data::Factory::default(),
         }
+    }
+    /// Registers a business context factory, without executing it during setup.
+    #[must_use]
+    pub fn context<C: std::any::Any + Send + Sync>(
+        mut self,
+        factory: impl Fn(crate::ApplicationContext) -> Result<C> + Send + Sync + 'static,
+    ) -> Self {
+        self.context_factory = crate::context_data::Factory::new(factory);
+        self
     }
     #[must_use]
     pub fn configuration(mut self, configuration: crate::app::Configuration) -> Self {

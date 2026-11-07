@@ -20,10 +20,11 @@
 #include "tuffite/framework/app/abi/application.h"
 #include "tuffite/framework/app/abi/host.h"
 #include "tuffite/framework/app/application_context.h"
+#include "tuffite/framework/app/services/shortcut/shortcut_service.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
+#include "tuffite/framework/app/services/window/window.h"
+#include "tuffite/framework/app/services/window/window_service_factory.h"
 #include "tuffite/framework/browser/browser_context.h"
-#include "tuffite/framework/browser/services/window/window.h"
-#include "tuffite/framework/browser/services/window/window_service_factory.h"
 #include "tuffite/framework/browser/web_contents_role.h"
 #include "tuffite/framework/common/languages.h"
 #include "ui/base/page_transition_types.h"
@@ -283,6 +284,14 @@ void ProfileManager::ViewReady(uint64_t id, bool ok) {
     views_.erase(id);
   }
 }
+std::string ProfileManager::IdFor(content::BrowserContext* context) const {
+  for (const auto& [id, entry] : entries_) {
+    if (entry->browser.get() == context) {
+      return id;
+    }
+  }
+  return {};
+}
 void ProfileManager::Apply(const base::DictValue& request,
                            BrowserContext* caller,
                            Reply reply) {
@@ -299,6 +308,72 @@ void ProfileManager::Apply(const base::DictValue& request,
     return;
   }
   auto* windows = application_->GetService<window::WindowService>();
+  if (op->starts_with("shortcuts.")) {
+    auto* shortcuts = application_->GetService<ShortcutService>();
+    if (*op == "shortcuts.unregisterAll") {
+      int64_t scope;
+      const auto* value = request.FindString("scope");
+      if (value && base::StringToInt64(*value, &scope) && scope >= -1) {
+        shortcuts->UnregisterShortcuts(scope);
+        Complete(std::move(reply), TUFFITE_STATUS_OK, base::Value());
+        return;
+      }
+      Complete(std::move(reply), TUFFITE_STATUS_INVALID_ARGUMENT,
+               base::Value());
+      return;
+    }
+    const auto* id = request.FindString("id");
+    if (*op == "shortcuts.isRegistered" && id) {
+      Complete(std::move(reply), TUFFITE_STATUS_OK,
+               base::Value(shortcuts->IsShortcutRegistered(*id)));
+      return;
+    }
+    bool ok = false;
+    if (id && !id->empty() && id->size() <= 128) {
+      if (*op == "shortcuts.unregister") {
+        ok = shortcuts->UnregisterShortcut(*id);
+      } else if (*op == "shortcuts.register") {
+        const auto key = request.FindInt("key");
+        const auto modifiers = request.FindInt("modifiers");
+        const auto* window = request.FindString("window");
+        int64_t scope = 0;
+        const bool valid_scope =
+            !window || (base::StringToInt64(*window, &scope) && scope > 0);
+        if (request.FindBool("system").value_or(false)) {
+          scope = -1;
+        }
+        if (valid_scope && key && *key > 0 && *key <= 255 && modifiers &&
+            (*modifiers & ~142) == 0) {
+          ok = shortcuts->RegisterShortcut(
+              *id,
+              ui::Accelerator(static_cast<ui::KeyboardCode>(*key), *modifiers),
+              scope,
+              base::BindRepeating(
+                  [](base::WeakPtr<abi::Application> application,
+                     std::string id, int64_t window) {
+                    if (!application) {
+                      return;
+                    }
+                    auto json =
+                        base::WriteJson(base::DictValue().Set("id", id).Set(
+                            "window", base::NumberToString(window)));
+                    application->DispatchFramework(
+                        UINT64_MAX - 1, *json,
+                        base::BindOnce([](bool, std::vector<uint8_t>) {}));
+                  },
+                  parent_->GetWeakPtr()));
+        }
+      }
+    }
+    if (!Complete(std::move(reply),
+                  ok ? TUFFITE_STATUS_OK : TUFFITE_STATUS_INVALID_ARGUMENT,
+                  ok && *op == "shortcuts.register" ? base::Value(*id)
+                                                    : base::Value()) &&
+        ok && *op == "shortcuts.register") {
+      shortcuts->UnregisterShortcut(*id);
+    }
+    return;
+  }
   if (*op == "windows.create") {
     const int width = request.FindInt("width").value_or(800);
     const int height = request.FindInt("height").value_or(600);

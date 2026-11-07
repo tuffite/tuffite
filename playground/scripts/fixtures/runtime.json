@@ -2,7 +2,7 @@
   "app": {
     "assets": [
       {
-        "directory": "ui/dist",
+        "directory": "ui",
         "origins": [
           "playground://main",
           "playground://*.artifact",
@@ -17,13 +17,24 @@
         ]
       },
       {
-        "directory": "ui/dist/playground-public/utilities/parser",
+        "directory": "ui/playground-public/utilities/parser",
         "origins": [
           "playground://parser.utility"
         ],
         "paths": [
           "/*"
         ]
+      },
+      {
+        "origins": [
+          "playground://main",
+          "playground://ui"
+        ],
+        "paths": [
+          "/framework/*",
+          "/dialog/open"
+        ],
+        "resolver": true
       }
     ],
     "network": {
@@ -65,14 +76,14 @@
         "origins": [
           "playground://main"
         ],
-        "directory": "ui/dist/playground-public/isolated"
+        "directory": "ui/playground-public/isolated"
       },
       "weatherOther": {
         "entry": "card.js",
         "origins": [
           "playground://main"
         ],
-        "directory": "ui/dist/playground-public/isolated"
+        "directory": "ui/playground-public/isolated"
       }
     }
   },
@@ -427,12 +438,12 @@
           {
             "allow": [
               {
-                "path": "resource/ui/dist/**"
+                "path": "resource/ui/**"
               }
             ],
             "deny": [
               {
-                "path": "resource/ui/dist/index.html"
+                "path": "resource/ui/index.html"
               }
             ],
             "method": "tuffite.Fs.ReadFile"

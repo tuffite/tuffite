@@ -20,8 +20,8 @@ impl shell_api::BrowserDiagnostics for PlaygroundBrowser {
             "profile": self.context.profile_id().map(ProfileId::as_str),
             "context": self.context.handle().map_err(error)?.as_u64().to_string(),
             "application": self.context.application()
-                .and_then(|application| application.state::<String>())
-                .as_deref(),
+                .and_then(|application| application.try_downcast::<crate::application::PlaygroundApplicationContext>())
+                .map(|application| application.label.clone()),
         })
         .to_string())
     }

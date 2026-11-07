@@ -54,19 +54,6 @@ pub(super) fn safe_relative_path(value: &str, field: &str) -> Result<PathBuf, St
     Ok(normalized)
 }
 
-pub(super) fn portable_relative_path(path: &Path) -> Result<String, String> {
-    path.components()
-        .map(|component| match component {
-            Component::Normal(part) => part
-                .to_str()
-                .map(ToOwned::to_owned)
-                .ok_or_else(|| "asset paths must be valid UTF-8".to_owned()),
-            _ => Err(format!("unsafe asset path: {}", path.display())),
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map(|parts| parts.join("/"))
-}
-
 pub(super) fn reject_symlink(path: &Path) -> Result<(), String> {
     let metadata = fs::symlink_metadata(path)
         .map_err(|error| format!("inspect {}: {error}", path.display()))?;

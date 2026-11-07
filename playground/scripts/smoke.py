@@ -151,7 +151,7 @@ def run_explorer_demo(
     grant_sandbox_access(test_root)
     port = requested_port or free_port()
     fixture_port = None
-    if script in ("explorer-reload-smoke.mjs", "mojom-smoke.mjs", "profiles-smoke.mjs", "explorer-behavior-smoke.mjs"):
+    if script in ("explorer-reload-smoke.mjs", "mojom-smoke.mjs", "profiles-smoke.mjs", "framework-extensions-smoke.mjs", "explorer-behavior-smoke.mjs"):
         # Let sandboxed child processes read the disposable package through
         # test_root's inherited ACL, without changing workspace permissions.
         fixture_package = test_root / "application"
@@ -178,6 +178,13 @@ def run_explorer_demo(
                 "origins": [f"http://127.0.0.1:{fixture_port}", f"http://localhost:{fixture_port}"],
                 "explorer": {"create": True},
             })
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        elif script == "framework-extensions-smoke.mjs":
+            manifest_path = fixture_package / "tuffite.json"
+            manifest = with_runtime_fixture(json.loads(manifest_path.read_text(encoding="utf-8")))
+            main_window = manifest["app"]["windows"][0]
+            main_window["url"] = "playground://main/ui/dist/framework.html"
+            manifest["app"]["windows"] = [main_window]
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         elif script == "profiles-smoke.mjs":
             manifest_path = fixture_package / "tuffite.json"
@@ -224,7 +231,7 @@ def run_explorer_demo(
         "--disable-features=CalculateNativeWinOcclusion",
         "--disable-backgrounding-occluded-windows",
     ]
-    if script not in ("explorer-reload-smoke.mjs", "mojom-smoke.mjs", "profiles-smoke.mjs", "explorer-behavior-smoke.mjs"):
+    if script not in ("explorer-reload-smoke.mjs", "mojom-smoke.mjs", "profiles-smoke.mjs", "framework-extensions-smoke.mjs", "explorer-behavior-smoke.mjs"):
         command.remove("--tuffite-runtime-snapshot")
     process = None
     try:
@@ -306,6 +313,7 @@ def main() -> int:
     )
     parser.add_argument("--timeout", type=int, default=90)
     parser.add_argument("--keep-files", action="store_true")
+    parser.add_argument("--framework-extensions", action="store_true", help="Verify custom contexts, protocol resolution and scoped shortcuts.")
     parser.add_argument("--profiles", action="store_true", help="Verify profile isolation, view composition and context retirement.")
     parser.add_argument("--browser-behavior", action="store_true", help="Verify origin rules, CSS-style behavior, delegated protocols and CSP composition.")
     parser.add_argument("--mojom", action="store_true", help="Verify generated Mojom Browser/Utility round trips through CDP.")
@@ -389,7 +397,7 @@ def main() -> int:
         if public
         else Path(tempfile.gettempdir())
     )
-    if args.browser_behavior or args.profiles or args.isolated_worlds or args.mojom or args.explorer_isolated or args.explorer_reload or args.explorer_ancestry or args.explorer_events or args.explorer_tabs or args.browser_compatibility or args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
+    if args.framework_extensions or args.browser_behavior or args.profiles or args.isolated_worlds or args.mojom or args.explorer_isolated or args.explorer_reload or args.explorer_ancestry or args.explorer_events or args.explorer_tabs or args.browser_compatibility or args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
         return run_explorer_demo(
             package,
             application,
@@ -397,6 +405,7 @@ def main() -> int:
             args.timeout,
             args.keep_files,
             args.cdp_port,
+            "framework-extensions-smoke.mjs" if args.framework_extensions else
             "explorer-behavior-smoke.mjs" if args.browser_behavior else
             "profiles-smoke.mjs" if args.profiles else
             "isolated-worlds-smoke.mjs" if args.isolated_worlds else
@@ -437,7 +446,7 @@ def main() -> int:
     )
     # The native visual probe requires a distinct, stable child background.
     # Override only the deployed test copy; interactive themes remain unchanged.
-    stylesheets = list((deployed / "assets" / "ui" / "dist" / "assets").glob("styles-*.css"))
+    stylesheets = list((deployed / "assets" / "ui" / "assets").glob("styles-*.css"))
     if not stylesheets:
         raise RuntimeError("Packaged Playground visual probe stylesheet is missing")
     for stylesheet in stylesheets:

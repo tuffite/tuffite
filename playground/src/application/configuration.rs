@@ -1,6 +1,6 @@
 //! Typed runtime declarations installed by `Application::setup`.
 use tuffite::configuration::{
-    Action, Asset, Behavior, Configuration, Explorer, Grant, IsolatedWorld, Mode, Network, Rule,
+    Action, Behavior, Configuration, Explorer, Grant, IsolatedWorld, Mode, Network, Route, Rule,
     Scope, Window,
 };
 
@@ -31,24 +31,36 @@ pub(super) fn build() -> Configuration {
         max_height: Some(1200),
         ..Window::default()
     });
-    config = config.asset(Asset::directory(
-        [
-            "playground://main",
-            "playground://*.artifact",
-            "playground://*.preview",
-            "playground://public",
-            "playground://business",
-            "playground://behavior.fixture",
-            "playground-resource://main",
-        ],
-        ["/ui/dist/*"],
-        "ui/dist",
-    ));
-    config = config.asset(Asset::directory(
-        ["playground://parser.utility"],
-        ["/*"],
-        "ui/dist/playground-public/utilities/parser",
-    ));
+    config = config.route(
+        Route::new()
+            .origins([
+                "playground://main",
+                "playground://*.artifact",
+                "playground://*.preview",
+                "playground://public",
+                "playground://business",
+                "playground://behavior.fixture",
+                "playground-resource://main",
+            ])
+            .path("/ui/dist/*")
+            .directory("ui"),
+    );
+    config = config.route(
+        Route::new()
+            .origins(["playground://parser.utility"])
+            .path("/*")
+            .directory("ui/playground-public/utilities/parser"),
+    );
+    config = config.protocol(
+        tuffite::configuration::Protocol::new("playground").route(
+            Route::new()
+                .origin("playground://main")
+                .origin("playground://ui")
+                .path("/framework/*")
+                .path("/dialog/open")
+                .resolver(),
+        ),
+    );
     config.app.network = Some(Network {
         max_response_bytes: Some(1_048_576),
         timeout_seconds: Some(30),
@@ -214,8 +226,8 @@ pub(super) fn build() -> Configuration {
             Grant::from("tuffite.Storage.Get"),
             Grant {
                 method: "tuffite.Fs.ReadFile".into(),
-                allow: Some(vec![Scope::Path("resource/ui/dist/**".into())]),
-                deny: vec![Scope::Path("resource/ui/dist/index.html".into())],
+                allow: Some(vec![Scope::Path("resource/ui/**".into())]),
+                deny: vec![Scope::Path("resource/ui/index.html".into())],
             },
         ],
         ..Rule::default()
@@ -271,7 +283,7 @@ pub(super) fn build() -> Configuration {
         config.app.isolated_worlds.insert(
             name.into(),
             IsolatedWorld {
-                directory: "ui/dist/playground-public/isolated".into(),
+                directory: "ui/playground-public/isolated".into(),
                 entry: "card.js".into(),
                 origins: vec!["playground://main".into()],
             },

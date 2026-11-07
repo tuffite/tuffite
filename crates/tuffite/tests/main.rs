@@ -57,13 +57,13 @@ impl tuffite::utility::V8 for V8Parser {
 
     async fn resolve(
         &self,
-        request: tuffite::utility::v8::ModuleRequest,
-    ) -> Result<Option<tuffite::utility::v8::ModuleSource>, tuffite::utility::v8::Error> {
-        let url = request.url();
-        Ok(Some(tuffite::utility::v8::ModuleSource::new(
-            url.to_owned(),
-            "export default {ping: () => 'pong'};",
-        )))
+        _url: &tuffite::Url,
+        _context: tuffite::ResolveContext,
+    ) -> Result<tuffite::Resolution> {
+        Ok(tuffite::Resolution::Resource(
+            tuffite::Resource::bytes(b"export default {ping: () => 'pong'};".to_vec())
+                .mime_type("text/javascript"),
+        ))
     }
 }
 

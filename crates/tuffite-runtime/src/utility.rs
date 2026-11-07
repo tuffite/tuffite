@@ -1,7 +1,7 @@
 //! Sandboxed utility implementations and browser-side clients.
 //!
 //! Rust and V8 definitions share the utility attribute. Rust implementations
-//! use [`Utility`]; V8 definitions use [`V8`] and [`v8::ModuleSource`].
+//! use [`Utility`]; V8 definitions use [`V8`] and [`crate::Resource`].
 //! Both use supervised Chromium utility processes and session transport.
 
 use crate::lifecycle::BoxFuture;
@@ -34,14 +34,24 @@ pub struct UtilityContext {
     name: Arc<str>,
     configuration: Arc<[u8]>,
     cancellation: CancellationToken,
+    context_slot: crate::context_data::Slot,
 }
 
 impl UtilityContext {
+    pub fn downcast<T: Send + Sync + 'static>(&self) -> Result<Arc<T>> {
+        self.context_slot.require()
+    }
+    #[must_use]
+    pub fn try_downcast<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
+        self.context_slot.get()
+    }
+
     pub(crate) fn new(name: &str, configuration: Vec<u8>, cancellation: CancellationToken) -> Self {
         Self {
             name: name.into(),
             configuration: configuration.into(),
             cancellation,
+            context_slot: crate::context_data::Slot::default(),
         }
     }
 
@@ -85,8 +95,9 @@ pub struct V8Context {
     configuration: Arc<[u8]>,
     application_configuration: Arc<[u8]>,
     executor: crate::ChromiumExecutor,
-    state: crate::browser::SharedState,
+    state: crate::context_data::Slot,
     cancellation: CancellationToken,
+    context_slot: crate::context_data::Slot,
 }
 
 impl V8Context {
@@ -115,10 +126,16 @@ impl V8Context {
         self.executor.clone()
     }
 
-    /// Obtains typed state installed by `BrowserContext::set_state` in this Browser runtime.
+    /// Restores the owning Browser's business context. No Rust state enters the JS isolate.
+    pub fn browser_context<T: Send + Sync + 'static>(&self) -> Result<Arc<T>> {
+        self.state.require()
+    }
+    pub fn downcast<T: Send + Sync + 'static>(&self) -> Result<Arc<T>> {
+        self.context_slot.require()
+    }
     #[must_use]
-    pub fn state<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
-        self.state.get()
+    pub fn try_downcast<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
+        self.context_slot.get()
     }
 
     /// Reports Browser shutdown.
@@ -140,7 +157,7 @@ type ProviderCell = OnceLock<Result<Arc<dyn ErasedV8>>>;
 pub(crate) struct V8Providers {
     configuration: Arc<[u8]>,
     executor: crate::ChromiumExecutor,
-    state: crate::browser::SharedState,
+    state: crate::context_data::Slot,
     cancellation: CancellationToken,
     providers: Mutex<HashMap<String, Arc<ProviderCell>>>,
     sessions: Mutex<HashMap<(String, u64), CancellationToken>>,
@@ -151,7 +168,7 @@ impl V8Providers {
     pub(crate) fn new(
         configuration: Arc<[u8]>,
         executor: crate::ChromiumExecutor,
-        state: crate::browser::SharedState,
+        state: crate::context_data::Slot,
     ) -> Self {
         Self {
             configuration,
@@ -192,6 +209,7 @@ impl V8Providers {
                 application_configuration: self.configuration.clone(),
                 executor: self.executor.clone(),
                 state: self.state.clone(),
+                context_slot: crate::context_data::Slot::default(),
                 cancellation: self.cancellation.clone(),
             };
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| factory(context)))
@@ -281,17 +299,20 @@ pub(crate) async fn resolve_source(
 ) -> Result<Option<Vec<u8>>> {
     let url = request.url().to_owned();
     v8::validate_url(name, &url, None).map_err(|error| Error::new(error.to_string()))?;
-    let Some(module) = provider
-        .resolve(request)
-        .await
-        .map_err(|error| Error::new(error.to_string()))?
-    else {
-        return Ok(None);
-    };
-    if module.name != url || module.source.is_empty() || module.source.len() > 512 * 1024 {
-        return Err(Error::new("resolver returned an invalid module source"));
+    let parsed = crate::Url::parse(&url)?;
+    let context = crate::ResolveContext::module(
+        url,
+        request.session_id(),
+        request.deadline(),
+        request.stop_signal(),
+    );
+    match provider.resolve(&parsed, context).await? {
+        crate::Resolution::Pass => Ok(None),
+        crate::Resolution::Resource(resource) => resource.module_bytes().map(Some),
+        crate::Resolution::Consumed | crate::Resolution::Discard => Err(Error::new(
+            "V8 module resolution requires a Resource or Pass outcome",
+        )),
     }
-    Ok(Some(module.source.into_owned().into_bytes()))
 }
 
 /// Owned input and cooperative lifecycle controls for one utility invocation.
@@ -384,6 +405,7 @@ pub(crate) trait ErasedUtility: Send + Sync {
 pub(crate) struct ConfiguredUtility<S> {
     pub(crate) implementation: S,
     pub(crate) interfaces: InterfaceRegistry<S>,
+    pub(crate) _business_context: crate::context_data::Value,
 }
 impl<S: Utility> ErasedUtility for ConfiguredUtility<S> {
     fn invoke(&self, request: UtilityRequest) -> BoxFuture<'_, CommandResult> {
@@ -511,15 +533,14 @@ pub trait V8: Send + Sync + 'static {
     ///
     /// Application resources use the app scheme and `name.utility` host. HTTPS/file
     /// URLs still pass through this provider; it owns I/O and access policy.
-    /// Return Some(source) to override app.assets, None to fall back, or Err to
-    /// fail loading without fallback. The default uses app.assets exclusively.
-    /// Called on demand for an entry or static import. Each URL is requested
-    /// once per session; the utility caches compiled modules and never reads files.
+    /// Return Resource to supply UTF-8 ECMAScript bytes/a file, Pass for packaged
+    /// assets, or an error to fail without fallback. Consumed/Discard reject a module.
     fn resolve(
         &self,
-        _request: v8::ModuleRequest,
-    ) -> impl Future<Output = Result<Option<v8::ModuleSource>, v8::Error>> + Send {
-        async { Ok(None) }
+        _url: &crate::Url,
+        _context: crate::ResolveContext,
+    ) -> impl Future<Output = Result<crate::Resolution>> + Send {
+        async { Ok(crate::Resolution::Pass) }
     }
 
     /// Releases shared Browser-side resources after module workers have drained.
@@ -530,26 +551,29 @@ pub trait V8: Send + Sync + 'static {
 
 pub(crate) trait ErasedV8: Send + Sync {
     fn entry(&self) -> &str;
-    fn resolve(
-        &self,
-        request: v8::ModuleRequest,
-    ) -> BoxFuture<'_, Result<Option<v8::ModuleSource>, v8::Error>>;
+    fn resolve<'a>(
+        &'a self,
+        url: &'a crate::Url,
+        context: crate::ResolveContext,
+    ) -> BoxFuture<'a, Result<crate::Resolution>>;
     fn shutdown(&self, context: ShutdownContext) -> BoxFuture<'_, Result<()>>;
 }
 struct ConfiguredV8<S> {
     provider: S,
     entry: String,
+    pub(crate) _business_context: crate::context_data::Value,
 }
 
 impl<S: V8> ErasedV8 for ConfiguredV8<S> {
     fn entry(&self) -> &str {
         &self.entry
     }
-    fn resolve(
-        &self,
-        request: v8::ModuleRequest,
-    ) -> BoxFuture<'_, Result<Option<v8::ModuleSource>, v8::Error>> {
-        Box::pin(self.provider.resolve(request))
+    fn resolve<'a>(
+        &'a self,
+        url: &'a crate::Url,
+        context: crate::ResolveContext,
+    ) -> BoxFuture<'a, Result<crate::Resolution>> {
+        Box::pin(self.provider.resolve(url, context))
     }
     fn shutdown(&self, context: ShutdownContext) -> BoxFuture<'_, Result<()>> {
         Box::pin(self.provider.shutdown(context))
@@ -623,9 +647,12 @@ fn create_utility<S: Utility>(
             }
         }
         context.configuration = configuration.into();
+        let value = builder.context_factory.build(context.clone())?;
+        context.context_slot.install(&value)?;
         S::new(context).await.map(|implementation| {
             Box::new(ConfiguredUtility {
                 implementation,
+                _business_context: value,
                 interfaces,
             }) as Box<dyn ErasedUtility>
         })
@@ -642,10 +669,17 @@ fn create_v8<S: V8>(mut context: V8Context) -> Result<Arc<dyn ErasedV8>> {
     if builder.service_name() != Some(context.name()) {
         return Err(Error::new("V8 setup changed the frozen service name"));
     }
+    let context_factory = builder.context_factory.clone();
     let (configuration, entry) = builder.finish(&schemes, context.name())?;
     context.configuration = configuration.into();
+    let value = context_factory.build(context.clone())?;
+    context.context_slot.install(&value)?;
     let provider = S::new(context)?;
-    Ok(Arc::new(ConfiguredV8 { provider, entry }))
+    Ok(Arc::new(ConfiguredV8 {
+        provider,
+        entry,
+        _business_context: value,
+    }))
 }
 
 impl std::fmt::Debug for Host {
@@ -794,5 +828,57 @@ pub(crate) const fn is_valid_service_name(name: &str) -> bool {
 impl std::fmt::Debug for V8Providers {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("V8Providers")
+    }
+}
+
+#[cfg(test)]
+mod resolution_tests {
+    use super::*;
+    struct Provider;
+    impl V8 for Provider {
+        fn new(_: V8Context) -> Result<Self> {
+            Ok(Self)
+        }
+        fn resolve(
+            &self,
+            url: &crate::Url,
+            context: crate::ResolveContext,
+        ) -> impl Future<Output = Result<crate::Resolution>> + Send {
+            assert_eq!(context.session_id(), Some(41));
+            assert!(context.deadline() > Instant::now());
+            std::future::ready(Ok(match url.path() {
+                "/valid.mjs" => crate::Resolution::Resource(crate::Resource::bytes(
+                    b"export default 1;".to_vec(),
+                )),
+                "/binary.mjs" => crate::Resolution::Resource(crate::Resource::bytes(vec![255])),
+                "/consume.mjs" => crate::Resolution::Consumed,
+                "/discard.mjs" => crate::Resolution::Discard,
+                _ => crate::Resolution::Pass,
+            }))
+        }
+    }
+    #[test]
+    fn shared_resolver_contract_enforces_module_specific_outcomes() {
+        let provider = ConfiguredV8 {
+            provider: Provider,
+            entry: String::new(),
+            _business_context: Arc::new(()),
+        };
+        let resolve = |path| {
+            futures_executor::block_on(resolve_source(
+                &provider,
+                "parser",
+                v8::ModuleRequest::new(
+                    format!("myapp://parser.utility/{path}"),
+                    41,
+                    StopSignal(CancellationToken::new()),
+                ),
+            ))
+        };
+        assert_eq!(resolve("valid.mjs").unwrap().unwrap(), b"export default 1;");
+        assert!(resolve("fallback.mjs").unwrap().is_none());
+        for path in ["binary.mjs", "consume.mjs", "discard.mjs"] {
+            assert!(resolve(path).is_err(), "{path}");
+        }
     }
 }

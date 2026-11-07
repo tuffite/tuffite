@@ -35,8 +35,8 @@
 #include "services/network/public/cpp/simple_url_loader.h"
 #include "services/network/public/cpp/simple_url_loader_stream_consumer.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
-#include "tuffite/framework/browser/services/window/window.h"
-#include "tuffite/framework/browser/services/window/window_service.h"
+#include "tuffite/framework/app/services/window/window.h"
+#include "tuffite/framework/app/services/window/window_service.h"
 
 namespace tuffite {
 namespace {

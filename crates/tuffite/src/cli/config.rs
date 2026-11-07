@@ -360,7 +360,11 @@ fn check_assets(value: &Value, schemes: &[&str]) -> Result<(), String> {
     for (index, route) in array(value, "app.assets")?.iter().enumerate() {
         let path = format!("app.assets[{index}]");
         let route = object(route, &path)?;
-        known_fields(route, &path, &["origins", "paths", "file", "directory"])?;
+        known_fields(
+            route,
+            &path,
+            &["origins", "paths", "file", "directory", "resolver"],
+        )?;
         strings(
             required(route, "origins", &path)?,
             &format!("{path}.origins"),
@@ -371,18 +375,24 @@ fn check_assets(value: &Value, schemes: &[&str]) -> Result<(), String> {
             &format!("{path}.paths"),
             false,
         )?;
-        if route.contains_key("file") == route.contains_key("directory") {
-            return Err(format!("{path}: specify exactly one of file/directory"));
-        }
-        let source = nonempty_string(route.get("file").or_else(|| route.get("directory")), &path)?;
-        if source.contains(['\\', ':'])
-            || std::path::Path::new(source)
-                .components()
-                .any(|part| !matches!(part, std::path::Component::Normal(_)))
+        let resolver = route.get("resolver");
+        if resolver.is_some_and(|v| v.as_bool() != Some(true))
+            || usize::from(route.contains_key("file"))
+                + usize::from(route.contains_key("directory"))
+                + usize::from(resolver.is_some())
+                != 1
         {
             return Err(format!(
-                "{path}: asset source must be a safe project-relative path"
+                "{path}: specify exactly one of file/directory/resolver:true"
             ));
+        }
+        if resolver.is_none() {
+            let source =
+                nonempty_string(route.get("file").or_else(|| route.get("directory")), &path)?;
+            if source.contains(['\\', ':']) {
+                return Err(format!("{path}: asset source must be portable"));
+            }
+            super::filesystem::safe_relative_path(source, &path)?;
         }
         for origin in route["origins"].as_array().unwrap() {
             let origin = origin.as_str().unwrap();
@@ -681,7 +691,15 @@ fn check_bundle(value: &Value) -> Result<(), String> {
         }
     }
     if let Some(resources) = bundle.get("resources") {
-        strings(resources, "bundle.resources", true)?;
+        {
+            let mounts = object(resources, "bundle.resources")?;
+            for (alias, entries) in mounts {
+                if alias != "." {
+                    super::filesystem::safe_relative_path(alias, "bundle.resources alias")?;
+                }
+                strings(entries, "bundle.resources mount", true)?;
+            }
+        }
     }
     Ok(())
 }

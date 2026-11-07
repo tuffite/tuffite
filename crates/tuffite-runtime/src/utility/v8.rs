@@ -1,11 +1,10 @@
 //! Borrowed and owned ESM sources for the native V8 utility backend.
 
-use std::borrow::Cow;
-
 /// Owned V8 startup options, configured before Browser-side provider construction.
 /// Framework supplies `entry.mjs` and empty startup data.
 #[derive(Debug)]
 pub struct Builder {
+    pub(crate) context_factory: crate::context_data::Factory<crate::V8Context>,
     pub(super) configuration: super::Builder,
     entry: String,
 }
@@ -13,6 +12,7 @@ pub struct Builder {
 impl Default for Builder {
     fn default() -> Self {
         Self {
+            context_factory: crate::context_data::Factory::default(),
             configuration: super::Builder::default(),
             entry: "entry.mjs".to_owned(),
         }
@@ -20,6 +20,15 @@ impl Default for Builder {
 }
 
 impl Builder {
+    #[must_use]
+    pub fn context<C: std::any::Any + Send + Sync>(
+        mut self,
+        factory: impl Fn(crate::V8Context) -> crate::Result<C> + Send + Sync + 'static,
+    ) -> Self {
+        self.context_factory = crate::context_data::Factory::new(factory);
+        self
+    }
+
     #[must_use]
     pub fn service_name(&self) -> Option<&str> {
         self.configuration.service_name()
@@ -153,7 +162,7 @@ pub enum Error {
 
 /// Owned module request, scoped to one native isolate session.
 #[derive(Clone, Debug)]
-pub struct ModuleRequest {
+pub(crate) struct ModuleRequest {
     url: String,
     session_id: u64,
     deadline: std::time::Instant,
@@ -184,29 +193,6 @@ impl ModuleRequest {
     #[must_use]
     pub fn stop_signal(&self) -> crate::StopSignal {
         self.stop.clone()
-    }
-}
-
-/// One logical module path and its UTF-8 ECMAScript source.
-///
-/// Static sources remain borrowed until the reply; dynamically generated or
-/// loaded strings are owned. Native copies each response into its session cache.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ModuleSource {
-    /// Canonical resource URL returned to the resolver.
-    pub name: Cow<'static, str>,
-    /// Borrowed embedded source or an owned runtime-generated string.
-    pub source: Cow<'static, str>,
-}
-
-impl ModuleSource {
-    /// Accepts static string literals, embedded sources, or owned strings.
-    #[must_use]
-    pub fn new(name: impl Into<Cow<'static, str>>, source: impl Into<Cow<'static, str>>) -> Self {
-        Self {
-            name: name.into(),
-            source: source.into(),
-        }
     }
 }
 
@@ -348,18 +334,6 @@ mod tests {
             entry_url("myapp", "parser", "https://example.com/module.mjs").unwrap(),
             "https://example.com/module.mjs"
         );
-    }
-
-    #[test]
-    fn sources_support_borrowed_and_dynamic_owned_strings() {
-        let static_source = ModuleSource::new("entry.mjs", "export default {};");
-        assert!(matches!(static_source.source, Cow::Borrowed(_)));
-        let dynamic_source = ModuleSource::new(
-            format!("{}.mjs", "generated"),
-            format!("export const value = {};", 42),
-        );
-        assert!(matches!(dynamic_source.name, Cow::Owned(_)));
-        assert!(matches!(dynamic_source.source, Cow::Owned(_)));
     }
 
     #[test]

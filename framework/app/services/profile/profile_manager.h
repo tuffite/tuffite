@@ -17,7 +17,8 @@
 #include "tuffite/framework/public/c_api/application.h"
 namespace content {
 class WebContents;
-}
+class BrowserContext;
+}  // namespace content
 namespace tuffite {
 class ApplicationContext;
 class BrowserContext;
@@ -38,6 +39,7 @@ class ProfileManager : public KeyedService {
   void Open(const std::string& id, OpenReply);
   void Apply(const base::DictValue&, BrowserContext* caller, Reply);
   void Shutdown() override;
+  std::string IdFor(content::BrowserContext*) const;
 
  private:
   struct Entry;

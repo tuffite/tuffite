@@ -80,6 +80,15 @@ unsafe impl Send for Client {}
 // SAFETY: Same native contract permits shared callers.
 unsafe impl Sync for Client {}
 impl Client {
+    #[cfg(test)]
+    pub(crate) fn for_test(table: tuffite_abi::Contexts) -> Self {
+        Self {
+            table: Some(table),
+            stop: StopSignal(crate::supervisor::CancellationToken::new()),
+            native_calls: Arc::new(RwLock::new(true)),
+        }
+    }
+
     pub(crate) fn is_available(&self) -> bool {
         self.table.is_some_and(|table| table.apply.is_some())
     }
@@ -150,8 +159,8 @@ impl Client {
         }
     }
     fn discard(&self, kind: &str, value: &Value, context: Option<Value>) {
-        let mut request = json!({"op":format!("{kind}s.close")});
-        request[kind] = value.clone();
+        let mut request = json!({"op":if kind == "shortcut" { "shortcuts.unregister".to_owned() } else { format!("{kind}s.close") }});
+        request[if kind == "shortcut" { "id" } else { kind }] = value.clone();
         if let Some(context) = context {
             request["context"] = context;
         }
@@ -164,7 +173,7 @@ impl Client {
             drop(unsafe { Box::from_raw(data.cast::<u8>()) });
         }
     }
-    async fn apply(&self, request: Value) -> Result<Value> {
+    pub(crate) async fn apply(&self, request: Value) -> Result<Value> {
         let bytes = serde_json::to_vec(&request).map_err(|e| Error::new(e.to_string()))?;
         let state = Arc::new(Mutex::new(Pending {
             result: None,
@@ -178,6 +187,7 @@ impl Client {
             cleanup: match request["op"].as_str() {
                 Some("views.create" | "windows.setContent") => Some("view"),
                 Some("windows.create") => Some("window"),
+                Some("shortcuts.register") => Some("shortcut"),
                 _ => None,
             },
             context: request.get("context").cloned(),
@@ -440,12 +450,16 @@ mod tests {
         if let Some(context) = request.get("context").and_then(Value::as_str) {
             native.contexts.lock().unwrap().push(context.to_owned());
         }
-        if request["op"] == "views.close" {
-            native
-                .released
-                .lock()
-                .unwrap()
-                .push(request["view"].as_str().unwrap().to_owned());
+        if request["op"] == "views.close" || request["op"] == "shortcuts.unregister" {
+            native.released.lock().unwrap().push(
+                request
+                    .get("view")
+                    .or_else(|| request.get("id"))
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_owned(),
+            );
             // SAFETY: Accepted test operation completes its owned callback once.
             unsafe {
                 callback(data, Status::Ok, ByteSlice::from_slice(b"null"));
@@ -521,6 +535,32 @@ mod tests {
         );
         drop(future);
         assert_eq!(*native.released.lock().unwrap(), ["42"]);
+    }
+    #[test]
+    fn cancelled_registration_releases_a_completed_native_shortcut() {
+        let mut native = Box::<Native>::default();
+        let client = client(&mut native);
+        let mut future = Box::pin(client.apply(json!({"op":"shortcuts.register","id":"0/80/4"})));
+        assert!(
+            future
+                .as_mut()
+                .poll(&mut std::task::Context::from_waker(Waker::noop()))
+                .is_pending()
+        );
+        let (data, callback) = native.pending.lock().unwrap().take().unwrap();
+        // SAFETY: The pending completion is owned once and borrows valid JSON bytes.
+        assert_eq!(
+            unsafe {
+                callback(
+                    data as *mut c_void,
+                    Status::Ok,
+                    ByteSlice::from_slice(br#""0/80/4""#),
+                )
+            },
+            Status::Ok
+        );
+        drop(future);
+        assert_eq!(*native.released.lock().unwrap(), ["0/80/4"]);
     }
     #[test]
     fn closed_clients_never_submit_to_retired_native_tables() {

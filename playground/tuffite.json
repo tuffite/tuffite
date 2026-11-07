@@ -19,8 +19,12 @@
     }
   },
   "bundle": {
-    "resources": [
-      "ui/dist"
-    ]
+    "resources": {
+      "ui": [
+        "ui/dist",
+        "!**/*.map",
+        "!**/ignore"
+      ]
+    }
   }
 }

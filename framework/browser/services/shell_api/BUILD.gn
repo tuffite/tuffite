@@ -28,8 +28,8 @@ source_set("shell_api") {
     "//tuffite/framework/app:context",
     "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/app/services/utility",
+    "//tuffite/framework/app/services/window",
     "//tuffite/framework/browser:support",
     "//tuffite/framework/browser/services/shell_api/commands",
-    "//tuffite/framework/browser/services/window",
   ]
 }

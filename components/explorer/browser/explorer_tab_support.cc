@@ -8,6 +8,7 @@
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/strings/utf_string_conversions.h"
+#include "content/public/browser/keyboard_event_processing_result.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
 #include "third_party/blink/public/mojom/favicon/favicon_url.mojom.h"
@@ -239,6 +240,14 @@ void ExplorerHost::ActivateContents(content::WebContents* contents) {
   if (owner && owner->GetDelegate() && owner->GetDelegate() != this) {
     owner->GetDelegate()->ActivateContents(contents);
   }
+}
+content::KeyboardEventProcessingResult ExplorerHost::PreHandleKeyboardEvent(
+    content::WebContents* source,
+    const input::NativeWebKeyboardEvent& event) {
+  auto* owner = content::WebContents::FromRenderFrameHost(&render_frame_host());
+  return owner && owner->GetDelegate() && owner->GetDelegate() != this
+             ? owner->GetDelegate()->PreHandleKeyboardEvent(source, event)
+             : content::KeyboardEventProcessingResult::NOT_HANDLED;
 }
 bool ExplorerHost::HandleKeyboardEvent(
     content::WebContents* source,

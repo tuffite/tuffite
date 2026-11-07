@@ -9,10 +9,12 @@
 //! use tuffite::{Application, ApplicationContext, Result, Browser, BrowserContext};
 //! struct App;
 //! impl Application for App {
+
 //!     fn new(_: ApplicationContext) -> Result<Self> { Ok(Self) }
 //! }
 //! struct Profile;
 //! impl Browser for Profile {
+
 //!     fn new(_: BrowserContext) -> Result<Self> { Ok(Self) }
 //! }
 //! #[tuffite::main]
@@ -54,14 +56,17 @@ pub use tuffite_runtime::{
     ChromiumExecutor, Command, CommandDescriptor, CommandError, CommandResult,
     DEFAULT_UTILITY_SESSION_CREDITS, Embedding, Error, EventEmitter, ExecutorError, HandleKind,
     JavaScriptExtensionError, JavaScriptExtensionHost, JavaScriptExtensionPackage,
-    JavaScriptExtensionSessionHandle, MAX_UTILITY_SESSION_CREDITS, MAX_UTILITY_SESSION_EVENT_BYTES,
-    ProcessKind, ProfileId, ProfileInfo, ProfileManager, RawHandle, Result, Runtime, RuntimeError,
-    RuntimeState, ShutdownContext, ShutdownReason, Startup, StopSignal, TaskContext, TaskHandle,
-    TaskPriority, Timestamp, Utility, UtilityContext, UtilityRequest, UtilityServiceRegistration,
-    UtilitySession, UtilitySessionClosed, UtilitySessionCommand, UtilitySessionEmitter,
-    UtilitySessionEvent, UtilitySessionFlowControl, UtilitySessionFlowError, UtilitySessionFuture,
-    UtilitySessionHandle, UtilitySessionHost, UtilitySessionHostError, UtilitySessionOptions,
-    UtilitySessionRequest, V8Context, ViewHandle, Views, WindowId, WindowOptions, Windows,
+    JavaScriptExtensionSessionHandle, Key, MAX_UTILITY_SESSION_CREDITS,
+    MAX_UTILITY_SESSION_EVENT_BYTES, Modifiers, ProcessKind, ProfileId, ProfileInfo,
+    ProfileManager, RawHandle, Resolution, ResolveContext, Resource, Result, Runtime, RuntimeError,
+    RuntimeState, ScopedShortcuts, Shortcut, ShortcutEvent, ShortcutScope, ShortcutState,
+    Shortcuts, ShutdownContext, ShutdownReason, Startup, StopSignal, TaskContext, TaskHandle,
+    TaskPriority, Timestamp, Url, Utility, UtilityContext, UtilityRequest,
+    UtilityServiceRegistration, UtilitySession, UtilitySessionClosed, UtilitySessionCommand,
+    UtilitySessionEmitter, UtilitySessionEvent, UtilitySessionFlowControl, UtilitySessionFlowError,
+    UtilitySessionFuture, UtilitySessionHandle, UtilitySessionHost, UtilitySessionHostError,
+    UtilitySessionOptions, UtilitySessionRequest, V8Context, ViewHandle, Views, WindowId,
+    WindowOptions, Windows,
 };
 #[cfg(feature = "async")]
 pub use tuffite_runtime::{ChromiumTask, ChromiumTaskError};

@@ -3,6 +3,11 @@ use crate::shell_api::{self, MojomSample};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tuffite::CommandError;
 
+struct WorkerContext {
+    base: tuffite::UtilityContext,
+    initial_value: u64,
+}
+
 #[derive(Default)]
 pub struct Worker {
     value: AtomicU64,
@@ -12,14 +17,25 @@ impl tuffite::Utility for Worker {
     fn setup(
         builder: tuffite::utility::Builder<Self>,
     ) -> tuffite::Result<tuffite::utility::Builder<Self>> {
-        Ok(builder.interfaces(|registry| {
-            registry
-                .register::<shell_api::interfaces::Echo>()
-                .register::<shell_api::interfaces::Aux>()
-        }))
+        Ok(builder
+            .context(|base| {
+                Ok(WorkerContext {
+                    base,
+                    initial_value: 0,
+                })
+            })
+            .interfaces(|registry| {
+                registry
+                    .register::<shell_api::interfaces::Echo>()
+                    .register::<shell_api::interfaces::Aux>()
+            }))
     }
-    async fn new(_: tuffite::UtilityContext) -> tuffite::Result<Self> {
-        Ok(Self::default())
+    async fn new(base: tuffite::UtilityContext) -> tuffite::Result<Self> {
+        let context = base.downcast::<WorkerContext>()?;
+        assert_eq!(context.base.name(), base.name());
+        Ok(Self {
+            value: AtomicU64::new(context.initial_value),
+        })
     }
 }
 

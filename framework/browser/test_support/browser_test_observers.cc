@@ -31,7 +31,7 @@
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "tuffite/buildflags.h"
-#include "tuffite/framework/browser/services/window/window.h"
+#include "tuffite/framework/app/services/window/window.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/image/image.h"

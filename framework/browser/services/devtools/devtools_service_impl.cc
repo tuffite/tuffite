@@ -30,9 +30,9 @@
 #include "net/log/net_log_source.h"
 #include "net/socket/tcp_server_socket.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
+#include "tuffite/framework/app/services/window/window_service.h"
 #include "tuffite/framework/browser/services/devtools/devtools_frontend.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service_factory.h"
-#include "tuffite/framework/browser/services/window/window_service.h"
 
 namespace tuffite {
 namespace {

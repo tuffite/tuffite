@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Framework extensions</title><link rel="stylesheet" href="./src/styles.css"><script type="module" src="./src/framework.js"></script></head>
+<body><main><p><a href="./index.html">Back to Playground</a></p><h1>Framework extensions</h1>
+<p>Business contexts, dynamic protocol resources, actions, and native shortcuts.</p>
+<section class="card"><h2>Protocol resolver</h2><button id="run">Run resource and action checks</button><output id="result" class="block-output code-output">Ready</output><img id="resource-image" alt="Business-provided SVG" src="/framework/image.svg"></section>
+<section class="card"><h2>Shortcuts</h2><p>Press CommandOrControl+Shift+P for the application handler, or CommandOrControl+Shift+K for the dedicated callback.</p><button id="window-shortcut">Give this window priority for Shift+P</button><button id="system-shortcut">Register system CommandOrControl+Alt+Space</button><output id="shortcut-result" class="block-output code-output">System shortcut registration is opt-in.</output></section>
+<section class="card"><h2>Business events</h2><output id="events" class="block-output code-output">Waiting</output></section>
+<dialog id="image-dialog"><h2>Image dialog</h2><img alt="Resolved image" src="/framework/image.svg"><p>Opened by a business URL action and Web event.</p><button id="close-dialog">Close</button></dialog>
+</main></body></html>
