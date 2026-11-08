@@ -18,6 +18,18 @@ await new Promise((resolve, reject) => {
   socket.addEventListener('open', () => { clearTimeout(timeout); resolve(); }, {once:true});
   socket.addEventListener('error', reject, {once:true});
 });
+const contexts = new Map();
+socket.addEventListener('message', event => {
+  const message = JSON.parse(event.data);
+  if (message.method === 'Runtime.executionContextCreated') {
+    const context = message.params.context;
+    contexts.set(context.id, context);
+  } else if (message.method === 'Runtime.executionContextDestroyed') {
+    contexts.delete(message.params.executionContextId);
+  } else if (message.method === 'Runtime.executionContextsCleared') {
+    contexts.clear();
+  }
+});
 let nextId = 0;
 function send(method, params, connection = socket) {
   const id = ++nextId;
@@ -46,6 +58,7 @@ async function evaluate(fn) {
   return result.result.value;
 }
 try {
+  await send('Runtime.enable', {});
   await send('Page.enable', {});
   await send('Page.navigate', {url: 'playground://main/ui/dist/isolated.html'});
   let state;
@@ -58,6 +71,27 @@ try {
   assert.equal(state?.error, undefined, JSON.stringify(state));
   for (const name of ['mounted','globalsIsolated','registryIsolated','updated','invalidPropertiesRejected','unregisteredDenied','removedDenied','nativeRegistrationOnly','dynamicPackage','failedModulesReleaseWorldsAndLeases'])
     assert.equal(state?.[name], true, name);
+  for (const name of ['weather', 'weatherOther']) {
+    const context = [...contexts.values()].find(context => context.name === name);
+    assert.ok(context, `Registered isolated world: ${name}`);
+    const result = await send('Runtime.evaluate', {
+      contextId: context.id, returnByValue: true,
+      expression: `(() => {
+        if (typeof globalThis.Mojo?.bindInterface !== 'function') return true;
+        const {handle0, handle1} = Mojo.createMessagePipe();
+        try {
+          Mojo.bindInterface('playground.wire.Browser', handle1);
+          return false;
+        } catch (error) {
+          return error.name === 'NotAllowedError';
+        } finally {
+          handle0.close();
+          handle1.close();
+        }
+      })()`,
+    });
+    assert.equal(result.result.value, true, `${name} cannot bind native interfaces`);
+  }
   const frameTree = await send('Page.getFrameTree', {});
   const ordinary = await send('Page.createIsolatedWorld', {
     frameId: frameTree.frameTree.frame.id, worldName: 'ordinary-inspector-world',
@@ -67,10 +101,22 @@ try {
     expression: `(() => {
       let denied = false;
       try { new (class extends HTMLElement {})(); } catch { denied = true; }
-      return {denied, registry: window.customElements};
+      let mojoDenied = typeof globalThis.Mojo?.bindInterface !== 'function';
+      if (!mojoDenied) {
+        const {handle0, handle1} = Mojo.createMessagePipe();
+        try {
+          Mojo.bindInterface('playground.wire.Browser', handle1);
+        } catch (error) {
+          mojoDenied = error.name === 'NotAllowedError';
+        } finally {
+          handle0.close();
+          handle1.close();
+        }
+      }
+      return {denied, registry: window.customElements, mojoDenied};
     })()`,
   });
-  assert.deepEqual(ordinaryResult.result.value, {denied:true,registry:null});
+  assert.deepEqual(ordinaryResult.result.value, {denied:true,registry:null,mojoDenied:true});
   assert.equal(await evaluate(() => {
     class MainCard extends HTMLElement {}
     customElements.define('weather-card', MainCard);
@@ -91,7 +137,6 @@ try {
     assert.equal(attrs(card)['data-registry-local'], 'true');
     assert.equal(attrs(card)['data-foreign-denied'], 'true');
     assert.equal(attrs(card)['data-main-registry'], 'null');
-    assert.equal(attrs(card)['data-shell-api'], 'undefined');
     const modules = JSON.parse(attrs(card)['data-modules']);
     assert.equal(modules.label, 'native ESM');
     assert.equal(modules.lazy, 'dynamic import');

@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Garey Chan <garey.chan@outlook.com>
+Date: Sun, 8 Nov 2026 16:58:46 +0800
+Subject: Tuffite: deny Mojo interface binding from isolated worlds
+
+
+diff --git a/third_party/blink/renderer/core/mojo/mojo.cc b/third_party/blink/renderer/core/mojo/mojo.cc
+index 6c920b7537ed3e50b7b7378a2c4e4bce4f220993..3b60290d6a4535f39741ab79402da37897758a38 100644
+--- a/third_party/blink/renderer/core/mojo/mojo.cc
++++ b/third_party/blink/renderer/core/mojo/mojo.cc
+@@ -22,6 +22,10 @@
+ #include "third_party/blink/renderer/core/workers/worker_global_scope.h"
+ #include "third_party/blink/renderer/core/workers/worker_thread.h"
+ #include "third_party/blink/renderer/platform/bindings/script_state.h"
++
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++// TUFFITE_END
+ #include "third_party/blink/renderer/platform/wtf/text/string_utf8_adaptor.h"
+ 
+ namespace blink {
+@@ -104,6 +108,17 @@ void Mojo::bindInterface(ScriptState* script_state,
+                          MojoHandle* request_handle,
+                          const V8MojoScope& scope,
+                          ExceptionState& exception_state) {
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  // Isolated extensions share their document's MojoJS feature settings and
++  // broker, but must access application capabilities through the host bridge.
++  if (script_state->World().IsIsolatedWorld()) {
++    exception_state.ThrowDOMException(
++        DOMExceptionCode::kNotAllowedError,
++        "Mojo interface binding is unavailable in isolated worlds");
++    return;
++  }
++#endif
++
+   std::string name = interface_name.Utf8();
+   auto handle =
+       mojo::ScopedMessagePipeHandle::From(request_handle->TakeHandle());

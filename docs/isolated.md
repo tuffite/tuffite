@@ -251,8 +251,11 @@ than assigning custom properties through its own DOM wrapper.
 ## Security boundary
 
 Only registered Tuffite worlds gain custom-element construction support. Other
-isolated worlds and DevTools contexts retain upstream behavior. The world has
-no ambient ShellAPI binding. Its own execution CSP disables dynamic scripts,
+isolated worlds and DevTools contexts retain upstream custom-element behavior. The world has
+no ambient ShellAPI binding. Mojo utilities may be visible because feature
+settings belong to the shared document, but native `Mojo.bindInterface` rejects
+isolated-world calls with `NotAllowedError`. Applications mediate capabilities
+through `context.request()` and host handlers. Its own execution CSP disables dynamic scripts,
 eval and requests outside its immutable package; inline styling and data/blob images are
 allowed. This policy does not restrict all side effects through shared DOM.
 
