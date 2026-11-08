@@ -64,7 +64,7 @@ try {
     window.webauthnExplorer?.remove();
     const explorer = document.createElement("explorer");
     explorer.id = "webauthn-fixture-explorer";
-    explorer.behavior = "navigation: browser;";
+    explorer.policy = "navigation: browser;";
     explorer.allow = allow;
     explorer.style.cssText = "position:fixed;inset:0;display:block;z-index:9999";
     explorer.src = url;

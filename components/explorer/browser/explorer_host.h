@@ -90,13 +90,13 @@ class ExplorerHost final : public content::DocumentService<mojom::ExplorerHost>,
                      bool canceled);
   void CompleteOpen(uint64_t request_id, bool propagate) override;
   void CompleteDialog(uint64_t request_id, bool propagate) override;
-  void SetBehavior(const std::string&, SetBehaviorCallback) override;
+  void SetPolicy(const std::string&, SetPolicyCallback) override;
   static bool DelegateExternalProtocol(content::WebContents*,
                                        const GURL&,
                                        const std::string& origin,
                                        content::RenderFrameHost*,
                                        base::OnceClosure);
-  void SetContextMenuEnabled(bool enabled) override;
+  void Discard(DiscardCallback callback) override;
   void SetFramePolicy(const blink::FramePolicy&) override;
   static std::string DownloadDetail(const download::DownloadItem& item);
   void NotifyDownload(const std::string& json);

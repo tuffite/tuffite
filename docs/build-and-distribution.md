@@ -640,28 +640,41 @@ The capability defaults to `false`. Invoking the command starts a loopback
 DevTools server on an ephemeral port for the local frontend; it does not expose
 the fixed development CDP port configured by `build.devtoolsPort`.
 Explorer surfaces continue to use the independent, mutable
-`contextMenuEnabled` property.
+`policy="context-menu: browser;"` declaration.
 
 Explorer is compiled into Tuffite but native permissions default to deny.
 `browser.rules[].explorer` authorizes owner creation and scripts.
 Guest ShellAPI grants depend on the guest's own
 committed origin and are rechecked on every invocation.
 
-The repository keeps three independent Chromium outputs:
+The repository keeps four independent Chromium outputs:
 
 | Profile     | GN preset / output                 | Optimization and diagnostics                              |
 | ----------- | ---------------------------------- | --------------------------------------------------------- |
 | `debug`     | `debug.gn` / `TuffiteExe`           | Non-component, full symbols, no ThinLTO                   |
 | `release`   | `release.gn` / `TuffiteRelease`     | Default non-component, size optimization, symbol level 1  |
 | `component` | `component.gn` / `TuffiteComponent` | Explicit component mode for faster native iteration       |
-| `ci`        | `ci.gn` / `TuffiteCI`               | Non-component, zero symbols, no cache wrapper requirement |
+| `ci`        | `ci.gn` / `TuffiteCI`               | Official non-component, size optimization, optimized ThinLTO, zero symbols |
 
 Use `cargo run --package tuffite --bin tuff -- package --manifest playground/tuffite.json` for local package iteration and
 `python3 x.py package --profile ci --non-interactive` for CI artifacts. These profiles do
-not yet imply production readiness. `is_official_build` remains false: enabling
-it is not a substitute for eliminating test-only dependencies and provisioning
-Chromium's official-build inputs. Local symbol level 1 supports stack and line
-diagnosis; use `debug` for local variables and full type information.
+not by themselves certify production readiness. The CI preset enables
+`is_official_build`, LLD and ThinLTO while keeping size-oriented compilation and
+zero symbols. The final Framework library selects Chromium's optimized ThinLTO
+link configuration (`--lto-O2`, or `/opt:lldlto=2` on Windows); helper links keep
+upstream defaults. The incremental ThinLTO cache is disabled; link concurrency
+uses Chromium's automatic, memory-aware ThinLTO pool. Compilation and linking require more resources than
+the local release preset; package size and runtime improvements must be measured
+against the same revision/architecture.
+
+PGO is explicitly disabled (`chrome_pgo_phase = 0`), overriding the official-build
+phase-2 default: the workspace does not provision a version/architecture-matched
+Tuffite workload profile. Adding PGO requires collecting and validating such a
+profile and supplying `pgo_data_path`; switching the phase alone is insufficient.
+Local symbol level 1 supports stack and line diagnosis; use `debug` for local
+variables and full type information. CI's zero-symbol output cannot provide full
+source-level crash diagnostics. Dependency, SDK and security validation remain
+necessary for a production release.
 
 Rust `release` uses optimization level 2, line tables, and incremental-friendly
 codegen settings. The custom `ci` profile uses size optimization and

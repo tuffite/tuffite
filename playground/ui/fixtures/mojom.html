@@ -7,8 +7,7 @@
 import * as frameworkApi from "/tuffite.js";
 
 
-import {commands, diagnostics, echo, aux, createPlaygroundApi, mojomTypes} from '/shell_api.js';
-import {encodeMojom, invokeBinary} from '/tuffite.js';
+import {commands, diagnostics, echo, aux} from '/shell_api.js';
 window.__mojomBoundary = async () => {
     const value = {small:255, large:(1n << 64n)-1n, enabled:false, visible:true,
       medium:65535, signedValue:-2147483648, fraction:-0.25,
@@ -55,19 +54,42 @@ try {
   await denied(() => frameworkApi.utility.cancel('playground.Echo', 91001n));
   await denied(() => frameworkApi.utility.invoke('playground::utilities::worker::Worker', 91002n, new Uint8Array()));
   await denied(() => frameworkApi.utility.cancel('playground::utilities::worker::Worker', 91002n));
-  let captured;
-  const capture = createPlaygroundApi(async (channel, id, fingerprint, payload) => {
-    captured = {id, fingerprint, payload};
-    return encodeMojom(mojomTypes.AuxRoundTripResponse, {result:sample});
+  const rejectsInterface = (name) => new Promise(resolve => {
+    const {handle0,handle1}=Mojo.createMessagePipe();
+    const timer=setTimeout(()=>{handle0.close();resolve(false);},5000);
+    const watcher=handle0.watch({peerClosed:true},()=>{
+      clearTimeout(timer);watcher.cancel();handle0.close();resolve(true);
+    });
+    Mojo.bindInterface(name,handle1);
   });
-  await capture.aux.roundTrip(sample);
-  await denied(() => invokeBinary('playground.Echo.RoundTrip', captured.id, captured.fingerprint, captured.payload));
-  await capture.echo.roundTrip(sample);
-  let schemaMismatch = false;
-  try { await invokeBinary('playground.Echo.RoundTrip', captured.id, captured.fingerprint ^ 1n, captured.payload); }
-  catch (error) { if (error.code !== 'schema_mismatch') throw error; schemaMismatch = true; }
-  if (!schemaMismatch) throw new Error('Utility accepted a mismatched schema');
-  window.__typedUtilitySecurity = {rawBypassDenied:true, rawCancelDenied:true, forgedServiceDenied:true, schemaMismatchRejected:true};
+  if (!await rejectsInterface('playground::utilities::worker::Worker') ||
+      !await rejectsInterface('playground.Echo.RoundTrip')) {
+    throw new Error('A service owner or string channel bypassed the interface broker');
+  }
+  // A real Mojo request with a truncated parameter struct, not a custom RPC
+  // envelope or a client-supplied command ID/schema fingerprint.
+  const malformedParameters = await new Promise(resolve=>{
+    const {handle0,handle1}=Mojo.createMessagePipe();
+    Mojo.bindInterface('playground.wire.Echo',handle1);
+    const buffer=new ArrayBuffer(40),header=new DataView(buffer);
+    header.setUint32(0,32,true);header.setUint32(4,1,true);
+    header.setUint32(12,0,true);header.setUint32(16,1,true);
+    header.setBigUint64(24,1n,true);header.setUint32(32,8,true);
+    const timer=setTimeout(()=>{handle0.close();resolve(false);},5000);
+    const watcher=handle0.watch({readable:true,peerClosed:true},()=>{
+      const reply=handle0.readMessage();
+      if(reply.result===Mojo.RESULT_SHOULD_WAIT)return;
+      let rejected=reply.result===Mojo.RESULT_FAILED_PRECONDITION;
+      if(reply.result===Mojo.RESULT_OK) {
+        const response=new DataView(reply.buffer);
+        rejected=response.getUint32(16,true)===2 && response.getInt32(response.getUint32(0,true)+8,true)===1;
+      }
+      clearTimeout(timer);watcher.cancel();handle0.close();resolve(rejected);
+    });
+    handle0.writeMessage(buffer,[]);
+  });
+  if(!malformedParameters) throw new Error('Malformed typed Mojo parameters were accepted');
+  window.__typedUtilitySecurity = {rawBypassDenied:true, rawCancelDenied:true, forgedServiceDenied:true, malformedParametersRejected:true};
   for (const value of [browser, utility]) {
     if (value.large !== sample.large || value.signedValue !== sample.signedValue ||
         value.medium !== sample.medium || value.fraction !== sample.fraction ||

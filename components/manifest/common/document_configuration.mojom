@@ -1,0 +1,8 @@
+// Copyright 2026 The Tuffite Authors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+module tuffite.mojom;
+// Exposure hints only. Browser services authorize every native operation.
+struct DocumentConfiguration {
+  bool expose_shell_api = false;
+  bool enable_explorer = false;
+};

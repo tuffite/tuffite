@@ -1,7 +1,7 @@
 //! Typed runtime declarations installed by `Application::setup`.
 use tuffite::configuration::{
-    Action, Behavior, Configuration, Explorer, Grant, IsolatedWorld, Mode, Network, Route, Rule,
-    Scope, Window,
+    Action, ActionPolicy, Configuration, Explorer, ExplorerPolicy, Grant, IsolatedWorld, Mode,
+    Network, Route, Rule, Scope, Window,
 };
 
 pub(super) fn build() -> Configuration {
@@ -180,38 +180,41 @@ pub(super) fn build() -> Configuration {
         explorer: Some(Explorer {
             create: Some(true),
             execute_javascript: Some(true),
-            behavior: [
-                (
-                    Action::Navigation,
-                    Behavior {
-                        mode: Mode::Delegate,
-                        timeout_ms: None,
-                    },
-                ),
-                (
-                    Action::Dialog,
-                    Behavior {
-                        mode: Mode::Delegate,
-                        timeout_ms: None,
-                    },
-                ),
-                (
-                    Action::ExternalProtocol,
-                    Behavior {
-                        mode: Mode::Browser,
-                        timeout_ms: None,
-                    },
-                ),
-                (
-                    Action::NewWindow,
-                    Behavior {
-                        mode: Mode::Delegate,
-                        timeout_ms: None,
-                    },
-                ),
-            ]
-            .into_iter()
-            .collect(),
+            policy: ExplorerPolicy {
+                actions: [
+                    (
+                        Action::Navigation,
+                        ActionPolicy {
+                            mode: Mode::Delegate,
+                            timeout_ms: None,
+                        },
+                    ),
+                    (
+                        Action::Dialog,
+                        ActionPolicy {
+                            mode: Mode::Delegate,
+                            timeout_ms: None,
+                        },
+                    ),
+                    (
+                        Action::ExternalProtocol,
+                        ActionPolicy {
+                            mode: Mode::Browser,
+                            timeout_ms: None,
+                        },
+                    ),
+                    (
+                        Action::NewWindow,
+                        ActionPolicy {
+                            mode: Mode::Delegate,
+                            timeout_ms: None,
+                        },
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+                ..ExplorerPolicy::default()
+            },
         }),
         ..Rule::default()
     });

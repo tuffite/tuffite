@@ -29,6 +29,9 @@ interface UtilityService {
   Start(string name, array<uint8> configuration) => (int32 status);
   Invoke(uint64 request_id, array<uint8> request)
       => (int32 status, array<uint8> response);
+  InvokeMojom(uint64 request_id, uint64 command_id, uint64 schema_fingerprint,
+              array<uint8> parameters) => (int32 status, array<uint8> result);
+
   Cancel(uint64 request_id);
   CreateSession(uint64 session_id, array<uint8> init,
               uint32 initial_event_credits, uint32 max_event_bytes,

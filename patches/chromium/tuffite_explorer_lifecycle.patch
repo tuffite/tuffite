@@ -1,0 +1,98 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Garey Chan <garey.chan@outlook.com>
+Date: Sun, 8 Nov 2026 18:18:40 +0800
+Subject: Tuffite: preserve Explorer ancestry and discarded-page visibility
+
+
+diff --git a/content/browser/renderer_host/cross_process_frame_connector.cc b/content/browser/renderer_host/cross_process_frame_connector.cc
+index 4911f7177ff1de41b316273e1f04eecf4f715aae..75ccc31d2eb2b286ad63615c82fa8af58eabefa1 100644
+--- a/content/browser/renderer_host/cross_process_frame_connector.cc
++++ b/content/browser/renderer_host/cross_process_frame_connector.cc
+@@ -28,6 +28,13 @@
+ #include "ui/base/cursor/cursor.h"
+ #include "ui/gfx/geometry/dip_util.h"
+ 
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++#include "tuffite/components/explorer/browser/content/explorer_visibility.h"
++#endif
++// TUFFITE_END
++
+ namespace content {
+ 
+ CrossProcessFrameConnector::CrossProcessFrameConnector(
+@@ -409,8 +416,15 @@ void CrossProcessFrameConnector::OnVisibilityChanged(
+     // visibility change.
+     MaybeLogShownCrash(ShownAfterCrashingReason::kVisibility);
+   }
+-  if (!view_)
++  if (!view_) {
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++    // The last discarded Explorer can lose its renderer and child view. Its
++    // WebContents still needs owner visibility to initiate a reload when shown.
++    tuffite::NotifyDiscardedExplorerVisibility(
++        current_child_frame_host(), frame_proxy_in_parent_renderer_, visibility_);
++#endif
+     return;
++  }
+ 
+   // TODO(crbug.com/40103184) Remove this CHECK when the bug is fixed.
+   CHECK(current_child_frame_host());
+diff --git a/content/renderer/agent_scheduling_group.cc b/content/renderer/agent_scheduling_group.cc
+index 93347b5ffb0201ab5f44571be5bb74a7d1d49b03..d03247be15445108038f0f95b9638e0de3a39380 100644
+--- a/content/renderer/agent_scheduling_group.cc
++++ b/content/renderer/agent_scheduling_group.cc
+@@ -367,7 +367,7 @@ blink::WebView* AgentSchedulingGroup::CreateWebView(
+       params->outermost_origin ? &params->outermost_origin.value() : nullptr);
+ // TUFFITE_BEGIN
+ #if BUILDFLAG(TUFFITE_IN_CHROMIUM)
+-  blink::SetExplorerFrameAncestors(web_view->MainFrame(), params->tuffite_frame_ancestors, params->tuffite_explorer_frame_policy);
++  blink::InitializeExplorerFrameAncestors(web_view->MainFrame(), params->tuffite_frame_ancestors, params->tuffite_explorer_frame_policy);
+ #endif
+ // TUFFITE_END
+   return web_view;
+diff --git a/third_party/blink/renderer/core/execution_context/security_context_init.cc b/third_party/blink/renderer/core/execution_context/security_context_init.cc
+index 3c711a390d74f4a981e1b137ff66db9f8f69936e..43ca668ffb2f332d7ff7ee30dc4073331e428485 100644
+--- a/third_party/blink/renderer/core/execution_context/security_context_init.cc
++++ b/third_party/blink/renderer/core/execution_context/security_context_init.cc
+@@ -300,6 +300,14 @@ void SecurityContextInit::ApplyPermissionsPolicy(
+                                                   ->GetSecurityContext()
+                                                   ->GetPermissionsPolicy()
+                                             : nullptr;
++// TUFFITE_BEGIN
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++      if (auto* parent = ExplorerPermissionsPolicyParent(frame)) {
++        parent_permissions_policy =
++            parent->GetSecurityContext()->GetPermissionsPolicy();
++      }
++#endif
++// TUFFITE_END
+       // Ideally we would use the URL in `execution_context_` but at this point,
+       // it has no `document_` and so does not know its URL.
+       permissions_policy = network::PermissionsPolicy::CreateFromParentPolicy(
+diff --git a/third_party/blink/renderer/core/frame/remote_frame.cc b/third_party/blink/renderer/core/frame/remote_frame.cc
+index 301b850d4f8e8a2092843c9b5342a7d8764ff517..5a5a66f29bb86496a0db501e79f527929f26b180 100644
+--- a/third_party/blink/renderer/core/frame/remote_frame.cc
++++ b/third_party/blink/renderer/core/frame/remote_frame.cc
+@@ -934,7 +934,7 @@ void RemoteFrame::ApplyReplicatedPermissionsPolicyHeader() {
+   Frame* policy_parent = Parent();
+ // TUFFITE_BEGIN
+ #if BUILDFLAG(TUFFITE_IN_CHROMIUM)
+-  if (auto* parent = ExplorerParentFrame(*this)) policy_parent = parent;
++  if (auto* parent = ExplorerPermissionsPolicyParent(*this)) policy_parent = parent;
+ #endif
+ // TUFFITE_END
+   if (policy_parent) {
+diff --git a/third_party/blink/renderer/core/page/frame_tree.cc b/third_party/blink/renderer/core/page/frame_tree.cc
+index 031a47dbaf0839039c17c3ed59543825e3a72384..5af6d079086c8524fa98ea92f2dbf0015a032683 100644
+--- a/third_party/blink/renderer/core/page/frame_tree.cc
++++ b/third_party/blink/renderer/core/page/frame_tree.cc
+@@ -137,6 +137,7 @@ DISABLE_CFI_PERF
+ Frame* FrameTree::Parent() const {
+ // TUFFITE_BEGIN
+ #if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  if (ExplorerIsolatedFrame(*this_frame_)) return nullptr;
+   if (auto* parent = ExplorerParentFrame(*this_frame_)) return parent;
+ #endif
+ // TUFFITE_END

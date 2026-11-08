@@ -33,6 +33,7 @@
     "generated/*.js",
     "generated/*.d.ts",
     "README.md",
+    "CHROMIUM_LICENSE",
     "isolated.js",
     "isolated.d.ts"
   ],

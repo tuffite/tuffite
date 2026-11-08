@@ -26,8 +26,8 @@ if (new URL(location.href).searchParams.has("iframe")) {
 if (new URL(location.href).searchParams.has("nested")) {
   const child = document.createElement("explorer");
   child.id = "nested-child";
-  child.behavior = "navigation: browser;";
-  child.behavior += " dialog: delegate;";
+  child.policy = "navigation: browser;";
+  child.policy += " dialog: delegate;";
   child.style.cssText = "display:block;width:100%;height:220px";
   for (const type of ["newwindow", "dialog"])
     child.addEventListener(type, (event) => {

@@ -28,7 +28,9 @@
 #include "tuffite/framework/browser/web_contents_role.h"
 #include "tuffite/framework/common/languages.h"
 #include "ui/base/page_transition_types.h"
+#include "ui/events/event_constants.h"
 #include "url/gurl.h"
+
 namespace tuffite {
 namespace {
 bool ValidId(const std::string& id) {
@@ -344,9 +346,16 @@ void ProfileManager::Apply(const base::DictValue& request,
         }
         if (valid_scope && key && *key > 0 && *key <= 255 && modifiers &&
             (*modifiers & ~142) == 0) {
+          // SDK wire bits are stable and are not Chromium EventFlags.
+          const int native_modifiers =
+              ((*modifiers & 2) ? ui::EF_SHIFT_DOWN : 0) |
+              ((*modifiers & 4) ? ui::EF_CONTROL_DOWN : 0) |
+              ((*modifiers & 8) ? ui::EF_ALT_DOWN : 0) |
+              ((*modifiers & 128) ? ui::EF_COMMAND_DOWN : 0);
           ok = shortcuts->RegisterShortcut(
               *id,
-              ui::Accelerator(static_cast<ui::KeyboardCode>(*key), *modifiers),
+              ui::Accelerator(static_cast<ui::KeyboardCode>(*key),
+                              native_modifiers),
               scope,
               base::BindRepeating(
                   [](base::WeakPtr<abi::Application> application,

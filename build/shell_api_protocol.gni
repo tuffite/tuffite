@@ -119,6 +119,8 @@ template("shell_api_protocol") {
     deps = [ ":$_generator" ]
   }
   mojom("${_consumer}_wire") {
+    # SDK clients share the declared ordinals across production builds.
+    scramble_message_ids = false
     sources = _wire_sources
     parser_deps = [ ":${_consumer}_wire_sources" ]
     cpp_only = true

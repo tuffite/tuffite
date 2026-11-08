@@ -18,9 +18,8 @@ class IsolatedServiceImpl final : public IsolatedService {
   std::optional<std::string> LoadForFrame(content::RenderFrameHost& frame,
                                           const std::string& name) override;
   void Release(const std::string& entry_url) override;
-  std::optional<asset::MemoryAsset> ResourceForFrame(
-      content::RenderFrameHost& frame,
-      const GURL& url) const override;
+  std::optional<MemoryAsset> ResourceForFrame(content::RenderFrameHost& frame,
+                                              const GURL& url) const override;
   std::optional<std::string> Source(std::string_view name,
                                     const url::Origin& origin) const override;
   std::optional<std::string> Apply(const base::DictValue& request) override;

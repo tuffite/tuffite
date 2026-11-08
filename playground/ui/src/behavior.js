@@ -3,7 +3,7 @@ const source = document.createElement("explorer");
 source.id = "behavior-source";
 source.isolated = true;
 source.style.cssText = "display:block;width:100%;height:300px";
-source.behavior = document.querySelector("#behavior").value;
+source.policy = document.querySelector("#policy").value;
 const events = [];
 let pending;
 const record = (value) => {
@@ -58,14 +58,14 @@ document.querySelector("#dismiss").onclick = async () => {
   clear();
 };
 document.querySelector("#apply").onclick = () => {
-  source.behavior = document.querySelector("#behavior").value;
+  source.policy = document.querySelector("#policy").value;
 };
 const reload = () =>
   source.load("playground://behavior.fixture/ui/dist/fixtures/behavior.html");
 document.querySelector("#reload").onclick = reload;
 document.querySelector("#behavior-owner").append(source);
 reload();
-window.behaviorLab = {
+window.policyLab = {
   source,
   events,
   get pending() {

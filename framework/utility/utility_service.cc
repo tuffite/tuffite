@@ -412,6 +412,32 @@ class UtilityServiceImpl final : public mojom::UtilityService {
     std::move(callback).Run(status);
   }
 
+  void InvokeMojom(uint64_t request_id,
+                   uint64_t command_id,
+                   uint64_t fingerprint,
+                   const std::vector<uint8_t>& request,
+                   InvokeMojomCallback callback) override {
+    if (framework_js_extension_) {
+      std::move(callback).Run(TUFFITE_STATUS_INVALID_STATE, {});
+      return;
+    }
+    if (!service_ || !application_.invoke_utility_mojom) {
+      std::move(callback).Run(TUFFITE_STATUS_INVALID_STATE, {});
+      return;
+    }
+    using Context = ReplyContext<InvokeMojomCallback>;
+    auto* context = new Context(std::move(callback),
+                                base::SequencedTaskRunner::GetCurrentDefault());
+    const tuffite_status_t status = application_.invoke_utility_mojom(
+        service_, request_id, command_id, fingerprint,
+        {request.data(), request.size()}, context,
+        &CaptureReply<InvokeMojomCallback>);
+    if (status != TUFFITE_STATUS_OK) {
+      std::unique_ptr<Context> failed(context);
+      std::move(failed->callback).Run(status, {});
+    }
+  }
+
   void Cancel(uint64_t request_id) override {
     if (framework_js_extension_) {
       return;

@@ -248,7 +248,7 @@ try {
     const host = document.createElement('div'); host.id = 'event-shadow-host';
     const root = host.attachShadow({mode:'open'});
     const inner = document.createElement('explorer'); inner.id = 'event-shadow-source';
-    inner.behavior = "navigation: browser;"; inner.behavior += " dialog: delegate;"; inner.style.cssText='display:block;width:600px;height:200px';
+    inner.policy = "navigation: browser;"; inner.policy += " dialog: delegate;"; inner.style.cssText='display:block;width:600px;height:200px';
     root.append(inner); document.body.append(host);
     document.addEventListener('newwindow', event => {
       if (event.target === host) window.eventLab.shadowProof = {target:event.target.id, path:event.composedPath()[0].id};

@@ -11,12 +11,12 @@
 #include "content/public/browser/web_contents.h"
 #include "tuffite/components/explorer/browser/explorer_partition.h"
 #include "tuffite/components/explorer/browser/explorer_surface_data.h"
+#include "tuffite/components/manifest/common/access_rules.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/window/window_service.h"
 #include "tuffite/framework/app/services/window/window_service_factory.h"
 #include "tuffite/framework/browser/services/explorer/explorer_navigation_throttle.h"
 #include "tuffite/framework/browser/web_contents_role.h"
-#include "tuffite/framework/common/access.h"
 
 namespace tuffite {
 ExplorerServiceImpl::ExplorerServiceImpl(const ManifestService& manifest)
@@ -30,10 +30,15 @@ content::WebContents* ExplorerServiceImpl::OpenBrowserWindow(
           WebContentsRoleData::GetExplorerPolicy(contents.get())) {
     auto policy = *inherited;
     // There is no owning Explorer element after adoption into a native window.
-    policy.behavior = ExplorerBehavior();
+    for (const auto action :
+         {ExplorerAction::kNavigation, ExplorerAction::kDialog,
+          ExplorerAction::kExternalProtocol, ExplorerAction::kNewWindow}) {
+      policy.settings.actions[static_cast<size_t>(action)] =
+          ExplorerActionPolicy();
+    }
     policy.navigation = ExplorerNavigationPolicy::kAllow;
     policy.dialogs = ExplorerDialogPolicy::kBrowser;
-    ExplorerSurfaceData::UpdateExplorerBehavior(contents.get(), policy);
+    ExplorerSurfaceData::UpdateExplorerPolicy(contents.get(), policy);
   }
   auto* service = window::WindowServiceFactory::GetForBrowserContext(
       contents->GetBrowserContext());
@@ -100,7 +105,7 @@ bool ExplorerServiceImpl::Resolve(content::RenderFrameHost& frame,
   }
   ExplorerPolicy resolved;
   resolved.partition = partition;
-  resolved.behavior =
+  resolved.settings =
       manifest_->ExplorerDefaults(frame.GetLastCommittedOrigin());
   resolved.inherit_partition_storage = parsed->inherit;
   resolved.execute_javascript_origins =

@@ -5,6 +5,7 @@
 #define TUFFITE_COMPONENTS_DISPATCH_BROWSER_RPC_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -28,15 +29,21 @@ using ServiceHandler =
                                  std::string_view,
                                  base::span<const uint8_t>,
                                  Reply*)>;
+struct ServiceMethod {
+  std::string_view name;
+  uint32_t ordinal;
+};
 struct Service {
   std::string_view name;
   ServiceHandler dispatch;
+  std::vector<ServiceMethod> methods;
 };
 
 class Router final {
  public:
   explicit Router(std::vector<Service>);
   ~Router();
+  std::optional<std::string> ResolveMethod(std::string_view, uint32_t) const;
   bool Dispatch(const dispatch::RendererRequestContext&,
                 std::string_view,
                 base::span<const uint8_t>,
@@ -45,7 +52,9 @@ class Router final {
  private:
   struct Entry {
     std::string name;
+    std::string wire_name;
     ServiceHandler dispatch;
+    std::vector<ServiceMethod> methods;
   };
   std::vector<Entry> services_;
 };
@@ -122,9 +131,11 @@ struct Method {
 template <typename Interface, typename Dispatcher>
 Service BindService(std::string_view name,
                     std::shared_ptr<Interface> implementation,
-                    Dispatcher dispatcher) {
+                    Dispatcher dispatcher,
+                    std::vector<ServiceMethod> methods = {}) {
   CHECK(implementation);
-  return {name, base::BindRepeating(dispatcher, std::move(implementation))};
+  return {name, base::BindRepeating(dispatcher, std::move(implementation)),
+          std::move(methods)};
 }
 
 }  // namespace tuffite::rpc

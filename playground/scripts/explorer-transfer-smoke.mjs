@@ -65,7 +65,7 @@ try {
   const replacement = await app.evaluate(async () => {
     const demo = window.transferDemo;
     const target = document.createElement("explorer");
-    target.behavior = "navigation: browser;"; target.behavior += " dialog: delegate;";
+    target.policy = "navigation: browser;"; target.policy += " dialog: delegate;";
     const loaded = new Promise(resolve => target.addEventListener("loadstop", resolve, {once:true}));
     target.src = new URL("fixtures/history.html?page=a&replacement", location.href).href;
     document.querySelector("#hosts").append(target); await loaded;
@@ -74,7 +74,7 @@ try {
     const declared = target.getAttribute("src");
     const incompatible = document.createElement("explorer");
     incompatible.isolated = true;
-    incompatible.behavior = "navigation: delegate;"; incompatible.behavior += " dialog: delegate;";
+    incompatible.policy = "navigation: delegate;"; incompatible.policy += " dialog: delegate;";
     const ready = new Promise(resolve => incompatible.addEventListener("loadstop", resolve, {once:true}));
     incompatible.src=new URL("fixtures/history.html?page=b",location.href).href;
     document.querySelector("#hosts").append(incompatible); await ready;

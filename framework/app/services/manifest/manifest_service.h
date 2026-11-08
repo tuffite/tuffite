@@ -10,11 +10,12 @@
 #include "base/files/file_path.h"
 #include "base/memory/weak_ptr.h"
 #include "components/keyed_service/core/keyed_service.h"
-#include "tuffite/components/explorer/common/explorer_behavior.h"
+#include "tuffite/components/explorer/common/explorer_policy.h"
 #include "tuffite/components/isolated/common/isolated_configuration.h"
-#include "tuffite/framework/app/services/asset/asset_configuration.h"
-#include "tuffite/framework/app/services/manifest/app_config.h"
+#include "tuffite/components/manifest/common/application_configuration.h"
+#include "tuffite/components/manifest/common/asset_configuration.h"
 #include "url/origin.h"
+
 namespace tuffite {
 // Immutable application configuration and origin-based grants. Browser roles
 // and frame state are deliberately evaluated by browser-side consumers.
@@ -25,8 +26,6 @@ class ManifestService : public KeyedService {
   virtual app::NetworkLimits network_limits() const = 0;
   virtual asset::AssetConfiguration assets() const = 0;
   virtual const std::string& SerializeRuntimeConfiguration() const = 0;
-  virtual std::string SerializeShellApiOrigins() const = 0;
-  virtual std::string SerializeExplorerOrigins() const = 0;
   virtual const std::map<std::string, isolated::WorldDefinition>&
   IsolatedWorldDefinitions() const = 0;
   virtual std::optional<base::FilePath> ResolveBaseDirectory(
@@ -48,7 +47,7 @@ class ManifestService : public KeyedService {
   virtual bool IsAllShellApiAllowed(const url::Origin& origin) const = 0;
   virtual bool IsDevToolsAllowed(const url::Origin& origin) const = 0;
   virtual bool IsDevToolsEnabled() const = 0;
-  virtual ExplorerBehavior ExplorerDefaults(
+  virtual ExplorerPolicySettings ExplorerDefaults(
       const url::Origin& origin) const = 0;
   virtual bool IsExplorerOriginAllowed(const url::Origin& origin) const = 0;
   virtual bool IsShellApiCommandAllowed(const url::Origin& origin,

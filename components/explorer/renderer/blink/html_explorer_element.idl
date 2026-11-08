@@ -7,9 +7,9 @@
     [CEReactions, Reflect] attribute DOMString allow;
     readonly attribute Window? contentWindow;
     [CEReactions] attribute DOMString partition;
-    [CEReactions] attribute DOMString behavior;
+    [CEReactions] attribute DOMString policy;
     [CEReactions] attribute boolean isolated;
-    attribute boolean contextMenuEnabled;
+    [CallWith=ScriptState] Promise<boolean> discard();
     [CallWith=ScriptState] Promise<ExplorerHandle> detach();
     [CallWith=ScriptState] Promise<undefined> attach(ExplorerHandle handle);
     attribute EventHandler ondetached;

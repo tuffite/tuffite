@@ -45,7 +45,6 @@ export interface NativeBridge extends EventTarget {
   removeEventListener(type: 'message' | 'messageerror', listener: (event: MessageEvent) => void, options?: boolean | EventListenerOptions): void;
   addEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions): void;
   removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | EventListenerOptions): void;
-  invoke(channel: string, payload: Uint8Array): Promise<Uint8Array>;
   postMessage(message: unknown, options?: import('tuffite/explorer').ExplorerWindowPostMessageOptions): void;
   postMessage(message: unknown, targetOrigin: string, transfer?: import('tuffite/explorer').ExplorerTransferable[]): void;
   addEventListener(type: 'channel', listener: (event: ChannelEvent) => void, options?: boolean | AddEventListenerOptions): void;
@@ -74,11 +73,15 @@ export interface MojomStructSchema {
 }
 export function encodeMojom(schema: MojomStructSchema, value: object): Uint8Array;
 export function decodeMojom(schema: MojomStructSchema, bytes: Uint8Array): Record<string, unknown>;
-export type MojomTransport = (channel: string, commandId: bigint, schemaFingerprint: bigint, payload: Uint8Array) => Promise<Uint8Array>;
-export type MojomCommandEntry = readonly [path: string, id: string, fingerprint: string, request: MojomStructSchema, response: MojomStructSchema, channel?: string];
+export interface MojomEndpoint {
+  readonly interfaceName: string;
+  readonly ordinal: number;
+  readonly request: MojomStructSchema;
+  readonly response: MojomStructSchema;
+}
+export type MojomTransport = (endpoint: MojomEndpoint, request: Record<string, unknown>) => Promise<Record<string, unknown>>;
+export type MojomCommandEntry = readonly [path: string, ordinal: number, request: MojomStructSchema, response: MojomStructSchema, interfaceName: string];
 export function createMojomCommandApi(entries: readonly MojomCommandEntry[], namespace: string, transport?: MojomTransport): object;
-export const invokeFrameworkMojom: MojomTransport;
-export function invokeBinary(channel: string, commandId: bigint, schemaFingerprint: bigint, payload?: Uint8Array): Promise<Uint8Array>;
 export interface WindowInfo {
   postMessage(message: unknown, options?: import('tuffite/explorer').ExplorerWindowPostMessageOptions): void;
   postMessage(message: unknown, targetOrigin: string, transfer?: import('tuffite/explorer').ExplorerTransferable[]): void;

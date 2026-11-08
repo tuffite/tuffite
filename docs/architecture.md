@@ -469,15 +469,15 @@ Crashes and forced termination do not guarantee cleanup hooks.
 Package parsing, launch-time assembly and runtime queries are separate phases:
 
 ```text
-ManifestLoader::Load(package_root) -> ManifestDefinition
-ConfigurationAssembler::Build(definition, StartupEnvironment, BrowserOptions)
-    -> EffectiveConfiguration
-ManifestServiceFactory::Create(configuration) -> read-only ManifestService
+ManifestLoader::Load(package_root, error, runtime, ManifestEnvironment, ManifestOptions)
+    -> EffectiveManifest
+ManifestServiceFactory::Create(manifest) -> read-only ManifestService
 ```
 
 The factory accepts no development URL or feature-specific policy parameters.
-Loader owns file I/O and schema validation; assembler owns development aliases and
-host restrictions. The immutable effective snapshot owns its values independently
+The service-owned loader performs file I/O, schema validation, development alias
+resolution and host restriction merging. The component owns the portable model
+and snapshot transports; it does not depend on service implementation types. The immutable effective snapshot owns its values independently
 of caller options and package files. The merged declaration bytes remain available to Rust; native queries use
 compiled effective window and policy data.
 See [Manifest ownership](../framework/app/services/README.md#manifest-ownership-and-browser-policy).

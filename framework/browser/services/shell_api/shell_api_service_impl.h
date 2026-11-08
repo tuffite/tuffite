@@ -24,20 +24,17 @@ class ShellApiServiceImpl final : public ShellApiService {
                       UtilityService&);
   ~ShellApiServiceImpl() override;
   base::WeakPtr<ShellApiService> GetWeakPtr() override;
+  std::optional<MojomMethod> ResolveMojomMethod(std::string_view,
+                                                uint32_t) const override;
+  void DispatchMojom(content::RenderFrameHost&,
+                     const MojomMethod&,
+                     const std::vector<uint8_t>&,
+                     const base::UnguessableToken&,
+                     uint64_t,
+                     Reply) override;
+  void CancelMojomRequest(const base::UnguessableToken&, uint64_t) override;
   bool IsAuthorized(content::RenderFrameHost&) const override;
   bool IsEventAuthorized(content::RenderFrameHost&) const override;
-  void Dispatch(content::RenderFrameHost&,
-                const std::string&,
-                const std::vector<uint8_t>&,
-                const base::UnguessableToken&,
-                Reply) override;
-  void DispatchRequest(content::RenderFrameHost&,
-                       uint64_t,
-                       const std::string&,
-                       const std::vector<uint8_t>&,
-                       const base::UnguessableToken&,
-                       Reply) override;
-  void CancelRequest(const base::UnguessableToken&, uint64_t) override;
   void CancelDocument(const base::UnguessableToken&) override;
   void Subscribe(const base::UnguessableToken&, Event) override;
   void Broadcast(const std::string&, const std::vector<uint8_t>&) override;
@@ -45,7 +42,6 @@ class ShellApiServiceImpl final : public ShellApiService {
 
  private:
   rpc::RequestRegistry requests_;
-  uint64_t next_legacy_id_ = 1;
   rpc::Router router_;
   const raw_ref<content::BrowserContext> browser_context_;
   const raw_ref<HostDispatch> host_;

@@ -26,6 +26,13 @@ class UtilityService : public KeyedService {
                                     std::string name,
                                     std::vector<uint8_t> request,
                                     UtilityResponseCallback callback) = 0;
+  virtual void InvokeUtilityMojom(const base::UnguessableToken& owner,
+                                  uint64_t request_id,
+                                  std::string name,
+                                  uint64_t command,
+                                  uint64_t fingerprint,
+                                  std::vector<uint8_t> parameters,
+                                  UtilityResponseCallback callback) = 0;
   virtual void CancelUtilityService(const base::UnguessableToken& owner,
                                     std::string name,
                                     uint64_t request_id) = 0;

@@ -29,6 +29,7 @@ namespace content {
 class RenderFrameHost;
 class BrowserContext;
 class SiteInstance;
+class SecurityPrincipal;
 class SiteInstanceGroup;
 class StoragePartitionConfig;
 class WebContents;
@@ -96,11 +97,13 @@ inline std::optional<int64_t> GetExplorerIsolationId(
   return data ? std::make_optional(data->instance_id) : std::nullopt;
 }
 
-// Creates the initial SiteInstance for an Explorer with both of its immutable
-// boundaries in place before the first navigation: a fixed StoragePartition
-// and a stable per-Explorer process-isolation id. Installing either boundary
-// after WebContents creation allows the first navigation to replace the
-// BrowsingInstance and lose the other one.
+inline constexpr int64_t kExplorerProcessDomainBase = int64_t{1} << 62;
+
+CONTENT_EXPORT bool ShouldUseExplorerProcessPerSite(
+    const content::SecurityPrincipal& principal);
+
+// Installs the fixed partition and isolation domain before the first
+// navigation.
 CONTENT_EXPORT scoped_refptr<content::SiteInstance> CreateExplorerSiteInstance(
     content::BrowserContext* browser_context,
     const GURL& url,

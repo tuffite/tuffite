@@ -2,6 +2,7 @@ source_set("browser") {
   public = [
     "dispatch_host.h",
     "host_dispatch.h",
+    "mojom_interface_broker.h",
     "renderer_request_context.h",
     "request_registry.h",
     "rpc.h",
@@ -10,7 +11,10 @@ source_set("browser") {
   sources = [
     "dispatch_host.cc",
     "dispatch_host.h",
+    "host_dispatch.cc",
     "host_dispatch.h",
+    "mojom_interface_broker.cc",
+    "mojom_interface_broker.h",
     "renderer_request_context.cc",
     "renderer_request_context.h",
     "request_registry.cc",
@@ -23,6 +27,7 @@ source_set("browser") {
     "//base",
     "//content/public/browser",
     "//mojo/public/cpp/bindings",
+    "//third_party/blink/public/mojom:mojom_platform",
     "//tuffite/components/dispatch/common:implementation",
     "//tuffite/components/dispatch/common:mojom",
     "//url",

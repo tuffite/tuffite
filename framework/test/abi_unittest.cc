@@ -23,6 +23,7 @@
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/main_delegate.h"
 #include "tuffite/framework/app/process_launch.h"
+#include "tuffite/framework/app/services/manifest/manifest_loader.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
 #include "tuffite/framework/app/services/remoting/remoting_service.h"
@@ -55,17 +56,11 @@ namespace {
 std::unique_ptr<ManifestService> LoadManifest(
     const base::FilePath& root,
     std::string* error,
-    const app::StartupEnvironment& environment = {},
-    const app::BrowserOptions& options = {}) {
-  auto definition = app::ManifestLoader::Load(root, error);
-  if (!definition) {
-    return nullptr;
-  }
-  auto configuration = app::ConfigurationAssembler::Build(
-      std::move(*definition), environment, options, error);
-  return configuration
-             ? ManifestServiceFactory::Create(std::move(*configuration))
-             : nullptr;
+    const ManifestEnvironment& environment = {},
+    const ManifestOptions& options = {}) {
+  auto manifest = ManifestLoader::Load(root, error, {}, environment, options);
+  return manifest ? ManifestServiceFactory::Create(std::move(*manifest))
+                  : nullptr;
 }
 
 constexpr std::string_view kTestManifest = R"({
@@ -149,22 +144,23 @@ ReplyState state;
 
 class RecordingShellApiService final : public ShellApiService {
  public:
+  void CancelMojomRequest(const base::UnguessableToken&, uint64_t) override {}
   bool IsAuthorized(content::RenderFrameHost&) const override { return true; }
   bool IsEventAuthorized(content::RenderFrameHost&) const override {
     return true;
   }
-  void Dispatch(content::RenderFrameHost&,
-                const std::string&,
-                const std::vector<uint8_t>&,
-                const base::UnguessableToken&,
-                Reply) override {}
-  void DispatchRequest(content::RenderFrameHost&,
-                       uint64_t,
-                       const std::string&,
-                       const std::vector<uint8_t>&,
-                       const base::UnguessableToken&,
-                       Reply) override {}
-  void CancelRequest(const base::UnguessableToken&, uint64_t) override {}
+  std::optional<MojomMethod> ResolveMojomMethod(std::string_view,
+                                                uint32_t) const override {
+    return std::nullopt;
+  }
+  void DispatchMojom(content::RenderFrameHost&,
+                     const MojomMethod&,
+                     const std::vector<uint8_t>&,
+                     const base::UnguessableToken&,
+                     uint64_t,
+                     Reply reply) override {
+    std::move(reply).Run(3, {});
+  }
   void CancelDocument(const base::UnguessableToken&) override {}
   void Subscribe(const base::UnguessableToken&, Event) override {}
   base::WeakPtr<ShellApiService> GetWeakPtr() override {
@@ -388,9 +384,49 @@ TEST_F(AbiTest, OptionalSetupTailPreservesOlderApplicationTables) {
   EXPECT_NE(host->table().resolve_utility_route, nullptr);
 }
 
+TEST_F(AbiTest, MojomCallbacksRespectOptionalAbiTailBoundaries) {
+  auto table = FakeApplication();
+  table.command_scope = [](uint64_t) -> uint32_t { return 0; };
+  table.configuration = [] { return tuffite_byte_slice_t{nullptr, 0}; };
+  table.resolve_mojom_method = [](auto...) { return TUFFITE_STATUS_NOT_FOUND; };
+  table.dispatch_mojom = [](auto...) { return TUFFITE_STATUS_INVALID_STATE; };
+  table.invoke_utility_mojom = [](auto...) {
+    return TUFFITE_STATUS_INVALID_STATE;
+  };
+  auto host = abi::Application::Create(&table);
+  ASSERT_TRUE(host);
+  EXPECT_EQ(host->table().resolve_mojom_method, table.resolve_mojom_method);
+  EXPECT_EQ(host->table().dispatch_mojom, table.dispatch_mojom);
+  EXPECT_EQ(host->table().invoke_utility_mojom, table.invoke_utility_mojom);
+  table.header.struct_size =
+      offsetof(tuffite_application, invoke_utility_mojom);
+  host = abi::Application::Create(&table);
+  EXPECT_EQ(host->table().dispatch_mojom, table.dispatch_mojom);
+  EXPECT_EQ(host->table().invoke_utility_mojom, nullptr);
+  table.header.struct_size = offsetof(tuffite_application, dispatch_mojom);
+  host = abi::Application::Create(&table);
+  EXPECT_EQ(host->table().resolve_mojom_method, table.resolve_mojom_method);
+  EXPECT_EQ(host->table().dispatch_mojom, nullptr);
+  table.header.struct_size =
+      offsetof(tuffite_application, resolve_mojom_method);
+  host = abi::Application::Create(&table);
+  EXPECT_EQ(host->table().command_scope, table.command_scope);
+  EXPECT_EQ(host->table().configuration, table.configuration);
+  EXPECT_EQ(host->table().resolve_mojom_method, nullptr);
+  table.header.struct_size = offsetof(tuffite_application, configuration);
+  host = abi::Application::Create(&table);
+  EXPECT_EQ(host->table().command_scope, table.command_scope);
+  EXPECT_EQ(host->table().configuration, nullptr);
+}
+
 TEST_F(AbiTest, ShortcutRegistrationHasScopeAndDuplicateOwnership) {
   base::test::TaskEnvironment environment;
   auto table = FakeApplication();
+  table.start = [](const tuffite_host*, const uint8_t*, size_t,
+                   tuffite_handle_t* runtime) {
+    *runtime = 1;
+    return TUFFITE_STATUS_OK;
+  };
   MainDelegate delegate(abi::Application::Create(&table));
   delegate.BindBrowserTaskRunner();
   ASSERT_TRUE(delegate.StartUp(TestManifest()));
@@ -528,6 +564,15 @@ class PendingUtility final : public UtilityService {
                             std::string,
                             std::vector<uint8_t>,
                             UtilityResponseCallback) override {}
+  void InvokeUtilityMojom(const base::UnguessableToken&,
+                          uint64_t,
+                          std::string,
+                          uint64_t,
+                          uint64_t,
+                          std::vector<uint8_t>,
+                          UtilityResponseCallback callback) override {
+    std::move(callback).Run(TUFFITE_STATUS_INVALID_STATE, {});
+  }
   void CancelUtilityService(const base::UnguessableToken&,
                             std::string,
                             uint64_t) override {}

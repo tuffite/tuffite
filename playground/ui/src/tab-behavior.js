@@ -8,7 +8,7 @@ let loaded = 0;
 for (let i = 0; i < 2; ++i) {
   const explorer = document.createElement('explorer');
   explorer.id = i ? 'tab-control' : 'tab-primary';
-  explorer.behavior = "navigation: browser;"; explorer.style.cssText = 'display:block;width:100%;height:330px;margin:1rem 0';
+  explorer.policy = "navigation: browser;"; explorer.style.cssText = 'display:block;width:100%;height:330px;margin:1rem 0';
   for (const type of ['findresult', 'zoomchange', 'audiostatechange', 'faviconchange', 'renderprocessgone']) {
     explorer.addEventListener(type, event => {
       events.push({role: i ? 'control' : 'primary', type, detail: event.detail});

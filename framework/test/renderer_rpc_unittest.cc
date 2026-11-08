@@ -5,11 +5,18 @@
 #include <optional>
 
 #include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ref.h"
+#include "base/run_loop.h"
 #include "base/test/launcher/unit_test_launcher.h"
+#include "base/test/test_future.h"
+#include "content/public/test/back_forward_cache_util.h"
 #include "content/public/test/test_renderer_host.h"
 #include "content/public/test/unittest_test_suite.h"
 #include "content/test/content_test_suite.h"
+#include "mojo/public/cpp/bindings/generic_pending_receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "tuffite/components/dispatch/browser/mojom_interface_broker.h"
 #include "tuffite/components/dispatch/browser/rpc.h"
 #include "tuffite/framework/public/shell_api/path.mojom.h"
 #include "tuffite/framework/test/dispatch_fixture.mojom.h"
@@ -64,6 +71,174 @@ class DispatchFixtureImpl final : public shell_api::generated::DispatchFixture {
 
 constexpr std::array<uint8_t, 8> kEmptyMojomRequest = {8, 0, 0, 0, 0, 0, 0, 0};
 using RendererRpcTest = content::RenderViewHostTestHarness;
+
+class TypedInterfaceHandler final : public RpcHandler {
+ public:
+  TypedInterfaceHandler()
+      : router_({shell_api::generated::DispatchFixture::Bind(
+            std::make_shared<DispatchFixtureImpl>())}) {}
+  std::optional<MojomMethod> ResolveMojomMethod(
+      std::string_view name,
+      uint32_t ordinal) const override {
+    auto method = router_.ResolveMethod(name, ordinal);
+    return method ? std::optional(MojomMethod{*method}) : std::nullopt;
+  }
+  void CancelMojomRequest(const base::UnguessableToken&, uint64_t id) override {
+    cancelled_requests.push_back(id);
+  }
+  bool IsAuthorized(content::RenderFrameHost&) const override { return true; }
+  bool IsEventAuthorized(content::RenderFrameHost&) const override {
+    return false;
+  }
+  void DispatchMojom(content::RenderFrameHost& frame,
+                     const MojomMethod& method,
+                     const std::vector<uint8_t>& bytes,
+                     const base::UnguessableToken& connection,
+                     uint64_t id,
+                     Reply reply) override {
+    connections.push_back(connection);
+    operations.push_back(id);
+    if (deny) {
+      std::move(reply).Run(2, {});
+      return;
+    }
+    if (defer) {
+      pending = std::move(reply);
+      return;
+    }
+    EXPECT_TRUE(router_.Dispatch(
+        dispatch::RendererRequestContext(frame, connection, id), method.channel,
+        bytes, &reply));
+  }
+  void CancelDocument(const base::UnguessableToken&) override { ++cancelled; }
+  void Subscribe(const base::UnguessableToken&, Event) override {}
+  std::vector<base::UnguessableToken> connections;
+  std::vector<uint64_t> operations;
+  std::vector<uint64_t> cancelled_requests;
+  bool deny = false;
+  bool defer = false;
+  int cancelled = 0;
+  Reply pending;
+
+ private:
+  rpc::Router router_;
+};
+
+TEST_F(RendererRpcTest, ChromiumGeneratedRemoteUsesCanonicalTypedPipe) {
+  NavigateAndCommit(GURL("https://example.test/typed"));
+  TypedInterfaceHandler handler;
+  mojo::Remote<blink::mojom::BrowserInterfaceBroker> broker;
+  base::ScopedClosureRunner cleanup(base::BindOnce(
+      [](mojo::Remote<blink::mojom::BrowserInterfaceBroker>* broker) {
+        broker->reset();
+        base::RunLoop().RunUntilIdle();
+      },
+      base::Unretained(&broker)));
+  BindMojomInterfaceBroker(&handler, main_rfh(),
+                           broker.BindNewPipeAndPassReceiver());
+  mojo::Remote<wire::DispatchFixture> remote;
+  broker->GetInterface(
+      mojo::GenericPendingReceiver(remote.BindNewPipeAndPassReceiver()));
+  base::test::TestFuture<int32_t, wire::DispatchFixtureRoundTripResponsePtr,
+                         const std::optional<std::string>&>
+      reply;
+  remote->RoundTrip(
+      wire::DispatchValue::New("native", std::vector<uint8_t>{1, 2}), {},
+      reply.GetCallback());
+  ASSERT_TRUE(reply.Wait());
+  EXPECT_EQ(reply.Get<0>(), 0);
+  ASSERT_TRUE(reply.Get<1>());
+  EXPECT_EQ(reply.Get<1>()->value->label, "native");
+  EXPECT_EQ(reply.Get<1>()->value->bytes, (std::vector<uint8_t>{1, 2}));
+  handler.deny = true;
+  base::test::TestFuture<int32_t, wire::DispatchFixtureEmptyResponsePtr,
+                         const std::optional<std::string>&>
+      denied;
+  remote->Empty(denied.GetCallback());
+  ASSERT_TRUE(denied.Wait());
+  EXPECT_EQ(denied.Get<0>(), 2);
+  EXPECT_FALSE(denied.Get<1>());
+  broker.reset();
+  base::RunLoop().RunUntilIdle();
+  EXPECT_GT(handler.cancelled, 0);
+}
+
+TEST_F(RendererRpcTest,
+       SiblingTypedPipesShareDocumentBudgetButCancelIndependently) {
+  NavigateAndCommit(GURL("https://example.test/pipes"));
+  TypedInterfaceHandler handler;
+  handler.defer = true;
+  mojo::Remote<blink::mojom::BrowserInterfaceBroker> broker;
+  base::ScopedClosureRunner cleanup(base::BindOnce(
+      [](mojo::Remote<blink::mojom::BrowserInterfaceBroker>* broker) {
+        broker->reset();
+        base::RunLoop().RunUntilIdle();
+      },
+      base::Unretained(&broker)));
+  BindMojomInterfaceBroker(&handler, main_rfh(),
+                           broker.BindNewPipeAndPassReceiver());
+  mojo::Remote<wire::DispatchFixture> first, second;
+  broker->GetInterface(
+      mojo::GenericPendingReceiver(first.BindNewPipeAndPassReceiver()));
+  broker->GetInterface(
+      mojo::GenericPendingReceiver(second.BindNewPipeAndPassReceiver()));
+  first->Empty(base::BindOnce([](int32_t, wire::DispatchFixtureEmptyResponsePtr,
+                                 const std::optional<std::string>&) {}));
+  base::RunLoop().RunUntilIdle();
+  ASSERT_EQ(handler.operations.size(), 1u);
+  base::test::TestFuture<int32_t, wire::DispatchFixtureEmptyResponsePtr,
+                         const std::optional<std::string>&>
+      reply;
+  second->Empty(reply.GetCallback());
+  base::RunLoop().RunUntilIdle();
+  ASSERT_EQ(handler.operations.size(), 2u);
+  EXPECT_EQ(handler.connections[0], handler.connections[1]);
+  EXPECT_NE(handler.operations[0], handler.operations[1]);
+  first.reset();
+  base::RunLoop().RunUntilIdle();
+  ASSERT_EQ(handler.cancelled_requests.size(), 1u);
+  EXPECT_EQ(handler.cancelled_requests[0], handler.operations[0]);
+  std::move(handler.pending).Run(2, {});
+  ASSERT_TRUE(reply.Wait());
+  EXPECT_EQ(reply.Get<0>(), 2);
+  broker.reset();
+  base::RunLoop().RunUntilIdle();
+}
+
+TEST_F(RendererRpcTest, NavigationClosesTypedPipesAndCancelsPendingReplies) {
+  // Exercise document destruction; cached documents intentionally retain pipes.
+  content::DisableBackForwardCacheForTesting(
+      web_contents(), content::BackForwardCache::TEST_REQUIRES_NO_CACHING);
+  NavigateAndCommit(GURL("https://example.test/first"));
+  TypedInterfaceHandler handler;
+  handler.defer = true;
+  mojo::Remote<blink::mojom::BrowserInterfaceBroker> broker;
+  base::ScopedClosureRunner cleanup(base::BindOnce(
+      [](mojo::Remote<blink::mojom::BrowserInterfaceBroker>* broker) {
+        broker->reset();
+        base::RunLoop().RunUntilIdle();
+      },
+      base::Unretained(&broker)));
+  BindMojomInterfaceBroker(&handler, main_rfh(),
+                           broker.BindNewPipeAndPassReceiver());
+  mojo::Remote<wire::DispatchFixture> remote;
+  broker->GetInterface(
+      mojo::GenericPendingReceiver(remote.BindNewPipeAndPassReceiver()));
+  base::test::TestFuture<void> disconnected;
+  remote.set_disconnect_handler(disconnected.GetCallback());
+  remote->Empty(
+      base::BindOnce([](int32_t, wire::DispatchFixtureEmptyResponsePtr,
+                        const std::optional<std::string>&) {
+        ADD_FAILURE() << "A destroyed document must receive no reply";
+      }));
+  base::RunLoop().RunUntilIdle();
+  ASSERT_TRUE(handler.pending);
+  NavigateAndCommit(GURL("https://example.test/second"));
+  ASSERT_TRUE(disconnected.Wait());
+  EXPECT_GT(handler.cancelled, 0);
+  std::move(handler.pending).Run(4, {});
+  base::RunLoop().RunUntilIdle();
+}
 
 TEST_F(RendererRpcTest,
        GeneratedBindingsPreserveCodecsAndDeferredReplyOwnership) {

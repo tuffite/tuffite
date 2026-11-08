@@ -84,7 +84,7 @@ std::string PackageBase(const GURL& url) {
 void IsolatedServiceImpl::Release(const std::string& entry_url) {
   leases_.erase(PackageBase(GURL(entry_url)));
 }
-std::optional<asset::MemoryAsset> IsolatedServiceImpl::ResourceForFrame(
+std::optional<MemoryAsset> IsolatedServiceImpl::ResourceForFrame(
     content::RenderFrameHost& frame,
     const GURL& url) const {
   auto base = PackageBase(url);
@@ -111,7 +111,7 @@ std::optional<asset::MemoryAsset> IsolatedServiceImpl::ResourceForFrame(
   if (mime.empty()) {
     mime = "application/octet-stream";
   }
-  return asset::MemoryAsset{
+  return MemoryAsset{
       std::move(mime),
       found == definition.resources.end() ? definition.source : found->second,
       it->second.origin.Serialize()};

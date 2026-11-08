@@ -31,7 +31,7 @@
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/mojom/url_loader.mojom.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
-#include "tuffite/framework/app/services/asset/asset_configuration.h"
+#include "tuffite/components/manifest/common/asset_configuration.h"
 
 namespace tuffite {
 namespace {
@@ -157,10 +157,11 @@ class URLLoader final : public network::mojom::URLLoader {
     response->content_length = base::checked_cast<int64_t>(contents_.size());
     response->charset =
         asset_.mime_type == "application/octet-stream" ? "" : "utf-8";
-    net::HttpResponseHeaders::Builder headers(
-        net::HttpVersion(1, 1),
+    // Builder borrows the status and header strings until Build().
+    const std::string status =
         found ? base::NumberToString(asset_.status) + " Response"
-              : "404 Not Found");
+              : "404 Not Found";
+    net::HttpResponseHeaders::Builder headers(net::HttpVersion(1, 1), status);
     headers.AddHeader("Content-Type", asset_.mime_type)
         .AddHeader("Cache-Control", "no-store")
         .AddHeader("X-Content-Type-Options", "nosniff")
@@ -215,7 +216,7 @@ class URLLoader final : public network::mojom::URLLoader {
 URLLoaderFactory::URLLoaderFactory(
     mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
     const asset::AssetConfiguration& assets,
-    asset::MemoryAssetResolver resolver,
+    MemoryAssetResolver resolver,
     URLResolver business_resolver,
     base::SelfDeletingPassKey key)
     : network::SelfDeletingURLLoaderFactory(std::move(receiver), key),
@@ -284,7 +285,7 @@ void URLLoaderFactory::CreateLoaderAndStart(
 // static
 mojo::PendingRemote<network::mojom::URLLoaderFactory> URLLoaderFactory::Create(
     const asset::AssetConfiguration& assets,
-    asset::MemoryAssetResolver resolver,
+    MemoryAssetResolver resolver,
     URLResolver business_resolver) {
   mojo::PendingRemote<network::mojom::URLLoaderFactory> remote;
   base::MakeSelfDeleting<URLLoaderFactory>(

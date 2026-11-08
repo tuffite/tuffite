@@ -9,10 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "base/command_line.h"
 #include "base/functional/callback_helpers.h"
-#include "base/strings/pattern.h"
-#include "base/strings/string_split.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_explorer_dialog.h"
@@ -27,6 +24,7 @@
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
 #include "third_party/blink/renderer/core/dom/events/custom_event.h"
 #include "third_party/blink/renderer/core/events/message_event.h"
+#include "third_party/blink/renderer/core/frame/frame_view.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
@@ -40,12 +38,11 @@
 #include "tuffite/components/explorer/renderer/blink/explorer_handle.h"
 #include "tuffite/components/explorer/renderer/blink/explorer_message_serialization.h"
 #include "tuffite/components/explorer/renderer/blink/explorer_new_window.h"
+#include "tuffite/components/manifest/renderer/blink/document_configuration_reader.h"
 #include "v8/include/v8-json.h"
 
 namespace blink {
 namespace {
-
-constexpr char kExplorerOriginsSwitch[] = "tuffite-explorer-origins";
 
 const QualifiedName& ExplorerTagName() {
   DEFINE_STATIC_LOCAL(
@@ -94,21 +91,7 @@ HTMLExplorerElement::~HTMLExplorerElement() = default;
 
 // static
 bool HTMLExplorerElement::IsEnabled(const Document& document) {
-  const ExecutionContext* execution_context = document.GetExecutionContext();
-  const SecurityOrigin* security_origin =
-      execution_context ? execution_context->GetSecurityOrigin() : nullptr;
-  if (!security_origin || security_origin->IsOpaque()) {
-    return false;
-  }
-  const std::string origin = security_origin->ToUrlOrigin().Serialize();
-  const std::string allowlist =
-      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
-          kExplorerOriginsSwitch);
-  const std::vector<std::string> allowed = base::SplitString(
-      allowlist, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
-  return std::ranges::any_of(allowed, [&](const std::string& pattern) {
-    return base::MatchPattern(origin, pattern);
-  });
+  return tuffite::IsExplorerEnabled(document);
 }
 
 void HTMLExplorerElement::Trace(Visitor* visitor) const {
@@ -132,16 +115,16 @@ void HTMLExplorerElement::setSrc(const String& value) {
 }
 
 String HTMLExplorerElement::partition() const {
-  return FrozenAttribute("partition", "");
+  return AttributeOrDefault("partition", "");
 }
 void HTMLExplorerElement::setPartition(const String& value) {
   setAttribute(AtomicString("partition"), AtomicString(value));
 }
-String HTMLExplorerElement::behavior() const {
-  return FrozenAttribute("behavior", "");
+String HTMLExplorerElement::policy() const {
+  return AttributeOrDefault("policy", "");
 }
-void HTMLExplorerElement::setBehavior(const String& value) {
-  setAttribute(AtomicString("behavior"), AtomicString(value));
+void HTMLExplorerElement::setPolicy(const String& value) {
+  setAttribute(AtomicString("policy"), AtomicString(value));
 }
 bool HTMLExplorerElement::isolated() const {
   return hasAttribute(AtomicString("isolated"));
@@ -153,21 +136,17 @@ void HTMLExplorerElement::setIsolated(bool value) {
     removeAttribute(AtomicString("isolated"));
   }
 }
-String HTMLExplorerElement::FrozenAttribute(const char* name,
-                                            const char* default_value) const {
+ScriptPromise<IDLBoolean> HTMLExplorerElement::discard(ScriptState* state) {
+  return BooleanOperation(state, host_, [&](auto callback) {
+    host_->Discard(std::move(callback));
+  });
+}
+
+String HTMLExplorerElement::AttributeOrDefault(
+    const char* name,
+    const char* default_value) const {
   const AtomicString value = getAttribute(AtomicString(name));
   return value.empty() ? String(default_value) : String(value);
-}
-
-bool HTMLExplorerElement::contextMenuEnabled() const {
-  return context_menu_enabled_;
-}
-
-void HTMLExplorerElement::setContextMenuEnabled(bool enabled) {
-  context_menu_enabled_ = enabled;
-  if (host_.is_bound()) {
-    host_->SetContextMenuEnabled(enabled);
-  }
 }
 
 void HTMLExplorerElement::load(const String& value) {
@@ -335,7 +314,6 @@ void HTMLExplorerElement::FinishAttach(const String& error) {
         previous->close(resolver->GetScriptState());
       }
     }
-    host_->SetContextMenuEnabled(context_menu_enabled_);
   }
   attaching_handle_.Clear();
   replaced_handle_.Clear();
@@ -682,10 +660,10 @@ void HTMLExplorerElement::ParseAttribute(
     }
     return;
   }
-  if (params.name == AtomicString("behavior")) {
+  if (params.name == AtomicString("policy")) {
     if (host_.is_bound()) {
-      host_->SetBehavior(
-          behavior(),
+      host_->SetPolicy(
+          policy(),
           BindOnce(
               [](WeakPersistent<HTMLExplorerElement> element, bool accepted) {
                 if (!accepted && element && element->GetExecutionContext()) {
@@ -693,8 +671,8 @@ void HTMLExplorerElement::ParseAttribute(
                       MakeGarbageCollected<ConsoleMessage>(
                           mojom::blink::ConsoleMessageSource::kJavaScript,
                           mojom::blink::ConsoleMessageLevel::kError,
-                          "Explorer behavior update rejected; the previous "
-                          "behavior remains active."));
+                          "Explorer policy update rejected; the previous "
+                          "policy remains active."));
                 }
               },
               WrapWeakPersistent(this)));
@@ -710,6 +688,15 @@ void HTMLExplorerElement::ParseAttribute(
   }
   HTMLFrameOwnerElement::ParseAttribute(params);
 }
+void HTMLExplorerElement::AttachLayoutTree(AttachContext& context) {
+  HTMLFrameOwnerElement::AttachLayoutTree(context);
+  // Match iframe: display:none removes the embedded view from layout, so a
+  // subsequent attachment must reconnect it to propagate visibility again.
+  if (GetLayoutEmbeddedContent() && ContentFrame()) {
+    SetEmbeddedContentView(ContentFrame()->View());
+  }
+}
+
 bool HTMLExplorerElement::LayoutObjectIsNeeded(
     const DisplayStyle& style) const {
   return ContentFrame() && HTMLElement::LayoutObjectIsNeeded(style);
@@ -785,9 +772,8 @@ HTMLExplorerElement::CreateParams() const {
                             ? BlankUrl().GetString()
                             : GetDocument().CompleteURL(src()).GetString();
   params->partition = partition();
-  params->behavior = behavior();
+  params->policy = policy();
   params->isolated = isolated();
-  params->context_menu_enabled = context_menu_enabled_;
   params->frame_policy = GetFramePolicy();
   return params;
 }

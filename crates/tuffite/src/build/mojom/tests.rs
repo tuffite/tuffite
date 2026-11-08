@@ -10,7 +10,7 @@ fn module_is_the_only_source_of_method_identity() {
     let bindings = generate(&sources, "org.example.app").unwrap();
     assert!(bindings.command_ids.contains_key("example.files.Fs.Read"));
     assert!(bindings.javascript.contains("createExampleFilesApi"));
-    assert!(bindings.javascript.contains("example.files.Fs.Read"));
+    assert!(bindings.javascript.contains("example.files.wire.Fs"));
     let other = vec![(
         "api.mojom".into(),
         sources[0].1.replace("example.files", "other.files"),
@@ -38,6 +38,13 @@ fn playground_bindings_preserve_checked_in_sources() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../playground");
     let sources = tuffite_mojom::read_sources(&root, &["shell_api.mojom".into()]).unwrap();
     let bindings = generate(&sources, "org.tuffite.playground").unwrap();
+    if std::env::var_os("TUFFITE_UPDATE_MOJOM_FIXTURES").is_some() {
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        std::fs::write(fixtures.join("mojom_generated.rs"), &bindings.rust).unwrap();
+        std::fs::write(root.join("generated/index.js"), &bindings.javascript).unwrap();
+        std::fs::write(root.join("generated/index.d.ts"), &bindings.declarations).unwrap();
+        return;
+    }
     assert_eq!(
         bindings.rust,
         include_str!("../../../tests/fixtures/mojom_generated.rs").replace("\r\n", "\n")
@@ -131,6 +138,7 @@ fn rejects_unknown_types_and_names_that_normalize_to_collisions() {
         "module demo; interface Commands { __tuffite_dispatch() => (); };",
         "module demo; struct Commands {}; interface Commands { Run() => (); };",
         "module demo; /*",
+        "module demo; interface X { Run@4294967294() => (); };",
     ] {
         let sources = vec![(PathBuf::from("api.mojom"), source.to_owned())];
         assert!(generate(&sources, "demo").is_err(), "{source}");
@@ -144,6 +152,14 @@ fn method_named_like_its_payload_keeps_the_types_distinct() {
         include_str!("../../../tests/fixtures/mojom_collision.mojom").to_owned(),
     )];
     let bindings = generate(&sources, "example").unwrap();
+    if std::env::var_os("TUFFITE_UPDATE_MOJOM_FIXTURES").is_some() {
+        std::fs::write(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mojom_collision.rs"),
+            &bindings.rust,
+        )
+        .unwrap();
+        return;
+    }
     assert_eq!(
         bindings.rust,
         include_str!("../../../tests/fixtures/mojom_collision.rs").replace("\r\n", "\n")

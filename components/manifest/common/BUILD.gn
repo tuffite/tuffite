@@ -1,0 +1,47 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//mojo/public/tools/bindings/mojom.gni")
+
+# Renderer consumers depend only on these document snapshots.
+mojom("mojom") {
+  sources = [ "document_configuration.mojom" ]
+}
+
+source_set("access") {
+  sources = [
+    "access_rules.cc",
+    "access_rules.h",
+  ]
+  public_deps = [
+    "//base",
+    "//url",
+  ]
+}
+
+source_set("assets") {
+  sources = [
+    "asset_configuration.cc",
+    "asset_configuration.h",
+  ]
+  public_deps = [
+    "//base",
+    "//url",
+  ]
+  deps = [ ":access" ]
+}
+
+source_set("configuration") {
+  public = [
+    "application_configuration.h",
+    "manifest.h",
+  ]
+  sources = public
+  public_deps = [
+    ":assets",
+    "//base",
+    "//tuffite/components/explorer/common:policy",
+    "//tuffite/components/isolated/common:configuration",
+    "//url",
+  ]
+}

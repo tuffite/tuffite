@@ -13,6 +13,7 @@ source_set("url") {
               "url_service_factory.cc",
               "url_service_impl.cc",
               "url_service_impl.h",
+              "url_types.h",
             ]
   public_deps = [
     "//base",
@@ -27,13 +28,14 @@ source_set("url") {
     "//net",
     "//services/network/public/cpp",
     "//tuffite/components/dispatch/browser",
+    "//tuffite/components/manifest/common:assets",
     "//tuffite/framework/app:context",
-    "//tuffite/framework/app/services/asset:configuration",
     "//tuffite/framework/app/services/manifest",
     "//tuffite/framework/app/services/profile",
     "//tuffite/framework/app/services/window",
     "//tuffite/framework/browser:support",
     "//tuffite/framework/browser/services/isolated",
+    "//tuffite/framework/common:resource",
     "//url",
   ]
 }

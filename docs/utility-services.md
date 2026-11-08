@@ -99,11 +99,12 @@ queued work waits for exponential restart backoff. Five consecutive crashes
 open a 30-second circuit, while a successful invocation resets crash history.
 
 This gives the demo real process isolation and supervised Rust-to-Mojo-to-Rust
-routing. `window.tuffite.utility.invoke(name, requestId, Uint8Array)` and
-`window.tuffite.utility.cancel(name, requestId)` are generated from the
-built-in TypeScript contract and uses the same
-`window.tuffite.invoke("tuffite.utility.invoke", payload)` Mojo route as every
-other built-in API. There is no fetch URL bridge or JavaScript special case.
+routing. Typed Utility clients bind their own generated Mojo interfaces. The
+browser checks origin, service and endpoint grants before forwarding typed
+parameter structs to the supervised Utility's Rust adapter. No generic renderer
+invoke route or `CERM` request envelope is involved. The `utility` module's raw
+unary operation remains a separate domain API for explicitly binary services.
+
 
 `Utility` is `Send + Sync`, and unary `invoke` borrows `&self`; a service
 uses atomics or its own fine-grained locks for shared state. The framework does

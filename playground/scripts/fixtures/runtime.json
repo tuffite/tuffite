@@ -92,7 +92,7 @@
     "rules": [
       {
         "explorer": {
-          "behavior": {
+          "policy": {
             "dialog": {
               "mode": "delegate"
             },

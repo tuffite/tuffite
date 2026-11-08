@@ -7,7 +7,7 @@ use super::{emit, emit_files, generate_bindings};
 
 #[derive(Debug)]
 pub struct GeneratedBindings {
-    /// Public command names and native wire IDs, generated from IDL.
+    /// Public method names and native backend IDs, generated from IDL.
     pub command_ids: BTreeMap<String, String>,
     pub rust: String,
     pub javascript: String,

@@ -1,0 +1,11 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+component("bootstrap") {
+  sources = [
+    "process_configuration.cc",
+    "process_configuration.h",
+  ]
+  defines = [ "IS_TUFFITE_MANIFEST_BOOTSTRAP_IMPL" ]
+  public_deps = [ "//base" ]
+}

@@ -171,11 +171,12 @@ fn endpoint(schema: &Schema, endpoint: &Endpoint<'_>) -> Result<TokenStream, Str
         .iter()
         .map(|field| field_ident(&field.name))
         .collect::<Result<Vec<_>, _>>()?;
+    let ordinal = method.ordinal;
     Ok(quote! {
         pub type #name = #request;
         impl #request {
             pub const COMMAND: ::tuffite::CommandDescriptor =
-                ::tuffite::CommandDescriptor::new(#channel, #id, #fingerprint);
+                ::tuffite::CommandDescriptor::new(#channel, #id, #fingerprint).with_ordinal(#ordinal);
             pub fn __tuffite_decode(command: ::tuffite::Command<'_>) -> Result<Self, ::tuffite::CommandError> {
                 if command.id() != Self::COMMAND.id() {
                     return Err(::tuffite::CommandError::UnknownCommand);

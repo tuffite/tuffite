@@ -13,7 +13,6 @@ source_set("implementation") {
     "codec.h",
     "message.h",
     "status.h",
-    "switches.h",
   ]
   deps = [
     "//base",

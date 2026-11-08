@@ -13,6 +13,14 @@
 #include "url/gurl.h"
 
 namespace tuffite {
+bool ShouldUseExplorerProcessPerSite(
+    const content::SecurityPrincipal& principal) {
+  const auto id = static_cast<const content::SiteInfo&>(principal)
+                      .embedder_isolation_info()
+                      .instance_id();
+  return id && *id >= kExplorerProcessDomainBase && (*id & 1) == 0;
+}
+
 void DeliverExplorerWindowMessage(content::RenderFrameHost& target,
                                   const url::Origin& source,
                                   const url::Origin* origin,

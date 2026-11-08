@@ -38,6 +38,9 @@ class ContentBrowserClient final : public content::ContentBrowserClient {
   std::unique_ptr<content::AuthenticatorRequestClientDelegate>
   GetWebAuthenticationRequestDelegate(content::RenderFrameHost* frame) override;
   bool IsHandledURL(const GURL& url) override;
+  bool ShouldUseProcessPerSite(
+      content::BrowserContext* browser_context,
+      const content::SecurityPrincipal& principal) override;
   std::vector<std::unique_ptr<blink::URLLoaderThrottle>>
   CreateURLLoaderThrottles(
       const network::ResourceRequest&,
@@ -82,6 +85,8 @@ class ContentBrowserClient final : public content::ContentBrowserClient {
       content::VideoPictureInPictureWindowController* controller) override;
   void AppendExtraCommandLineSwitches(base::CommandLine* command_line,
                                       int child_process_id) override;
+  void OnWebContentsCreated(content::WebContents*) override;
+  bool ShouldAllowMojoJsBindingsForFrame(content::RenderFrameHost&) override;
   void RegisterBrowserInterfaceBindersForFrame(
       content::RenderFrameHost* render_frame_host,
       mojo::BinderMapWithContext<content::RenderFrameHost*>* map) override;

@@ -173,8 +173,10 @@ void WindowServiceImpl::Adopt(std::unique_ptr<Window> window) {
              .application_context(),
         &*application_);
   }
-  IdFor(window.get());
+  auto* adopted = window.get();
   windows_.push_back(std::move(window));
+  // IdFor notifies shortcut observers, which must already see the new window.
+  IdFor(adopted);
 }
 void WindowServiceImpl::DestroyWhenIdle(Window* window) {
   if (stopped_ || closing_.contains(window)) {

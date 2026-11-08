@@ -69,8 +69,7 @@ class WebContentsRoleData final
   // per-WebContents capability, not a renderer-side trust decision. App
   // surfaces use a separate explicit development-mode check in the view
   // delegate.
-  static void SetExplorerContextMenuEnabled(content::WebContents* web_contents,
-                                            bool enabled);
+
   static bool IsExplorerContextMenuEnabled(
       const content::WebContents* web_contents);
 

@@ -8,7 +8,7 @@
 #include "base/base64.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
-#include "tuffite/framework/common/access.h"
+#include "tuffite/components/manifest/common/access_rules.h"
 
 namespace tuffite {
 IsolatedRegistry::IsolatedRegistry() = default;

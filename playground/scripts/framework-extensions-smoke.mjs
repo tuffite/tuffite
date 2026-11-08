@@ -65,8 +65,12 @@ try {
   await api.command('Page.bringToFront', {});
   const modifier = await api.eval("return navigator.platform.includes('Mac') ? 4 : 2;");
   async function press(code, key) {
-    await api.command('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code: `Key${key}`, windowsVirtualKeyCode: code, modifiers: modifier | 8 });
-    await api.command('Input.dispatchKeyEvent', { type: 'keyUp', key, code: `Key${key}`, windowsVirtualKeyCode: code, modifiers: modifier | 8 });
+    // Chromium skips browser accelerators when the native key code is absent.
+    // macOS additionally needs the actual ANSI hardware code for its NSEvent.
+    const nativeVirtualKeyCode = process.platform === 'darwin' ? {P: 35, K: 40}[key] : code;
+    const event = {key, code: `Key${key}`, windowsVirtualKeyCode: code, nativeVirtualKeyCode, modifiers: modifier | 8};
+    await api.command('Input.dispatchKeyEvent', {type: 'rawKeyDown', ...event});
+    await api.command('Input.dispatchKeyEvent', {type: 'keyUp', ...event});
   }
   await press(80, 'P');
   await until(() => api.eval("return frameworkLab.events.some(e => e.channel === 'playground.framework.shortcut' && e.data.startsWith('Application:'));"), 'Application shortcut missing');

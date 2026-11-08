@@ -57,7 +57,7 @@ try {
     await app.evaluate(async (url) => {
       const explorer = document.createElement("explorer");
       explorer.id = "origin-policy-fixture";
-      explorer.behavior = "navigation: browser;";
+      explorer.policy = "navigation: browser;";
       explorer.style.cssText = "display:block;width:400px;height:300px";
       explorer.src = url;
       const ready = new Promise((resolve) =>

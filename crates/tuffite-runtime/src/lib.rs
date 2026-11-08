@@ -79,3 +79,5 @@ pub use utility_session::{
     UtilitySessionFlowControl, UtilitySessionFlowError, UtilitySessionFuture,
     UtilitySessionRequest,
 };
+
+mod native_mojom;

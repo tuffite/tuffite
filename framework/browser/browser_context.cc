@@ -6,11 +6,14 @@
 #include <algorithm>
 
 #include "base/check.h"
+#include "base/functional/bind.h"
 #include "base/no_destructor.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/web_contents.h"
 #include "tuffite/components/dispatch/browser/host_dispatch.h"
 #include "tuffite/components/explorer/browser/explorer_router.h"
+#include "tuffite/components/manifest/browser/content/document_configuration_provider.h"
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
@@ -32,6 +35,8 @@
 #include "tuffite/framework/browser/services/shell_api/shell_api_service_factory.h"
 #include "tuffite/framework/browser/services/url/url_service_factory.h"
 #include "tuffite/framework/browser/services/webauthn/web_authentication_service_factory.h"
+#include "tuffite/framework/browser/web_contents_role.h"
+#include "url/origin.h"
 
 namespace tuffite {
 namespace {
@@ -66,6 +71,26 @@ BrowserContext::BrowserContext(base::FilePath path,
       path_(std::move(path)),
       network_storage_root_(std::move(network_storage_root)) {
   AliveBrowserContexts().push_back(this);
+  SetDocumentConfigurationProvider(
+      *this,
+      base::BindRepeating(
+          [](BrowserContext* context, content::RenderFrameHost& frame,
+             const url::Origin& origin) {
+            auto* contents = content::WebContents::FromRenderFrameHost(&frame);
+            const auto role = WebContentsRoleData::GetRole(contents);
+            const auto* policy =
+                WebContentsRoleData::GetExplorerPolicy(contents);
+            const bool app = role == WebContentsRole::kApp;
+            const bool explorer = role == WebContentsRole::kExplorer && policy;
+            auto& manifest = context->manifest_service();
+            return DocumentExposure{
+                !frame.GetParent() &&
+                    (app || (explorer && policy->allow_shell_api)) &&
+                    manifest.IsShellApiOriginAllowed(origin),
+                (app || explorer) && manifest.IsExplorerOriginAllowed(origin)};
+          },
+          base::Unretained(this)));
+
   ExplorerServiceFactory::Get();
   DownloadServiceFactory::Get();
   DevToolsServiceFactory::Get();

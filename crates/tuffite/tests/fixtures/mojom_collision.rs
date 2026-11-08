@@ -167,10 +167,11 @@ pub mod commands {
     pub type Status = super::CommandsStatusRequest;
     impl super::CommandsStatusRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "collision.Commands.Status",
-            0x0155_62f1_0344_d19c,
-            0x36fb_9cab_11c1_c9e5,
-        );
+                "collision.Commands.Status",
+                0x0155_62f1_0344_d19c,
+                0x36fb_9cab_11c1_c9e5,
+            )
+            .with_ordinal(0u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {

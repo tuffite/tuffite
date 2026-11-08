@@ -364,6 +364,62 @@ pub unsafe extern "C" fn invoke_utility(
     user_data: *mut std::ffi::c_void,
     reply: Option<UtilityReplyFn>,
 ) -> Status {
+    // SAFETY: Forwarded borrowed parameters and accepted callback ownership.
+    unsafe {
+        invoke_utility_impl(
+            service,
+            request_id,
+            request,
+            request_len,
+            user_data,
+            reply,
+            None,
+        )
+    }
+}
+
+/// # Safety
+/// Parameters borrow readable bytes and accepted callback ownership follows Utility invoke.
+pub unsafe extern "C" fn invoke_utility_mojom(
+    service: FfiHandle,
+    request_id: u64,
+    command: u64,
+    fingerprint: u64,
+    parameters: ByteSlice,
+    data: *mut std::ffi::c_void,
+    reply: Option<UtilityReplyFn>,
+) -> Status {
+    // SAFETY: Forwarded borrowed parameters and accepted callback ownership.
+    unsafe {
+        invoke_utility_impl(
+            service,
+            request_id,
+            parameters.data,
+            parameters.len,
+            data,
+            reply,
+            Some((command, fingerprint)),
+        )
+    }
+}
+
+fn utility_instance(handle: UtilityHandle) -> Result<Arc<UtilityInstance>, Status> {
+    let table = services()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    table.get(handle).map(Arc::clone).map_err(map_handle_error)
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn invoke_utility_impl(
+    service: FfiHandle,
+    request_id: u64,
+    request: *const u8,
+    request_len: usize,
+    user_data: *mut std::ffi::c_void,
+    reply: Option<UtilityReplyFn>,
+    mojom: Option<(u64, u64)>,
+) -> Status {
     catch_unwind(AssertUnwindSafe(|| {
         let Some(reply) = reply else {
             return Status::InvalidArgument;
@@ -380,14 +436,9 @@ pub unsafe extern "C" fn invoke_utility(
             Ok(request) => request.to_vec(),
             Err(status) => return status,
         };
-        let implementation = {
-            let table = services()
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            match table.get(handle) {
-                Ok(implementation) => Arc::clone(implementation),
-                Err(error) => return map_handle_error(error),
-            }
+        let implementation = match utility_instance(handle) {
+            Ok(instance) => instance,
+            Err(status) => return status,
         };
         let key = (service, request_id);
         let cancellation = CancellationToken::new();
@@ -417,13 +468,21 @@ pub unsafe extern "C" fn invoke_utility(
                             "utility is stopping".to_owned(),
                         ));
                     }
-                    futures_executor::block_on(
-                        implementation.implementation.invoke(UtilityRequest::new(
-                            request,
-                            cancellation,
-                            deadline,
-                        )),
-                    )
+                    if let Some((command, fingerprint)) = mojom {
+                        futures_executor::block_on(
+                            implementation
+                                .implementation
+                                .invoke_mojom(crate::Command::new(command, fingerprint, &request)),
+                        )
+                    } else {
+                        futures_executor::block_on(
+                            implementation.implementation.invoke(UtilityRequest::new(
+                                request,
+                                cancellation,
+                                deadline,
+                            )),
+                        )
+                    }
                 }));
                 invocations()
                     .lock()

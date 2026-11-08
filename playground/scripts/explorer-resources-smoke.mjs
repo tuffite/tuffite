@@ -44,10 +44,10 @@ try {
     host.style.cssText = "position:fixed;inset:0;background:#184a70;z-index:10000";
     document.body.append(host);
     const source = document.createElement("explorer");
-    source.behavior = "navigation: browser;";
+    source.policy = "navigation: browser;";
     source.allow = "fullscreen *; picture-in-picture *";
-    source.behavior += " dialog: delegate;";
-    source.contextMenuEnabled = true;
+    source.policy += " dialog: delegate;";
+    source.policy += " context-menu: browser;";
     source.style.cssText = "display:block;width:100%;height:100%";
     window.resourceEvents = [];
     source.addEventListener("download", ({ detail }) => resourceEvents.push(detail));
@@ -76,7 +76,7 @@ try {
   // An unrelated receiver must not be able to read or cancel another page's item.
   const unowned = await app.evaluate(async ({ url, id }) => {
     const other = document.createElement("explorer");
-    other.behavior = "navigation: browser;";
+    other.policy = "navigation: browser;";
     other.src = url;
     document.body.append(other);
     await new Promise((resolve) => other.addEventListener("loadstop", resolve, { once: true }));
@@ -90,9 +90,9 @@ try {
   const transferred = await app.evaluate(async (id) => {
     const source = resourceSource;
     const target = document.createElement("explorer");
-    target.behavior = "navigation: browser;";
+    target.policy = "navigation: browser;";
     target.allow = source.allow;
-    target.behavior += " dialog: delegate;";
+    target.policy += " dialog: delegate;";
     target.style.cssText = source.style.cssText;
     source.parentElement.append(target);
     const transfer = await source.detach();
@@ -160,7 +160,7 @@ try {
   await app.evaluate(() => resourceSource.remove());
   await app.evaluate((url) => {
     const direct = document.createElement("explorer");
-    direct.behavior = "navigation: browser;";
+    direct.policy = "navigation: browser;";
     direct.style.cssText = "display:block;width:600px;height:400px";
     direct.src = `${url}/document.pdf`;
     document.body.append(direct);

@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Document configuration fixture</title>
+  <script>
+    // Intentionally the first script: async policy installation would race this.
+    globalThis.configurationAtFirstScript = {
+      shellApi: typeof globalThis.Mojo?.bindInterface === 'function',
+      legacyInvoke: typeof globalThis.tuffite?.invoke,
+      explorer: document.createElement('explorer').constructor.name === 'HTMLExplorerElement',
+    };
+  </script>
+  <p>Document configuration fixture</p>
+</html>

@@ -75,10 +75,10 @@ let explorerSuiteComplete = false;
 function createExplorer() {
   const element = document.createElement("explorer");
   element.id = "thread-explorer";
-  element.behavior = "navigation: delegate;";
-  element.behavior += " dialog: delegate;";
-  element.contextMenuEnabled =
-    document.querySelector("#explorer-context-menu")?.checked ?? true;
+  element.policy = "navigation: delegate;";
+  element.policy += " dialog: delegate;";
+  const menu = document.querySelector("#explorer-context-menu")?.checked ?? true;
+  element.policy += ` context-menu: ${menu ? "browser" : "block"};`;
   element.src = new URL("./explorer.html?mode=thread", document.baseURI).href;
   bindExplorerEvents(element);
   return element;
@@ -399,6 +399,7 @@ async function checkMojom() {
 }
 
 function reportError(feature, error) {
+  console.error(`Playground ${feature}: ${error.message}`);
   document.title = `Tuffite ${feature} Error: ${error.message}`;
   if (feature === "explorer v2") {
     explorerSuiteStatus.className = "status-pill failed";
@@ -437,8 +438,12 @@ async function checkNetwork() {
     } catch (error) {
       if (error.message === "undeclared network host was allowed") throw error;
     }
-    const target = window.tuffite.networkTestUrl || "https://example.com/";
+    const probe = pageOptions.get("network-test-url");
+    const target = probe || "https://example.com/";
     const response = await frameworkApi.net.request(target);
+    if (probe && new TextDecoder().decode(response.body) !== "tuffite network service smoke") {
+      throw new Error("local network probe returned unexpected content");
+    }
     networkOutput.textContent = `HTTP ${response.status} · ${response.body.byteLength} bytes`;
     if (response.status >= 200 && response.status < 400) reportReady("network");
   } catch (error) {
@@ -663,8 +668,8 @@ async function ensurePartitionExplorer(kind) {
   element.id = `${kind.replaceAll("+", "-")}-explorer`;
   element.className = "compact-explorer";
   element.partition = configuration.partition;
-  element.behavior = "navigation: delegate;";
-  element.behavior += " dialog: block;";
+  element.policy = "navigation: delegate;";
+  element.policy += " dialog: block;";
   element.src = new URL(
     `./explorer.html?mode=${configuration.mode}`,
     document.baseURI,
@@ -855,11 +860,11 @@ document
 document
   .querySelector("#explorer-context-menu")
   .addEventListener("change", (event) => {
-    explorer.contextMenuEnabled = event.currentTarget.checked;
+    explorer.policy = `navigation: delegate; dialog: delegate; context-menu: ${event.currentTarget.checked ? "browser" : "block"};`;
     const state = event.currentTarget.checked ? "enabled" : "disabled";
-    explorerCommandResult.textContent = `contextMenuEnabled: ${event.currentTarget.checked}`;
+    explorerCommandResult.textContent = `context-menu: ${event.currentTarget.checked}`;
     setExplorerActionStatus(`Native context menu ${state}`, "success");
-    logExplorerEvent("attribute:contextMenuEnabled", {
+    logExplorerEvent("policy:context-menu", {
       enabled: event.currentTarget.checked,
     });
   });
@@ -1098,10 +1103,17 @@ async function checkExplorerV2() {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     reportExplorerStage("execute-javascript");
-    const scriptResult = await explorer.executeJavaScript(
-      `({title: document.title, documentId: ${JSON.stringify(state.documentId)}})`,
-      { expectedDocumentId: state.documentId },
-    );
+    // A module's top-level await can outlive loadstop. Wait for the fixture's
+    // typed Mojo initialization before checking its title in the isolated world.
+    let scriptResult;
+    for (let attempt = 0; attempt < 200; ++attempt) {
+      scriptResult = await explorer.executeJavaScript(
+        `({title: document.title, documentId: ${JSON.stringify(state.documentId)}})`,
+        { expectedDocumentId: state.documentId },
+      );
+      if (scriptResult.title === "Explorer Wire Validation Passed") break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
     if (
       scriptResult.title !== "Explorer Wire Validation Passed" ||
       scriptResult.documentId !== state.documentId

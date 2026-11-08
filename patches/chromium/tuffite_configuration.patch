@@ -1,0 +1,560 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Garey Chan <garey.chan@outlook.com>
+Date: Sat, 7 Nov 2026 18:10:00 +0800
+Subject: Tuffite: transport startup and document configuration
+
+
+diff --git a/content/browser/BUILD.gn b/content/browser/BUILD.gn
+index b2b9d087ebb32df35b6c9a21bbb971162b0357ca..602c640928e3dedc0529c382c4bbea8828f4df20 100644
+--- a/content/browser/BUILD.gn
++++ b/content/browser/BUILD.gn
+@@ -29,7 +29,14 @@ import("//third_party/blink/public/public_features.gni")
+ import("//tools/ipc_fuzzer/ipc_fuzzer.gni")
+ 
+ # TUFFITE_BEGIN
++
++import(
++    "//tuffite/components/document_config/browser/content/tuffite_in_chromium.gni")
++import("//tuffite/components/document_config/common/tuffite_in_chromium.gni")
++
+ import("//tuffite/components/explorer/browser/content/tuffite_in_chromium.gni")
++import("//tuffite/components/process_config/tuffite_in_chromium.gni")
++
+ # TUFFITE_END
+ 
+ if (is_mac) {
+@@ -121,6 +128,7 @@ source_set("browser") {
+   if (tuffite_in_chromium) {
+     visibility += [ "//tuffite/framework:core" ]
+   }
++
+   # TUFFITE_END
+ 
+   if (use_fuzzing_engine && is_android) {
+@@ -395,6 +403,7 @@ source_set("browser") {
+ 
+   # TUFFITE_BEGIN
+   deps += tuffite_content_buildflag_deps
++
+   # TUFFITE_END
+ 
+   public_deps = [
+@@ -2386,7 +2395,11 @@ source_set("browser") {
+   # TUFFITE_BEGIN
+   if (tuffite_in_chromium) {
+     sources += tuffite_content_explorer_isolation_sources
++    sources += tuffite_document_config_browser_sources
++    deps += tuffite_process_config_deps
++    deps += tuffite_document_config_mojom_deps
+   }
++
+   # TUFFITE_END
+ 
+   if (is_android) {
+diff --git a/content/browser/child_process_launcher_helper.cc b/content/browser/child_process_launcher_helper.cc
+index 34a9ba1470d362323dd70cdd2f5ebb1a3cadef3b..8d9dc3a4a84ab9689a0ced337818ce73e58e867a 100644
+--- a/content/browser/child_process_launcher_helper.cc
++++ b/content/browser/child_process_launcher_helper.cc
+@@ -4,6 +4,13 @@
+ 
+ #include "content/browser/child_process_launcher_helper.h"
+ 
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++#include "tuffite/components/process_config/process_config.h"
++#endif
++// TUFFITE_END
++
+ #include <optional>
+ 
+ #include "base/base_switches.h"
+@@ -332,6 +339,26 @@ void ChildProcessLauncherHelper::LaunchOnLauncherThread() {
+       *command_line(), options_ptr, files_to_register.get());
+   PassFieldTrialSharedMemoryHandle(*command_line(), options_ptr,
+                                    files_to_register.get());
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  static_assert(tuffite::kBootstrapDescriptorKey == kContentIPCDescriptorMax);
++  bool tuffite_needs_bootstrap = true;
++#if BUILDFLAG(USE_ZYGOTE)
++  // Forked children inherit the already parsed immutable zygote snapshot.
++  tuffite_needs_bootstrap = !GetZygoteForLaunch();
++#endif
++  if (tuffite_needs_bootstrap &&
++      tuffite::ProcessConfigurationRegion().IsValid()) {
++    base::shared_memory::SharedMemorySwitch tuffite_bootstrap(
++        tuffite::kBootstrapHandleSwitch, tuffite::kBootstrapRendezvousKey,
++        tuffite::kBootstrapDescriptorKey);
++    tuffite_bootstrap.AddToLaunchParameters(
++        tuffite::ProcessConfigurationRegion(), command_line(), options_ptr);
++    TransferSharedMemorySwitchDescriptor(tuffite_bootstrap,
++                                         files_to_register.get());
++  }
++
++#endif
++
+   PassStartupTracingConfigSharedMemoryHandle(
+       tracing_config_memory_region_ ? &tracing_config_memory_region_->data
+                                     : nullptr,
+diff --git a/content/browser/renderer_host/policy_container_host.cc b/content/browser/renderer_host/policy_container_host.cc
+index fac5d56dad0fa0e82ab58b69d481f013cdb4489f..06032455ea1a5f4e7ea9e7bee2f74283dec14fc5 100644
+--- a/content/browser/renderer_host/policy_container_host.cc
++++ b/content/browser/renderer_host/policy_container_host.cc
+@@ -4,6 +4,10 @@
+ 
+ #include "content/browser/renderer_host/policy_container_host.h"
+ 
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++// TUFFITE_END
++
+ #include <algorithm>
+ 
+ #include "base/memory/scoped_refptr.h"
+@@ -243,7 +247,12 @@ PolicyContainerPolicies::ToMojoPolicyContainerPolicies() const {
+       integrity_policy_report_only, referrer_policy,
+       mojo::Clone(content_security_policies), is_credentialless, sandbox_flags,
+       ip_address_space, can_navigate_top_without_user_gesture,
+-      cross_origin_isolation_enabled_by_dip);
++      cross_origin_isolation_enabled_by_dip
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++      ,
++      nullptr
++#endif
++  );
+ }
+ 
+ PolicyContainerHost::PolicyContainerHost() = default;
+diff --git a/content/browser/renderer_host/render_frame_host_impl.cc b/content/browser/renderer_host/render_frame_host_impl.cc
+index c4778f3e1305831e3e137d24aaef6e99bd70dbe4..8407504171fa18deb828d5bbec0ca258f88c6be6 100644
+--- a/content/browser/renderer_host/render_frame_host_impl.cc
++++ b/content/browser/renderer_host/render_frame_host_impl.cc
+@@ -4,6 +4,13 @@
+ 
+ #include "content/browser/renderer_host/render_frame_host_impl.h"
+ 
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++#include "tuffite/components/document_config/browser/content/document_configuration.h"
++#endif
++// TUFFITE_END
++
+ #include <algorithm>
+ #include <cstdint>
+ #include <deque>
+@@ -4716,6 +4723,10 @@ bool RenderFrameHostImpl::CreateRenderFrame(
+   if (policy_container_host()) {
+     params->policy_container =
+         policy_container_host()->CreatePolicyContainerForBlink();
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++    tuffite::ConfigureDocument(*this, GetLastCommittedOrigin(),
++                               params->policy_container.get());
++#endif
+   }
+ 
+   // Normally, the replication state contains effective frame policy, excluding
+@@ -10808,6 +10819,11 @@ void RenderFrameHostImpl::CreateNewWindow(
+       /*widget_screen_rect=*/std::nullopt,
+       /*window_screen_rect=*/std::nullopt);
+ 
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  tuffite::ConfigureDocument(*new_main_rfh,
++                             new_main_rfh->GetLastCommittedOrigin(),
++                             reply->policy_container.get());
++#endif
+   new_main_rfh->render_view_host()->RenderViewCreated(new_main_rfh);
+ 
+   int routing_id = new_rwh->GetRoutingID();
+@@ -17496,6 +17512,9 @@ void RenderFrameHostImpl::SendCommitNavigation(
+ 
+   url::Origin origin_to_commit =
+       navigation_request->GetOriginToCommit().value();
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  tuffite::ConfigureDocument(*this, origin_to_commit, policy_container.get());
++#endif
+ 
+   // PDF processes should not need to access cookies or storage, so do not set
+   // up those interfaces for them.
+diff --git a/content/browser/renderer_host/render_view_host_impl.cc b/content/browser/renderer_host/render_view_host_impl.cc
+index 057bede89b3591c1548d27680c0eb55853dbac2d..dd11aebc56aef9a23a99d5ad4e80618c9daca8c0 100644
+--- a/content/browser/renderer_host/render_view_host_impl.cc
++++ b/content/browser/renderer_host/render_view_host_impl.cc
+@@ -121,6 +121,7 @@ using blink::WebInputEvent;
+ // TUFFITE_BEGIN
+ #include "tuffite/buildflags.h"
+ #if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++#include "tuffite/components/document_config/browser/content/document_configuration.h"
+ #include "tuffite/components/explorer/browser/content/explorer_isolation.h"
+ #endif
+ // TUFFITE_END
+@@ -518,6 +519,10 @@ bool RenderViewHostImpl::CreateRenderView(
+     if (main_rfh->policy_container_host()) {
+       local_frame_params->policy_container =
+           main_rfh->policy_container_host()->CreatePolicyContainerForBlink();
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++      tuffite::ConfigureDocument(*main_rfh, main_rfh->GetLastCommittedOrigin(),
++                                 local_frame_params->policy_container.get());
++#endif
+     }
+ 
+     // Populate the sandbox origin token if available.
+diff --git a/content/browser/zygote_host/zygote_host_impl_linux.cc b/content/browser/zygote_host/zygote_host_impl_linux.cc
+index 72ad2dedfe2e0b8b87e1a3211df098ffe48153bd..f9a8a10efd70b7bd7d3386ff98395fc9d323efc3 100644
+--- a/content/browser/zygote_host/zygote_host_impl_linux.cc
++++ b/content/browser/zygote_host/zygote_host_impl_linux.cc
+@@ -4,11 +4,24 @@
+ 
+ #include "content/browser/zygote_host/zygote_host_impl_linux.h"
+ 
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++#include "tuffite/components/process_config/process_config.h"
++#endif
++// TUFFITE_END
++
+ #include <stdlib.h>
+ #include <sys/socket.h>
+ #include <sys/types.h>
+ 
+ #include "base/compiler_specific.h"
++// TUFFITE_BEGIN
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++#include "base/memory/shared_memory_switch.h"
++#include "base/posix/global_descriptors.h"
++#endif
++// TUFFITE_END
+ #include "base/files/file_enumerator.h"
+ #include "base/logging.h"
+ #include "base/posix/unix_domain_socket.h"
+@@ -169,6 +182,21 @@ pid_t ZygoteHostImpl::LaunchZygote(
+ 
+   base::LaunchOptions options;
+   options.fds_to_remap = std::move(additional_remapped_fds);
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  // Keep the duplicated descriptor alive through LaunchProcess below.
++  base::shared_memory::SharedMemorySwitch tuffite_bootstrap(
++      tuffite::kBootstrapHandleSwitch, tuffite::kBootstrapRendezvousKey,
++      tuffite::kBootstrapDescriptorKey);
++  if (tuffite::ProcessConfigurationRegion().IsValid()) {
++    tuffite_bootstrap.AddToLaunchParameters(
++        tuffite::ProcessConfigurationRegion(), cmd_line, nullptr);
++    options.fds_to_remap.emplace_back(
++        tuffite_bootstrap.out_descriptor_to_share.get(),
++        tuffite::kBootstrapDescriptorKey +
++            base::GlobalDescriptors::kBaseDescriptor);
++  }
++#endif
++
+   options.fds_to_remap.emplace_back(fds[1], kZygoteSocketPairFd);
+   options.fds_to_remove_cloexec.push_back(fds[1]);
+ 
+diff --git a/content/renderer/policy_container_util.cc b/content/renderer/policy_container_util.cc
+index a30083c1841e78b8c39fdf442a6c778cb1ff908d..f53da6b4ec1c3b398d519666539ca4f64898812c 100644
+--- a/content/renderer/policy_container_util.cc
++++ b/content/renderer/policy_container_util.cc
+@@ -36,6 +36,12 @@ blink::WebPolicyContainerPolicies ToWebPolicyContainerPolicies(
+       policies->ip_address_space,
+       policies->can_navigate_top_without_user_gesture,
+       policies->cross_origin_isolation_enabled_by_dip,
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++      policies->tuffite_configuration &&
++          policies->tuffite_configuration->expose_shell_api,
++      policies->tuffite_configuration &&
++          policies->tuffite_configuration->enable_explorer,
++#endif
+   };
+ }
+ 
+@@ -51,7 +57,16 @@ blink::mojom::PolicyContainerPoliciesPtr FromWebPolicyContainerPolicies(
+                      BuildContentSecurityPolicy),
+       policies.is_credentialless, policies.sandbox_flags,
+       policies.ip_address_space, policies.can_navigate_top_without_user_gesture,
+-      policies.cross_origin_isolation_enabled_by_dip);
++      policies.cross_origin_isolation_enabled_by_dip
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++      ,
++      (policies.tuffite_expose_shell_api || policies.tuffite_enable_explorer)
++          ? tuffite::mojom::DocumentConfiguration::New(
++                policies.tuffite_expose_shell_api,
++                policies.tuffite_enable_explorer)
++          : nullptr
++#endif
++  );
+ }
+ 
+ }  // namespace content
+diff --git a/third_party/blink/public/BUILD.gn b/third_party/blink/public/BUILD.gn
+index 238ac83e0f6c5b2cd5b2959d2fd31cc8cbcca916..adc28492352af369574bb58f63cd153a2ec98804 100644
+--- a/third_party/blink/public/BUILD.gn
++++ b/third_party/blink/public/BUILD.gn
+@@ -2,6 +2,11 @@
+ # Use of this source code is governed by a BSD-style license that can be
+ # found in the LICENSE file.
+ 
++# TUFFITE_BEGIN
++import("//tuffite/components/document_config/common/tuffite_in_chromium.gni")
++
++# TUFFITE_END
++
+ import("//build/buildflag_header.gni")
+ import("//build/config/devtools.gni")
+ import("//mojo/public/tools/bindings/mojom.gni")
+@@ -441,6 +446,11 @@ source_set("blink_headers") {
+     "//url",
+   ]
+ 
++  # TUFFITE_BEGIN
++  public_deps += tuffite_document_config_buildflag_deps
++
++  # TUFFITE_END
++
+   if (is_mac) {
+     public_deps += [ "//ui/gfx" ]
+   }
+diff --git a/third_party/blink/public/mojom/BUILD.gn b/third_party/blink/public/mojom/BUILD.gn
+index 99f0bf2c5d58e77c18ffd63ac69cadf9a4ccfd6b..e2de23630068b651dc577513b9ce9caa18e16093 100644
+--- a/third_party/blink/public/mojom/BUILD.gn
++++ b/third_party/blink/public/mojom/BUILD.gn
+@@ -2,6 +2,11 @@
+ # Use of this source code is governed by a BSD-style license that can be
+ # found in the LICENSE file.
+ 
++# TUFFITE_BEGIN
++import("//tuffite/components/document_config/common/tuffite_in_chromium.gni")
++
++# TUFFITE_END
++
+ import("//build/config/features.gni")
+ import("//build/config/ui.gni")
+ import("//mojo/public/tools/bindings/mojom.gni")
+@@ -424,6 +429,11 @@ mojom("mojom_platform") {
+   }
+ 
+   enabled_features = []
++  if (tuffite_in_chromium) {
++    enabled_features += [ "tuffite_in_chromium" ]
++    public_deps += tuffite_document_config_mojom_deps
++  }
++
+   if (use_ozone) {
+     enabled_features += [ "is_selection_clipboard_buffer_possible" ]
+   }
+diff --git a/third_party/blink/public/mojom/frame/policy_container.mojom b/third_party/blink/public/mojom/frame/policy_container.mojom
+index 70c9bf596c2129e5a9d0c4c411fc0edb3d4ea341..5f6fd12d8a7b51eed539f1ef5c6a0b43056f9471 100644
+--- a/third_party/blink/public/mojom/frame/policy_container.mojom
++++ b/third_party/blink/public/mojom/frame/policy_container.mojom
+@@ -13,6 +13,11 @@ import "services/network/public/mojom/ip_address_space.mojom";
+ import "services/network/public/mojom/referrer_policy.mojom";
+ import "services/network/public/mojom/web_sandbox_flags.mojom";
+ 
++// TUFFITE_BEGIN
++[EnableIf=tuffite_in_chromium]
++import "tuffite/components/document_config/common/document_configuration.mojom";
++// TUFFITE_END
++
+ // This are the document policies contained within PolicyContainer. These are
+ // owned by the browser, and remain constant for the lifetime of the document
+ // except for referrer_policy and content_security_policies which might be
+@@ -36,6 +41,11 @@ struct PolicyContainerPolicies {
+   // Allows to bypass the crossOriginIsolation permission policy when COI is
+   // enabled by DocumentIsolationPolicy.
+   bool cross_origin_isolation_enabled_by_dip = false;
++  // TUFFITE_BEGIN
++  [EnableIf=tuffite_in_chromium]
++  tuffite.mojom.DocumentConfiguration? tuffite_configuration;
++  // TUFFITE_END
++
+ };
+ 
+ // This interface is implemented in the browser process. It defines methods to
+diff --git a/third_party/blink/public/platform/web_policy_container.h b/third_party/blink/public/platform/web_policy_container.h
+index 40474cecabfcd0cf3ea0d5128b927bdef07b7f82..f37db36f779dfd12a598bb8632c78117cd1cce59 100644
+--- a/third_party/blink/public/platform/web_policy_container.h
++++ b/third_party/blink/public/platform/web_policy_container.h
+@@ -17,6 +17,10 @@
+ #include "third_party/blink/public/platform/cross_variant_mojo_util.h"
+ #include "third_party/blink/public/platform/web_content_security_policy_struct.h"
+ 
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++// TUFFITE_END
++
+ namespace blink {
+ 
+ // TODO(antoniosartori): Remove this when CommitNavigation IPC will be handled
+@@ -37,6 +41,10 @@ struct WebPolicyContainerPolicies {
+       network::mojom::IPAddressSpace::kUnknown;
+   bool can_navigate_top_without_user_gesture = true;
+   bool cross_origin_isolation_enabled_by_dip = false;
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  bool tuffite_expose_shell_api = false;
++  bool tuffite_enable_explorer = false;
++#endif
+ };
+ 
+ // TODO(antoniosartori): Remove this when CommitNavigation IPC will be handled
+diff --git a/third_party/blink/renderer/core/BUILD.gn b/third_party/blink/renderer/core/BUILD.gn
+index 1d557dfb6c86b8b97aaa3618ad424aaa248d370f..64e6ca010e3e123fe46d62f6f7fdb2d89b2cf119 100644
+--- a/third_party/blink/renderer/core/BUILD.gn
++++ b/third_party/blink/renderer/core/BUILD.gn
+@@ -95,8 +95,13 @@ import("//third_party/blink/renderer/platform/platform_generated.gni")
+ import("//third_party/protobuf/proto_library.gni")
+ 
+ # TUFFITE_BEGIN
++
++import(
++    "//tuffite/components/document_config/renderer/blink/tuffite_in_chromium.gni")
++
+ import("//tuffite/components/explorer/renderer/blink/tuffite_in_chromium.gni")
+ import("//tuffite/components/isolated/renderer/blink/tuffite_in_chromium.gni")
++
+ # TUFFITE_END
+ 
+ if (is_ios) {
+@@ -273,6 +278,7 @@ component("core") {
+   if (tuffite_in_chromium) {
+     sources += tuffite_explorer_sources
+     sources += tuffite_isolated_sources
++    sources += tuffite_document_config_blink_sources
+   }
+ 
+   sources += blink_core_sources_bindings
+@@ -455,13 +461,16 @@ component("core") {
+     "//ui/gfx/geometry:geometry_skia",
+     "//ui/strings",
+   ]
++
+   # TUFFITE_BEGIN
+   deps += tuffite_blink_buildflag_deps
++
+   # TUFFITE_END
+ 
+   if (tuffite_in_chromium) {
+     deps += tuffite_explorer_deps
+     deps += tuffite_isolated_deps
++    deps += tuffite_document_config_blink_deps
+   }
+ 
+   if (is_mac) {
+@@ -535,8 +544,10 @@ blink_core_sources("core_hot") {
+     "//third_party/blink/renderer/core/exported",
+     "//third_party/blink/renderer/core/probe",
+   ]
++
+   # TUFFITE_BEGIN
+   deps += tuffite_blink_buildflag_deps
++
+   # TUFFITE_END
+ 
+   if (tuffite_in_chromium) {
+diff --git a/third_party/blink/renderer/core/frame/policy_container_test.cc b/third_party/blink/renderer/core/frame/policy_container_test.cc
+index 6d8ef89c25dea72144eedb6de95548e73a5d50cd..a58fa9d0d158ecbbf9e23da3e7682cec4091a080 100644
+--- a/third_party/blink/renderer/core/frame/policy_container_test.cc
++++ b/third_party/blink/renderer/core/frame/policy_container_test.cc
+@@ -4,6 +4,10 @@
+ 
+ #include "third_party/blink/renderer/core/frame/policy_container.h"
+ 
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++// TUFFITE_END
++
+ #include "services/network/public/cpp/connection_allowlist.h"
+ #include "services/network/public/cpp/integrity_policy.h"
+ #include "services/network/public/mojom/content_security_policy.mojom-blink-forward.h"
+@@ -29,7 +33,12 @@ TEST(PolicyContainerTest, MembersAreSetDuringConstruction) {
+       /*anonymous=*/false, network::mojom::WebSandboxFlags::kNone,
+       network::mojom::blink::IPAddressSpace::kUnknown,
+       /*can_navigate_top_without_user_gesture=*/true,
+-      /*cross_origin_isolation_enabled_by_dip=*/false);
++      /*cross_origin_isolation_enabled_by_dip=*/false
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++      ,
++      nullptr
++#endif
++  );
+   PolicyContainer policy_container(host.BindNewEndpointAndPassDedicatedRemote(),
+                                    std::move(policies));
+ 
+@@ -50,7 +59,12 @@ TEST(PolicyContainerTest, UpdateReferrerPolicyIsPropagated) {
+       /*anonymous=*/false, network::mojom::WebSandboxFlags::kNone,
+       network::mojom::blink::IPAddressSpace::kUnknown,
+       /*can_navigate_top_without_user_gesture=*/true,
+-      /*cross_origin_isolation_enabled_by_dip=*/false);
++      /*cross_origin_isolation_enabled_by_dip=*/false
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++      ,
++      nullptr
++#endif
++  );
+   PolicyContainer policy_container(host.BindNewEndpointAndPassDedicatedRemote(),
+                                    std::move(policies));
+ 
+diff --git a/third_party/blink/renderer/core/loader/frame_loader_test.cc b/third_party/blink/renderer/core/loader/frame_loader_test.cc
+index 4f2cbe554e069e63bbf5e63e0f4e0fbe8e52981b..b08a9e53001442fb7a28582b305884d56bd5224a 100644
+--- a/third_party/blink/renderer/core/loader/frame_loader_test.cc
++++ b/third_party/blink/renderer/core/loader/frame_loader_test.cc
+@@ -3,6 +3,10 @@
+ // found in the LICENSE file.
+ 
+ #include "base/run_loop.h"
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++// TUFFITE_END
++
+ #include "base/task/single_thread_task_runner.h"
+ #include "base/test/scoped_feature_list.h"
+ #include "build/build_config.h"
+@@ -293,7 +297,12 @@ TEST_F(FrameLoaderTest, PolicyContainerIsStoredOnCommitNavigation) {
+           /*is_credentialless=*/false, network::mojom::WebSandboxFlags::kNone,
+           network::mojom::blink::IPAddressSpace::kUnknown,
+           /*can_navigate_top_without_user_gesture=*/true,
+-          /*cross_origin_isolation_enabled_by_dip=*/false),
++          /*cross_origin_isolation_enabled_by_dip=*/false
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++          ,
++          nullptr
++#endif
++          ),
+       local_frame->DomWindow()->GetPolicyContainer()->GetPolicies());
+   EXPECT_EQ(initiator_state_token,
+             local_frame->DomWindow()->GetInitiatorStateToken());
+diff --git a/third_party/blink/renderer/platform/loader/fetch/policy_container_utils.cc b/third_party/blink/renderer/platform/loader/fetch/policy_container_utils.cc
+index a25969d9599de7e15a8197d9c8f8336bd4aa74a6..a4348ebaca63daeddbee0da1503719a14341d569 100644
+--- a/third_party/blink/renderer/platform/loader/fetch/policy_container_utils.cc
++++ b/third_party/blink/renderer/platform/loader/fetch/policy_container_utils.cc
+@@ -105,6 +105,14 @@ WebPolicyContainerPolicies ToWebPolicyContainerPolicies(
+       policies.can_navigate_top_without_user_gesture;
+   web_policies.cross_origin_isolation_enabled_by_dip =
+       policies.cross_origin_isolation_enabled_by_dip;
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++  if (policies.tuffite_configuration) {
++    web_policies.tuffite_expose_shell_api =
++        policies.tuffite_configuration->expose_shell_api;
++    web_policies.tuffite_enable_explorer =
++        policies.tuffite_configuration->enable_explorer;
++  }
++#endif
+   return web_policies;
+ }
+ 
+@@ -120,7 +128,16 @@ mojom::blink::PolicyContainerPoliciesPtr FromWebPolicyContainerPolicies(
+                FromWebContentSecurityPolicy),
+       policies.is_credentialless, policies.sandbox_flags,
+       policies.ip_address_space, policies.can_navigate_top_without_user_gesture,
+-      policies.cross_origin_isolation_enabled_by_dip);
++      policies.cross_origin_isolation_enabled_by_dip
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++      ,
++      (policies.tuffite_expose_shell_api || policies.tuffite_enable_explorer)
++          ? tuffite::mojom::blink::DocumentConfiguration::New(
++                policies.tuffite_expose_shell_api,
++                policies.tuffite_enable_explorer)
++          : nullptr
++#endif
++  );
+ }
+ 
+ namespace {

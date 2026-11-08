@@ -6,17 +6,17 @@
 
 #include "base/no_destructor.h"
 #include "tuffite/framework/app/services/application_keyed_service_factory.h"
-#include "tuffite/framework/app/services/manifest/manifest_configuration.h"
+#include "tuffite/framework/app/services/manifest/effective_manifest.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 
 namespace tuffite {
+
 class ManifestService;
 class ManifestServiceFactory final
     : public ApplicationKeyedServiceFactory<ManifestService> {
  public:
   static ManifestServiceFactory* Get();
-  static std::unique_ptr<ManifestService> Create(
-      app::EffectiveConfiguration configuration);
+  static std::unique_ptr<ManifestService> Create(EffectiveManifest manifest);
 
  private:
   friend class base::NoDestructor<ManifestServiceFactory>;

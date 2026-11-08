@@ -1,0 +1,3 @@
+# Unified diffs prefix an empty context line with a literal space.
+# Mailbox separator blank lines at EOF are intentional as well.
+*.patch whitespace=-blank-at-eol,-blank-at-eof

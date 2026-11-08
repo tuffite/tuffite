@@ -8,14 +8,14 @@
 namespace tuffite {
 void DispatchHost::Create(RpcHandler* handler,
                           content::RenderFrameHost* frame,
-                          mojo::PendingReceiver<mojom::Dispatcher> receiver) {
+                          mojo::PendingReceiver<mojom::EventSource> receiver) {
   if (handler && frame) {
     new DispatchHost(*handler, *frame, std::move(receiver));
   }
 }
 DispatchHost::DispatchHost(RpcHandler& handler,
                            content::RenderFrameHost& frame,
-                           mojo::PendingReceiver<mojom::Dispatcher> receiver)
+                           mojo::PendingReceiver<mojom::EventSource> receiver)
     : DocumentService(frame, std::move(receiver)), handler_(handler) {
   handler_->Subscribe(document_,
                       base::BindRepeating(&DispatchHost::DispatchChannelEvent,
@@ -27,22 +27,6 @@ DispatchHost::~DispatchHost() {
 }
 bool DispatchHost::IsAuthorized() const {
   return handler_->IsAuthorized(render_frame_host());
-}
-void DispatchHost::Dispatch(const std::string& channel,
-                            const std::vector<uint8_t>& payload,
-                            DispatchCallback callback) {
-  handler_->Dispatch(render_frame_host(), channel, payload, document_,
-                     std::move(callback));
-}
-void DispatchHost::DispatchRequest(uint64_t id,
-                                   const std::string& channel,
-                                   const std::vector<uint8_t>& bytes,
-                                   DispatchRequestCallback reply) {
-  handler_->DispatchRequest(render_frame_host(), id, channel, bytes, document_,
-                            std::move(reply));
-}
-void DispatchHost::CancelRequest(uint64_t id) {
-  handler_->CancelRequest(document_, id);
 }
 void DispatchHost::BindClient(
     mojo::PendingRemote<mojom::DispatchClient> client) {

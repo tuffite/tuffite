@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "base/base_paths.h"
+#include "base/base_switches.h"
 #include "base/check.h"
 #include "base/command_line.h"
 #include "base/environment.h"
@@ -20,6 +21,7 @@
 #include "base/process/process_handle.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
+#include "build/build_config.h"
 #include "components/network_session_configurator/common/network_switches.h"
 #include "content/public/app/content_main.h"
 #include "content/public/common/content_switches.h"
@@ -31,6 +33,7 @@
 #include "tuffite/framework/app/abi/host.h"
 #include "tuffite/framework/app/application_context.h"
 #include "tuffite/framework/app/content_client.h"
+#include "tuffite/framework/app/services/manifest/manifest_loader.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
@@ -40,6 +43,10 @@
 #include "tuffite/framework/utility/content_utility_client.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/ui_base_paths.h"
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+#include "base/posix/global_descriptors.h"
+#endif
 
 #if BUILDFLAG(IS_MAC)
 #include "base/apple/bundle_locations.h"
@@ -299,6 +306,16 @@ int MainDelegate::Run(int argc, const char* const* argv, void* sandbox_info) {
 std::optional<int> MainDelegate::BasicStartupComplete() {
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   InitLogging(*command_line);
+  // Explorer discards individual pages, including when several share a
+  // renderer. Explicit --disable-features remains authoritative in Chromium's
+  // FeatureList.
+  std::string enabled =
+      command_line->GetSwitchValueASCII(switches::kEnableFeatures);
+  if (!enabled.empty()) {
+    enabled.push_back(',');
+  }
+  enabled.append("WebContentsDiscard");
+  command_line->AppendSwitchASCII(switches::kEnableFeatures, enabled);
   // Packaged Chromium data lives beside the executable or in bundle Resources.
   // Set this for every process before ICU and
   // V8 initialize their startup data.
@@ -318,6 +335,16 @@ std::optional<int> MainDelegate::BasicStartupComplete() {
     return kRuntimeBootstrapFailure;
   }
   if (command_line->HasSwitch(switches::kProcessType)) {
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+    base::GlobalDescriptors::GetInstance()->Set(
+        kBootstrapDescriptorKey,
+        kBootstrapDescriptorKey + base::GlobalDescriptors::kBaseDescriptor);
+#endif
+    if (!InitializeProcessConfigurationFromHandle(
+            command_line->GetSwitchValueASCII(kBootstrapHandleSwitch))) {
+      LOG(ERROR) << "Invalid or missing Tuffite process bootstrap";
+      return kRuntimeBootstrapFailure;
+    }
     return std::nullopt;
   }
   base::FilePath executable_directory;
@@ -344,17 +371,19 @@ std::optional<int> MainDelegate::BasicStartupComplete() {
     return kRuntimeBootstrapFailure;
 #endif
   }
-  auto app_schemes = app::ManifestLoader::ReadApplicationSchemes(
+  auto app_schemes = ManifestLoader::ReadApplicationSchemes(
       executable_directory, &manifest_error, runtime_configuration_);
   if (!app_schemes) {
     LOG(ERROR) << "Unable to load Tuffite application manifest: "
                << manifest_error;
     return kRuntimeBootstrapFailure;
   }
-  command_line->AppendSwitchASCII(kAppSchemesSwitch,
-                                  base::JoinString(*app_schemes, ","));
-  if (app::ManifestLoader::ReadNetworkDisableHttp2(executable_directory,
-                                                   runtime_configuration_)) {
+  if (!InitializeProcessConfiguration(std::move(*app_schemes))) {
+    LOG(ERROR) << "Invalid Tuffite process bootstrap configuration";
+    return kRuntimeBootstrapFailure;
+  }
+  if (ManifestLoader::ReadNetworkDisableHttp2(executable_directory,
+                                              runtime_configuration_)) {
     command_line->AppendSwitch(switches::kDisableHttp2);
   }
   // Blink reads runtime feature switches before PreBrowserMain(). There is no
@@ -376,8 +405,13 @@ std::optional<int> MainDelegate::BasicStartupComplete() {
 void MainDelegate::PreSandboxStartup() {
   base::FilePath pak_file;
   CHECK(base::PathService::Get(base::DIR_ASSETS, &pak_file));
+  // Keep the existing fixed English locale on every platform, including macOS
+  // where the normal locale loader expects NSBundle resources. Initialize the
+  // string pack first, then add the language-independent payload separately.
   ui::ResourceBundle::InitSharedInstanceWithPakPath(
-      pak_file.Append(FILE_PATH_LITERAL("tuffite.pak")));
+      pak_file.AppendASCII("tuffite_locales").AppendASCII("en-US.pak"));
+  ui::ResourceBundle::GetSharedInstance().AddDataPackFromPath(
+      pak_file.AppendASCII("tuffite.pak"), ui::k100Percent);
 }
 
 std::optional<int> MainDelegate::PreBrowserMain() {
@@ -403,7 +437,7 @@ std::optional<int> MainDelegate::PreBrowserMain() {
   const std::string development_url =
       base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
           kDevUrlSwitch);
-  app::StartupEnvironment startup_environment;
+  ManifestEnvironment startup_environment;
   if (!development_url.empty()) {
 #if !BUILDFLAG(TUFFITE_DEV_MODE)
     LOG(ERROR) << "Tuffite development URLs are disabled in this build";
@@ -435,14 +469,7 @@ std::optional<int> MainDelegate::PreBrowserMain() {
     startup_environment.development_url = GURL(development_url);
 #endif
   }
-  auto definition = app::ManifestLoader::Load(
-      executable_directory, &manifest_error, runtime_configuration_);
-  if (!definition) {
-    LOG(ERROR) << "Unable to load Tuffite application manifest: "
-               << manifest_error;
-    return kRuntimeBootstrapFailure;
-  }
-  app::BrowserOptions browser_options;
+  ManifestOptions browser_options;
   if (const auto setup = application().table().setup_browser) {
     const auto status =
         setup(&browser_options.security.devtools.denied_origins,
@@ -461,26 +488,15 @@ std::optional<int> MainDelegate::PreBrowserMain() {
       return kRuntimeBootstrapFailure;
     }
   }
-  auto configuration = app::ConfigurationAssembler::Build(
-      std::move(*definition), startup_environment, browser_options,
-      &manifest_error);
-  if (!configuration) {
-    LOG(ERROR) << "Unable to assemble Tuffite application configuration: "
+  auto manifest = ManifestLoader::Load(executable_directory, &manifest_error,
+                                       runtime_configuration_,
+                                       startup_environment, browser_options);
+  if (!manifest) {
+    LOG(ERROR) << "Unable to load Tuffite application manifest: "
                << manifest_error;
     return kRuntimeBootstrapFailure;
   }
-  auto app_manifest = ManifestServiceFactory::Create(std::move(*configuration));
-  // Normal renderer children receive these immutable policy switches from
-  // ContentBrowserClient::AppendExtraCommandLineSwitches. Mirror that policy
-  // in the shared command line used by a single-process smoke/debug run.
-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kSingleProcess)) {
-    base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
-    command_line->AppendSwitchASCII(kShellApiOriginsSwitch,
-                                    app_manifest->SerializeShellApiOrigins());
-    command_line->AppendSwitchASCII(kExplorerOriginsSwitch,
-                                    app_manifest->SerializeExplorerOrigins());
-  }
+  auto app_manifest = ManifestServiceFactory::Create(std::move(*manifest));
   if (!StartUp(std::move(app_manifest))) {
     return kRuntimeBootstrapFailure;
   }

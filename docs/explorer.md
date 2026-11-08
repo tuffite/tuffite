@@ -16,7 +16,7 @@ previews: a slow or failed Explorer renderer does not share the app renderer,
 and renderer-originated navigation/open behavior can be routed to application
 workbench tabs.
 
-## Origin rules and behavior
+## Origin rules and policy
 
 `browser.rules[]` is the shared origin-scoped configuration entry point. Each
 rule requires `origins`; `identifier` is optional. Matching uses canonical
@@ -33,32 +33,87 @@ All matching `csp` values are enforced together on the document's packaged or
 HTTP(S) response, alongside server CSP. They never replace server restrictions.
 The secure built-in packaged CSP applies when no manifest CSP matches.
 
-`explorer.behavior` sets defaults for Explorers created by that origin's document,
-not for every page that happens to navigate to that origin. Later matching rules
-replace individual action entries. An element's `behavior` declarations override
-those defaults, independently of the creation/script grants. The framework
-defaults are normal `browser` behavior for all actions.
+`explorer.policy` in an origin rule provides defaults for Explorers created by
+that origin's document. Later matching rules replace individual properties.
+The element's `policy` attribute overrides these defaults. It never expands
+creation, script, messaging or Shell API grants.
 
 ```html
-<explorer behavior="navigation: delegate; dialog: delegate timeout(15s); external-protocol: browser; new-window: block;"></explorer>
+<explorer
+  src="https://example.test/"
+  policy="navigation: delegate; dialog: delegate timeout(15s);
+          context-menu: browser; freeze: 30s; discard: 15m;">
+</explorer>
 ```
 
-The supported actions are `navigation`, `dialog`, `external-protocol` and
-`new-window`; modes are `browser`, `delegate` and `block`. Declarations use a
-restricted CSS-style grammar, not CSS styles, selectors, variables or cascade.
-Names are lowercase, whitespace and trailing semicolons are accepted, and the
-last duplicate declaration wins. Unknown actions/modes reject the whole update;
-the previous native behavior remains active. Invalid initial declarations reject
-creation. Setting an empty attribute restores manifest defaults.
+| Declaration | Accepted values | Framework default |
+| --- | --- | --- |
+| `navigation` | `browser`, `delegate`, `block` | `browser` |
+| `dialog` | `browser`, `delegate [timeout(duration)]`, `block` | `browser` |
+| `external-protocol` | `browser`, `delegate [timeout(duration)]`, `block` | `browser` |
+| `new-window` | `browser`, `delegate [timeout(duration)]`, `block` | `browser` |
+| `context-menu` | `browser`, `block` | `block` |
+| `freeze` | `never`, `default`, duration | `default` (30s) |
+| `discard` | `never`, `default`, duration | `default` (15m) |
 
-Manifest entries are objects, e.g. `"externalProtocol": {"mode": "delegate",
-"timeoutMs": 15000}`. `timeout(15s)`/`timeout(15000ms)` maps to that value. Deadlines
-are positive integer durations up to five minutes; the default is 30 seconds. Navigation has no asynchronous decision and does not accept a timeout.
-Delegated dialog/protocol controllers are single-use and abort on source document
-retirement, Explorer destruction, policy update or timeout. Pending popup handles
-expire at their deadline. Unhandled external protocols are rejected, never sent
-to the OS through an implicit native fallback. Navigation delegation cancels the
-page's navigation and emits the existing navigation request event.
+`freeze` and `discard` are independent automatic schedules. Both count from the
+same eligible hidden-idle interval; discard does not require prior freezing.
+`freeze: never; discard: never` keeps background work running. `discard: never`
+preserves the document while still allowing freezing. Showing a frozen page
+thaws it; showing a discarded page reloads its preserved navigation entry.
+Changing either schedule restarts its idle interval. Activity, audio, capture,
+dialogs, attached debugging and other native protections can postpone either
+action. Delays are earliest eligibility thresholds, not execution deadlines.
+Under memory pressure, `discard: default` may reclaim an eligible page after
+30 seconds; explicit durations retain their configured minimum interval.
+
+Durations accept `ms`, `s`, `m` and `h`, including fractions that resolve to a
+whole millisecond. Freeze/discard accept 0ms through 24h. Controller `timeout()`
+accepts positive durations up to 5m and defaults to 30s; navigation and context
+menus do not accept it. `default` selects the framework's default schedule;
+omitting a property preserves the matching manifest default. Assigning an empty
+`policy` restores all manifest defaults.
+
+The declaration syntax accepts whitespace, block comments and trailing
+semicolons. The last duplicate property wins. Unknown properties, unknown
+functions, unsupported modes and invalid values reject the whole native update,
+leaving its previous policy active. Invalid initial declarations reject creation.
+The old `behavior`, `backgroundPolicy` and `contextMenuEnabled` APIs are removed.
+
+The parser separates generic declaration/function syntax from typed property
+validation. Its syntax tree retains component kinds, nested function arguments,
+quoted strings and UTF-8 byte offsets for diagnostics. Syntax parsing does not
+make a new property valid: each property must have an explicit compiler. Input
+is bounded to 4096 bytes, 256 component values and eight nested functions. This
+is a declaration language; it has no selectors, CSS cascade, variables or script
+evaluation.
+
+Native runtime descriptors use camelCase action names and typed values:
+
+```json
+{
+  "explorer": {
+    "create": true,
+    "policy": {
+      "dialog": {"mode": "delegate", "timeoutMs": 15000},
+      "contextMenu": {"mode": "browser"},
+      "freeze": 30000,
+      "discard": "never"
+    }
+  }
+}
+```
+
+The Rust configuration equivalents are `ExplorerPolicy`, `ActionPolicy` and
+`ExplorerDelay::{Default, Never, AfterMs(u32)}`. Runtime descriptor durations are
+integer milliseconds or the strings `default`/`never`; the native loader applies
+the same limits. These declarations belong in Rust `app::Configuration`, not in
+the source tool/build `tuffite.json`.
+
+Delegated controllers remain single-use and expire on their native deadline or
+source-document retirement. Unhandled external protocols are rejected. Browser
+mode keeps the native confirmation path, and navigation delegation cancels the
+navigation before emitting its request event.
 
 `externalprotocol.detail` provides `url`, `initiatingOrigin`, `from`, `signal`,
 `accept()` and `dismiss()`. A listener claims it with `preventDefault()` and must
@@ -67,8 +122,8 @@ sandbox checks happen before delegation. Acceptance cannot bypass those checks.
 `browser` retains the native confirmation dialog; `block` performs no launch.
 
 Live-page transfer checks immutable security/partition constraints, while the
-destination rebinds behavior to its own owner and declarations. Behavior equality
-is not an authorization requirement. Apps can copy `target.behavior = source.behavior`
+destination resolves policy against its own owner and declarations. Policy equality
+is not an authorization requirement. Apps can copy `target.policy = source.policy`
 to retain explicit overrides during promotion. Inherited defaults are resolved against the destination owner.
 
 The editor schema in `tuffite.schema.json` describes development, build
@@ -292,7 +347,7 @@ matching entries. `identifier` is a configuration label, not an element role.
 - `explorer.executeJavaScript` permits isolated-world execution in an owned
   Explorer, including cross-origin DOM access. Calls check the current owner
   and the captured element grant. Transfer checks the receiving owner's policy.
-- Dialogs use the native browser UI by default. `behavior="dialog: delegate;"` forwards them to the owner, and
+- Dialogs use the native browser UI by default. `policy="dialog: delegate;"` forwards them to the owner, and
   messages follow actual owner relations. Neither grants guest ShellAPI access.
   Business-wide event subscriptions require all registered business commands.
 
@@ -316,7 +371,7 @@ profiles and element-selected capabilities are not supported.
 
 ```html
 <explorer id="thread"
-  behavior="navigation: delegate; dialog: delegate;"></explorer>
+  policy="navigation: delegate; dialog: delegate;"></explorer>
 ```
 
 The `partition` attribute is intentionally omitted above. Omission shares the
@@ -352,8 +407,7 @@ const value = await explorer.executeJavaScript(source, {
 explorer.postMessage(data, { targetOrigin: location.origin });
 ```
 
-The creation-time `partition` is immutable for a WebContents. `behavior` and
-`contextMenuEnabled` are mutable. Changing behavior cancels outstanding delegated
+The creation-time `partition` is immutable for a WebContents. `policy` is mutable. Changing the corresponding action policy cancels outstanding delegated
 dialog/protocol requests; it cannot expand manifest capability grants.
 
 ## Events and dialogs
@@ -409,7 +463,7 @@ audiostatechange and faviconchange. Both element and surface message events use
 window.tuffite.addEventListener('newwindow', event => {
   event.preventDefault();
   const target = document.createElement('explorer');
-    target.behavior = source.behavior; // copy explicit interaction overrides
+    target.policy = source.policy; // copy explicit interaction overrides
   document.querySelector('#tabs').append(target);
   void event.detail.attach(target);
 });
@@ -485,12 +539,11 @@ This keeps the Web-standard `message` event for `postMessage` while allowing a
 business dispatch channel literally named `message` without collision. There is no public `tuffite.channel` object; application facades such as
 `window.myapp.channel` remain available to generated business APIs.
 
-The generated typed ShellAPI remains on the application namespace such as
-`window.myapp`. Its low-level binary transport is
-`window.tuffite.invoke(route, Uint8Array)`, whereas Explorer communication is
-`window.tuffite.postMessage(data, {targetOrigin})`; the distinct verbs and payload types
-avoid a Proxy collision. `shellApi: true` can enable ShellAPI for an Explorer
-only when normal origin authorization also allows it.
+Typed ShellAPI clients are imported from application and Framework ES modules.
+They bind generated Mojo interfaces through the document's restricted broker;
+there is no public `window.tuffite.invoke`. Explorer communication uses
+`window.tuffite.postMessage(data, {targetOrigin})`. `shellApi: true` can enable
+ShellAPI for an Explorer only when committed-origin authorization also allows it.
 
 ## Architecture and security
 

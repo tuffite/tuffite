@@ -1,4 +1,5 @@
-//! Binary Shell Protocol decoding and application command dispatch.
+//! Legacy native ABI framing retained for older embedding tables.
+//! Typed Mojo clients and current native adapters use `native_mojom` instead.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 

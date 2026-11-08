@@ -6,12 +6,12 @@
 #include "base/functional/bind.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
-#include "tuffite/components/dispatch/common/codec.h"
 #include "tuffite/components/dispatch/common/status.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/app/services/utility/utility_service.h"
 #include "tuffite/framework/browser/services/shell_api/commands/builtin.h"
 #include "tuffite/framework/browser/web_contents_role.h"
+#include "tuffite/framework/public/c_api/types.h"
 
 namespace tuffite {
 
@@ -32,6 +32,92 @@ ShellApiServiceImpl::ShellApiServiceImpl(content::BrowserContext& context,
       host_(host),
       manifest_(manifest),
       utility_(utility) {}
+std::optional<MojomMethod> ShellApiServiceImpl::ResolveMojomMethod(
+    std::string_view name,
+    uint32_t ordinal) const {
+  if (auto method = router_.ResolveMethod(name, ordinal)) {
+    return MojomMethod{*method};
+  }
+  auto method = host_->ResolveMojomMethod(std::string(name), ordinal);
+  if (!method || !manifest_->IsApplicationCommandRequest(method->channel,
+                                                         method->command_id)) {
+    return std::nullopt;
+  }
+  return method;
+}
+
+void ShellApiServiceImpl::DispatchMojom(content::RenderFrameHost& frame,
+                                        const MojomMethod& method,
+                                        const std::vector<uint8_t>& parameters,
+                                        const base::UnguessableToken& document,
+                                        uint64_t id,
+                                        Reply reply) {
+  const auto& channel = method.channel;
+  const auto interface = manifest_->ApplicationInterface(channel);
+  if (!IsAuthorized(frame) ||
+      !manifest_->IsShellApiCommandAllowed(frame.GetLastCommittedOrigin(),
+                                           channel) ||
+      (!interface.empty() &&
+       !manifest_->IsShellApiScopeAllowed(frame.GetLastCommittedOrigin(),
+                                          channel, "", ""))) {
+    std::move(reply).Run(static_cast<int32_t>(rpc::Status::kAccessDenied), {});
+    return;
+  }
+  if (parameters.size() > 16 * 1024 * 1024) {
+    std::move(reply).Run(1, {});
+    return;
+  }
+  const auto operation = base::UnguessableToken::Create();
+  const auto service = utility_->ResolveUtilityInterface(interface);
+  utility_owners_.insert_or_assign(document, document);
+  auto cancel =
+      service.empty()
+          ? base::BindOnce(
+                [](HostDispatch* host, base::UnguessableToken op) {
+                  host->CancelDocument(op);
+                },
+                &host_.get(), operation)
+          : base::BindOnce(
+                [](UtilityService* utility, base::UnguessableToken owner,
+                   std::string service, uint64_t id) {
+                  utility->CancelUtilityService(owner, std::move(service), id);
+                },
+                &utility_.get(), document, service, id);
+  auto admitted =
+      requests_.Admit({document, id}, std::move(reply), std::move(cancel));
+  if (!admitted) {
+    return;
+  }
+  reply = std::move(*admitted);
+  if (!service.empty()) {
+    utility_->InvokeUtilityMojom(
+        document, id, service, method.command_id, method.schema_fingerprint,
+        parameters,
+        base::BindOnce(
+            [](Reply reply, int32_t status, std::vector<uint8_t> bytes) {
+              std::move(reply).Run(
+                  status == TUFFITE_STATUS_OK                   ? 0
+                  : status == TUFFITE_STATUS_INVALID_ARGUMENT   ? 1
+                  : status == TUFFITE_STATUS_RESOURCE_EXHAUSTED ? 6
+                                                                : 3,
+                  bytes);
+            },
+            std::move(reply)));
+  } else if (!interface.empty()) {
+    host_->DispatchMojom(method, parameters, operation, std::move(reply));
+  } else if (!router_.Dispatch(
+                 dispatch::RendererRequestContext(frame, document, id), channel,
+                 parameters, &reply)) {
+    std::move(reply).Run(1, {});
+  }
+}
+
+void ShellApiServiceImpl::CancelMojomRequest(
+    const base::UnguessableToken& document,
+    uint64_t id) {
+  requests_.Cancel({document, id});
+}
+
 bool ShellApiServiceImpl::IsAuthorized(content::RenderFrameHost& frame) const {
   if (stopped_ || frame.GetBrowserContext() != &browser_context_.get()) {
     return false;
@@ -51,125 +137,6 @@ bool ShellApiServiceImpl::IsEventAuthorized(
   // A command allowlist must not implicitly expose unrelated business events.
   return IsAuthorized(frame) &&
          manifest_->IsAllShellApiAllowed(frame.GetLastCommittedOrigin());
-}
-
-void ShellApiServiceImpl::Dispatch(content::RenderFrameHost& frame,
-                                   const std::string& channel,
-                                   const std::vector<uint8_t>& payload,
-                                   const base::UnguessableToken& document,
-                                   Reply reply) {
-  DispatchRequest(frame, next_legacy_id_++, channel, payload, document,
-                  std::move(reply));
-}
-
-void ShellApiServiceImpl::CancelRequest(
-    const base::UnguessableToken& connection,
-    uint64_t id) {
-  requests_.Cancel({connection, id});
-}
-
-void ShellApiServiceImpl::DispatchRequest(
-    content::RenderFrameHost& frame,
-    uint64_t id,
-    const std::string& channel,
-    const std::vector<uint8_t>& payload,
-    const base::UnguessableToken& document,
-    Reply reply) {
-  const auto& manifest = *manifest_;
-  const auto interface = manifest.ApplicationInterface(channel);
-  const bool application_command = !interface.empty();
-  const auto request =
-      application_command ? rpc::DecodeRequest(payload) : std::nullopt;
-  if (!IsAuthorized(frame) ||
-      !manifest.IsShellApiCommandAllowed(frame.GetLastCommittedOrigin(),
-                                         channel) ||
-      (application_command &&
-       !manifest.IsShellApiScopeAllowed(frame.GetLastCommittedOrigin(), channel,
-                                        "", ""))) {
-    std::move(reply).Run(static_cast<int32_t>(rpc::Status::kAccessDenied), {});
-    return;
-  }
-  if (application_command && (!request || !manifest.IsApplicationCommandRequest(
-                                              channel, request->command_id))) {
-    const std::string detail =
-        "ShellAPI binding mismatch for " + channel +
-        ": frontend command IDs do not match the running application. "
-        "Build native and frontend resources for the same application channel "
-        "(Debug or Release).";
-    std::move(reply).Run(static_cast<int32_t>(rpc::Status::kAccessDenied),
-                         std::vector<uint8_t>(detail.begin(), detail.end()));
-    return;
-  }
-  if (payload.size() > 16 * 1024 * 1024) {
-    std::move(reply).Run(static_cast<int32_t>(rpc::Status::kInvalidArgument),
-                         {});
-    return;
-  }
-  utility_owners_.insert_or_assign(document, document);
-  const auto operation = base::UnguessableToken::Create();
-  auto service = utility_->ResolveUtilityInterface(interface);
-  // Older application tables registered each Utility under its interface name.
-  if (service.empty() && !interface.empty() &&
-      utility_->IsRegisteredUtility(interface)) {
-    service = interface;
-  }
-  base::OnceClosure cancel;
-  if (service.empty()) {
-    cancel = base::BindOnce(
-        [](HostDispatch* host, base::UnguessableToken op) {
-          host->CancelDocument(op);
-        },
-        &host_.get(), operation);
-  } else {
-    cancel = base::BindOnce(
-        [](UtilityService* utility, base::UnguessableToken owner,
-           std::string service, uint64_t id) {
-          utility->CancelUtilityService(owner, std::move(service), id);
-        },
-        &utility_.get(), document, service, id);
-  }
-  auto admitted =
-      requests_.Admit({document, id}, std::move(reply), std::move(cancel));
-  if (!admitted) {
-    return;
-  }
-  reply = std::move(*admitted);
-  if (!service.empty()) {
-    utility_->InvokeUtilityService(
-        document, id, service, payload,
-        base::BindOnce(
-            [](Reply reply, uint64_t expected, int32_t status,
-               std::vector<uint8_t> response) {
-              const auto frame = rpc::DecodeResponse(response);
-              if (status != 0 || !frame || frame->request_id != expected) {
-                std::move(reply).Run(
-                    static_cast<int32_t>(rpc::Status::kUnavailable), {});
-                return;
-              }
-              std::move(reply).Run(static_cast<int32_t>(rpc::Status::kOk),
-                                   response);
-            },
-            std::move(reply), request->request_id));
-    return;
-  }
-  if (application_command) {
-    host_->Dispatch(payload,
-                    base::BindOnce(
-                        [](Reply reply, bool ok, std::vector<uint8_t> bytes) {
-                          const auto status =
-                              ok ? rpc::Status::kOk : rpc::Status::kUnavailable;
-                          std::move(reply).Run(static_cast<int32_t>(status),
-                                               std::move(bytes));
-                        },
-                        std::move(reply)),
-                    operation);
-    return;
-  }
-  if (!router_.Dispatch(dispatch::RendererRequestContext(frame, document, id),
-                        channel, payload, &reply)) {
-    std::move(reply).Run(static_cast<int32_t>(rpc::Status::kInvalidArgument),
-                         {});
-  }
 }
 
 void ShellApiServiceImpl::Subscribe(const base::UnguessableToken& document,

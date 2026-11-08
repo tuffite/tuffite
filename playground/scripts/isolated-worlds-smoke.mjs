@@ -219,7 +219,7 @@ try {
     await evaluate(() => {
       const explorer = document.createElement('explorer');
       explorer.id = 'isolated-explorer-smoke';
-      explorer.behavior = "navigation: browser;";
+      explorer.policy = "navigation: browser;";
       explorer.style.cssText = 'display:block;width:500px;height:300px';
       document.body.append(explorer);
     });

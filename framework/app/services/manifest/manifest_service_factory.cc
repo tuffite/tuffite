@@ -8,8 +8,8 @@
 #include "tuffite/framework/app/services/manifest/manifest_service_impl.h"
 namespace tuffite {
 std::unique_ptr<ManifestService> ManifestServiceFactory::Create(
-    app::EffectiveConfiguration configuration) {
-  return std::make_unique<ManifestServiceImpl>(std::move(configuration));
+    EffectiveManifest manifest) {
+  return std::make_unique<ManifestServiceImpl>(std::move(manifest));
 }
 ManifestServiceFactory* ManifestServiceFactory::Get() {
   static base::NoDestructor<ManifestServiceFactory> instance;

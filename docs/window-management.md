@@ -1,12 +1,12 @@
 # Window management
 
-Tuffite exposes desktop windows through the generated `window.tuffite.window`
-facade. Window calls use the same binary ShellAPI path as every other builtin:
+Tuffite exposes desktop windows through the generated `window` ES module export
+from `tuffite`. Window calls use the same binary ShellAPI path as every other builtin:
 
 ```text
-TypeScript contract
-  -> generated binary codec and Proxy
-  -> window.tuffite.invoke("tuffite.window.*", Uint8Array)
+Mojom contract
+  -> generated typed Mojo Remote
+  -> document-scoped interface broker and message pipe
   -> document-scoped Mojo DispatchHost
   -> browser-process window::Manager
   -> Chromium Views Widget or macOS NSWindow adapter
@@ -19,7 +19,7 @@ runs.
 
 ## API
 
-The framework contract in `src/tuffite/framework/api/window.d.ts` generates these calls:
+The framework contract in `framework/public/shell_api/window.mojom` generates these calls:
 
 ```ts
 const current = await window.tuffite.window.current();

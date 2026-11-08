@@ -8,6 +8,7 @@ pub struct CommandDescriptor {
     channel: &'static str,
     id: u64,
     schema_fingerprint: u64,
+    ordinal: u32,
 }
 
 impl CommandDescriptor {
@@ -19,7 +20,21 @@ impl CommandDescriptor {
             channel,
             id,
             schema_fingerprint,
+            ordinal: 0,
         }
+    }
+
+    /// Sets the method ordinal from its Mojom contract.
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn with_ordinal(mut self, ordinal: u32) -> Self {
+        self.ordinal = ordinal;
+        self
+    }
+    /// Returns the ordinal within the owning Mojo interface.
+    #[must_use]
+    pub const fn ordinal(self) -> u32 {
+        self.ordinal
     }
 
     /// Returns the complete API path used as the `ShellAPI` channel.
@@ -28,7 +43,7 @@ impl CommandDescriptor {
         self.channel
     }
 
-    /// Returns the stable protocol command identifier.
+    /// Returns the stable native backend command identifier.
     #[must_use]
     pub const fn id(self) -> u64 {
         self.id

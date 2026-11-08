@@ -96,6 +96,7 @@ fn export<A: Application, B: Browser>() -> AbiApplication {
     table.configuration = Some(configuration::<A, B>);
     table.start_profile = Some(start_profile::<A, B>);
     table.command_scope = Some(command_scope::<A, B>);
+    table.resolve_mojom_method = Some(resolve_mojom_method::<A, B>);
     table
 }
 
@@ -160,6 +161,58 @@ unsafe extern "C" fn configuration<A: Application, B: Browser>() -> ByteSlice {
         |_| ByteSlice::from_slice(&[]),
         |p| ByteSlice::from_slice(&p.configuration),
     )
+}
+unsafe extern "C" fn resolve_mojom_method<A: Application, B: Browser>(
+    interface: ByteSlice,
+    ordinal: u32,
+    output: *mut tuffite_abi::MojomMethod,
+) -> tuffite_abi::Status {
+    if output.is_null() || interface.len > 4096 || (interface.len != 0 && interface.data.is_null())
+    {
+        return tuffite_abi::Status::InvalidArgument;
+    }
+    // SAFETY: Nonempty interface bytes and output are borrowed by the ABI contract.
+    let bytes = if interface.len == 0 {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(interface.data, interface.len) }
+    };
+    let Ok(name) = std::str::from_utf8(bytes) else {
+        return tuffite_abi::Status::InvalidArgument;
+    };
+    let Ok(p) = prepared::<A, B>() else {
+        return tuffite_abi::Status::InvalidState;
+    };
+    let mut descriptors = p
+        .registry
+        .application
+        .iter()
+        .flat_map(crate::CommandRegistry::descriptors)
+        .chain(
+            p.registry
+                .browser
+                .iter()
+                .flat_map(crate::CommandRegistry::descriptors),
+        )
+        .chain(utility_services().iter().flat_map(|u| u.descriptors));
+    let Some(d) = descriptors.find(|d| {
+        (ordinal == u32::MAX || d.ordinal() == ordinal)
+            && d.channel().rsplit_once('.').is_some_and(|(i, _)| {
+                i.rsplit_once('.')
+                    .is_some_and(|(module, interface)| format!("{module}.wire.{interface}") == name)
+            })
+    }) else {
+        return tuffite_abi::Status::InvalidArgument;
+    };
+    // SAFETY: Native provides writable output; strings borrow static generated storage.
+    unsafe {
+        *output = tuffite_abi::MojomMethod {
+            channel: ByteSlice::from_slice(d.channel().as_bytes()),
+            command_id: d.id(),
+            schema_fingerprint: d.schema_fingerprint(),
+        };
+    }
+    tuffite_abi::Status::Ok
 }
 unsafe extern "C" fn command_scope<A: Application, B: Browser>(id: u64) -> u32 {
     if id == crate::url_handler::URL_COMMAND {

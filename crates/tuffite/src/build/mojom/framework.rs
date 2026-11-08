@@ -44,11 +44,10 @@ pub(super) fn entries(schema: &Schema) -> Vec<serde_json::Value> {
                     lower_first(&method.interface),
                     lower_first(&method.name)
                 ),
-                "0",
-                "0",
+                method.ordinal,
                 descriptor(schema, &method.request),
                 descriptor(schema, &method.response),
-                format!("tuffite.{}.{}", method.interface, method.name)
+                format!("tuffite.wire.{}", method.interface)
             ])
         })
         .collect()

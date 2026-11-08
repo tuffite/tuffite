@@ -517,19 +517,19 @@ to avoid a circular dependency between context and concrete factories.
 `ManifestService` is eagerly registered with the application graph, but does not
 load files or assemble startup policy. Before service creation, MainDelegate runs:
 
-1. `app::ManifestLoader::Load(package_root)` parses and validates the package into
-   an owned `ManifestDefinition`.
-2. `app::ConfigurationAssembler::Build(definition, environment, options)` merges
-   authenticated launch context and typed host options into `EffectiveConfiguration`.
-3. `ManifestServiceFactory::Create(configuration)` creates the read-only service.
+1. `ManifestLoader::Load(package_root, ...)` parses and validates the package,
+   merges authenticated startup environment and typed browser options, then
+   returns `EffectiveManifest`. Loader and frozen output live beside the service.
+2. `ManifestServiceFactory::Create(configuration)` transfers that frozen result
+   into the read-only service. There is no intermediate Manifest wrapper.
 
-`StartupEnvironment` owns the development URL. `BrowserOptions` owns host security
+`ManifestEnvironment` owns the development URL. `ManifestOptions` owns host security
 restrictions. Host denials are validated and merged before development-origin
 aliases are applied, so the alias inherits both manifest and host restrictions.
 Host restrictions cannot introduce ShellAPI or Explorer grants. Neither input is
-retained by reference; the effective snapshot owns all compiled values. Mutable
-schema data stays in a private header, and only the assembler can construct an
-effective snapshot. The service retains it as const storage with no mutator.
+retained by reference; the effective snapshot owns all compiled values. The actual
+`Manifest` model is shared from the component. Only ManifestLoader can construct
+the effective snapshot; the service retains it as const storage with no mutator.
 
 The original validated package bytes remain the Rust runtime configuration;
 effective startup window URLs and origin policy are queried separately. Utility
@@ -560,11 +560,14 @@ at shutdown. Profile teardown closes window WebContents before destroying their
 browser providers. Application services outlive the
 profile graph. There is no ApplicationPolicyService or separate manifest model.
 
-Application projections use `app_config.h` and the `tuffite::app` namespace.
+Application projections use `components/manifest/common/application_configuration.h`
+and the `tuffite::app` namespace.
 ManifestService returns `app::AppInfo` through `app_info()`, startup windows and
 network limits through specific queries, and `asset::AssetConfiguration` resource
-snapshots. Resource configuration is owned by the asset module's configuration
-target. Per-profile URLService owns actual URL loading.
+snapshots. The manifest component owns declaration models, loading, assembly,
+resource configuration and snapshot transports. Per-profile URLService owns
+actual URL loading and resolver callbacks; shared resource values live in
+`framework/common/resource.h`.
 
 Builtin renderer dispatch belongs to BrowserContext's ShellApiService. Application
 services expose domain operations to dedicated native ABI capabilities. Host is

@@ -26,8 +26,8 @@ const record = (layer, event) => {
 };
 const source = document.createElement("explorer");
 source.id = "event-source";
-source.behavior = "navigation: browser;";
-source.behavior += " dialog: delegate;";
+source.policy = "navigation: browser;";
+source.policy += " dialog: delegate;";
 source.style.cssText = "display:block;width:100%;height:330px";
 const handle = (layer, event) => {
   record(layer, event);
@@ -56,7 +56,7 @@ const handle = (layer, event) => {
       return;
     }
     const target = document.createElement("explorer");
-    target.behavior = source.behavior;
+    target.policy = source.policy;
 
     target.id = `event-window-${requests.length}`;
     target.style.cssText = "display:block;width:100%;height:180px";

@@ -267,8 +267,37 @@ pub struct Explorer {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "executeJavaScript")]
     pub execute_javascript: Option<bool>,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub behavior: BTreeMap<Action, Behavior>,
+    #[serde(skip_serializing_if = "ExplorerPolicy::is_empty")]
+    pub policy: ExplorerPolicy,
+}
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct ExplorerPolicy {
+    #[serde(flatten)]
+    pub actions: BTreeMap<Action, ActionPolicy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub freeze: Option<ExplorerDelay>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub discard: Option<ExplorerDelay>,
+}
+impl ExplorerPolicy {
+    fn is_empty(&self) -> bool {
+        self.actions.is_empty() && self.freeze.is_none() && self.discard.is_none()
+    }
+}
+#[derive(Clone, Copy, Debug)]
+pub enum ExplorerDelay {
+    Default,
+    Never,
+    AfterMs(u32),
+}
+impl Serialize for ExplorerDelay {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Default => serializer.serialize_str("default"),
+            Self::Never => serializer.serialize_str("never"),
+            Self::AfterMs(value) => serializer.serialize_u32(*value),
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -277,6 +306,7 @@ pub enum Action {
     Dialog,
     ExternalProtocol,
     NewWindow,
+    ContextMenu,
 }
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -287,7 +317,7 @@ pub enum Mode {
 }
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Behavior {
+pub struct ActionPolicy {
     pub mode: Mode,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout_ms: Option<u32>,
@@ -308,15 +338,19 @@ mod tests {
         let mut rule = Rule::new(["example://main"]).grant("test.Commands.*");
         rule.explorer = Some(Explorer {
             execute_javascript: Some(true),
-            behavior: [(
-                Action::ExternalProtocol,
-                Behavior {
-                    mode: Mode::Delegate,
-                    timeout_ms: Some(15000),
-                },
-            )]
-            .into_iter()
-            .collect(),
+            policy: ExplorerPolicy {
+                actions: [(
+                    Action::ExternalProtocol,
+                    ActionPolicy {
+                        mode: Mode::Delegate,
+                        timeout_ms: Some(15000),
+                    },
+                )]
+                .into_iter()
+                .collect(),
+                freeze: Some(ExplorerDelay::Never),
+                discard: Some(ExplorerDelay::AfterMs(900_000)),
+            },
             ..Explorer::default()
         });
         config = config.rule(rule);
@@ -328,7 +362,15 @@ mod tests {
         );
         assert_eq!(value["app"]["assets"][0]["directory"], "ui");
         assert_eq!(
-            value["browser"]["rules"][0]["explorer"]["behavior"]["externalProtocol"]["timeoutMs"],
+            value["browser"]["rules"][0]["explorer"]["policy"]["freeze"],
+            "never"
+        );
+        assert_eq!(
+            value["browser"]["rules"][0]["explorer"]["policy"]["discard"],
+            900_000
+        );
+        assert_eq!(
+            value["browser"]["rules"][0]["explorer"]["policy"]["externalProtocol"]["timeoutMs"],
             15000
         );
         assert_eq!(

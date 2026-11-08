@@ -17,17 +17,6 @@ use std::time::Instant;
 mod builder;
 pub use builder::{Builder, Interface, InterfaceFor, InterfaceRegistry};
 
-/// Dispatches one typed Mojom command inside a Utility, preserving its envelope.
-/// Native routing and origin/service/endpoint authorization happen before delivery.
-pub fn dispatch_typed(
-    request: &UtilityRequest,
-    handler: impl FnOnce(crate::Command<'_>) -> CommandResult,
-) -> Vec<u8> {
-    crate::protocol::dispatch_with(request.payload(), |id, fingerprint, payload| {
-        handler(crate::Command::new(id, fingerprint, payload))
-    })
-}
-
 /// Immutable service startup data owned by the Utility child process.
 #[derive(Clone)]
 pub struct UtilityContext {
@@ -398,6 +387,7 @@ pub trait Utility: Send + Sync + 'static {
 }
 
 pub(crate) trait ErasedUtility: Send + Sync {
+    fn invoke_mojom(&self, command: crate::Command<'_>) -> BoxFuture<'_, CommandResult>;
     fn invoke(&self, request: UtilityRequest) -> BoxFuture<'_, CommandResult>;
     fn create_session(&self, request: UtilitySessionRequest) -> Result<Box<dyn UtilitySession>>;
     fn shutdown(&self, context: ShutdownContext) -> BoxFuture<'_, Result<()>>;
@@ -408,22 +398,20 @@ pub(crate) struct ConfiguredUtility<S> {
     pub(crate) _business_context: crate::context_data::Value,
 }
 impl<S: Utility> ErasedUtility for ConfiguredUtility<S> {
+    fn invoke_mojom(&self, command: crate::Command<'_>) -> BoxFuture<'_, CommandResult> {
+        let result = self
+            .interfaces
+            .interfaces
+            .iter()
+            .find(|i| i.descriptors.iter().any(|d| d.id() == command.id()))
+            .map_or_else(
+                || Err(crate::CommandError::UnknownCommand),
+                |i| (i.dispatch)(&self.implementation, command),
+            );
+        Box::pin(async { result })
+    }
     fn invoke(&self, request: UtilityRequest) -> BoxFuture<'_, CommandResult> {
-        Box::pin(async move {
-            if self.interfaces.interfaces.is_empty() {
-                return self.implementation.invoke(request).await;
-            }
-            Ok(dispatch_typed(&request, |command| {
-                self.interfaces
-                    .interfaces
-                    .iter()
-                    .find(|interface| interface.descriptors.iter().any(|d| d.id() == command.id()))
-                    .map_or_else(
-                        || Err(crate::CommandError::UnknownCommand),
-                        |interface| (interface.dispatch)(&self.implementation, command),
-                    )
-            }))
-        })
+        Box::pin(self.implementation.invoke(request))
     }
     fn create_session(&self, request: UtilitySessionRequest) -> Result<Box<dyn UtilitySession>> {
         Utility::create_session(&self.implementation, request)
@@ -442,6 +430,7 @@ pub struct UtilityServiceRegistration {
     factory: UtilityFactory,
     v8: Option<V8Factory>,
     interfaces: &'static [&'static str],
+    pub(crate) descriptors: &'static [crate::CommandDescriptor],
 }
 
 impl UtilityServiceRegistration {
@@ -453,6 +442,7 @@ impl UtilityServiceRegistration {
             factory: create_utility::<S>,
             v8: None,
             interfaces: &[],
+            descriptors: &[],
         }
     }
 
@@ -464,6 +454,7 @@ impl UtilityServiceRegistration {
             factory: native_utility,
             v8: Some(create_v8::<S>),
             interfaces: &[],
+            descriptors: &[],
         }
     }
 
@@ -731,10 +722,15 @@ pub(crate) fn register<S: Utility>(startup: crate::Startup) -> Result<UtilitySer
         .map(|interface| interface.name)
         .collect::<Vec<_>>()
         .into_boxed_slice();
-    Ok(UtilityServiceRegistration::typed::<S>(
-        name,
-        Box::leak(interfaces),
-    ))
+    let descriptors = builder
+        .interfaces
+        .interfaces
+        .iter()
+        .flat_map(|i| i.descriptors.iter().copied())
+        .collect::<Vec<_>>();
+    let mut registration = UtilityServiceRegistration::typed::<S>(name, Box::leak(interfaces));
+    registration.descriptors = Box::leak(descriptors.into_boxed_slice());
+    Ok(registration)
 }
 pub(crate) fn register_v8<S: V8>(startup: crate::Startup) -> Result<UtilityServiceRegistration> {
     let mut input = v8::Builder::default().name(std::any::type_name::<S>());

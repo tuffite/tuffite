@@ -11,6 +11,7 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
+#include "tuffite/components/explorer/browser/explorer_lifecycle.h"
 
 namespace tuffite {
 ExplorerSurfaceData::ExplorerSurfaceData(content::WebContents* contents)
@@ -53,37 +54,36 @@ void ExplorerSurfaceData::SetExplorerPolicy(content::WebContents* contents,
   auto* data = FromWebContents(contents);
   CHECK(!data->policy_);
   data->policy_ = std::move(policy);
+  ExplorerLifecycle::CreateForWebContents(contents);
+  ExplorerLifecycle::FromWebContents(contents)->SetPolicy(
+      data->policy_->settings);
 }
 const ExplorerPolicy* ExplorerSurfaceData::GetExplorerPolicy(
     const content::WebContents* contents) {
   const auto* data = contents ? FromWebContents(contents) : nullptr;
   return data && data->policy_ ? &*data->policy_ : nullptr;
 }
-void ExplorerSurfaceData::UpdateExplorerBehavior(
+void ExplorerSurfaceData::UpdateExplorerPolicy(
     content::WebContents* contents,
     const ExplorerPolicy& requested) {
   auto* data = FromWebContents(contents);
   CHECK(data && data->policy_);
   auto candidate = *data->policy_;
-  candidate.behavior = requested.behavior;
+  candidate.settings = requested.settings;
   candidate.navigation = requested.navigation;
   candidate.dialogs = requested.dialogs;
   CHECK(candidate == requested);
-  data->policy_->behavior = requested.behavior;
+  data->policy_->settings = requested.settings;
   data->policy_->navigation = requested.navigation;
   data->policy_->dialogs = requested.dialogs;
-}
-void ExplorerSurfaceData::SetExplorerContextMenuEnabled(
-    content::WebContents* contents,
-    bool enabled) {
-  auto* data = FromWebContents(contents);
-  CHECK(data);
-  data->menu_enabled_ = enabled;
+  ExplorerLifecycle::FromWebContents(contents)->SetPolicy(requested.settings);
 }
 bool ExplorerSurfaceData::IsExplorerContextMenuEnabled(
     const content::WebContents* contents) {
   const auto* data = contents ? FromWebContents(contents) : nullptr;
-  return data && data->menu_enabled_;
+  return data && data->policy_ &&
+         data->policy_->settings[ExplorerAction::kContextMenu].mode ==
+             ExplorerMode::kBrowser;
 }
 bool ExplorerSurfaceData::SetZoomFactor(content::WebContents* contents,
                                         double factor) {

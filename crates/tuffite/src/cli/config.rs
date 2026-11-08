@@ -577,18 +577,14 @@ fn check_origin_rules(value: &Value) -> Result<(), String> {
         if let Some(value) = rule.get("explorer") {
             let field = format!("{path}.explorer");
             let explorer = object(value, &field)?;
-            known_fields(
-                explorer,
-                &field,
-                &["create", "executeJavaScript", "behavior"],
-            )?;
+            known_fields(explorer, &field, &["create", "executeJavaScript", "policy"])?;
             for (key, value) in explorer {
-                if key != "behavior" {
+                if key != "policy" {
                     boolean(Some(value), &format!("{field}.{key}"))?;
                 }
             }
-            if let Some(value) = explorer.get("behavior") {
-                check_explorer_behavior(value, &format!("{field}.behavior"))?;
+            if let Some(value) = explorer.get("policy") {
+                check_explorer_policy(value, &format!("{field}.policy"))?;
             }
         }
     }
@@ -605,19 +601,41 @@ fn check_csp(value: &Value, field: &str) -> Result<(), String> {
 }
 
 #[cfg(test)]
-fn check_explorer_behavior(value: &Value, field: &str) -> Result<(), String> {
+fn check_explorer_policy(value: &Value, field: &str) -> Result<(), String> {
     let behavior = object(value, field)?;
     known_fields(
         behavior,
         field,
-        &["navigation", "dialog", "externalProtocol", "newWindow"],
+        &[
+            "navigation",
+            "dialog",
+            "externalProtocol",
+            "newWindow",
+            "contextMenu",
+            "freeze",
+            "discard",
+        ],
     )?;
     for (operation, value) in behavior {
         let field = format!("{field}.{operation}");
+        if matches!(operation.as_str(), "freeze" | "discard") {
+            if value
+                .as_str()
+                .is_some_and(|value| matches!(value, "default" | "never"))
+                || value.as_u64().is_some_and(|value| value <= 86_400_000)
+            {
+                continue;
+            }
+            return Err(format!(
+                "{field}: expected never, default or milliseconds in 0..86400000"
+            ));
+        }
         let entry = object(value, &field)?;
         known_fields(entry, &field, &["mode", "timeoutMs"])?;
         let mode = nonempty_string(entry.get("mode"), &format!("{field}.mode"))?;
-        if !matches!(mode, "browser" | "delegate" | "block") {
+        if !matches!(mode, "browser" | "delegate" | "block")
+            || (operation == "contextMenu" && mode == "delegate")
+        {
             return Err(format!("{field}.mode: unknown behavior mode"));
         }
         if let Some(timeout) = entry.get("timeoutMs")
@@ -1008,28 +1026,42 @@ mod tests {
     }
 
     #[test]
-    fn browser_rules_validate_behavior_parameters_and_reject_typos() {
+    fn browser_rules_validate_policy_parameters_and_reject_typos() {
         let mut rule = serde_json::json!([{
             "origins": ["demo://main"],
-            "explorer": {"behavior": {
+            "explorer": {"policy": {
                 "externalProtocol": {"mode": "delegate", "timeoutMs": 15000}
             }}
         }]);
         assert!(check_origin_rules(&rule).is_ok());
-        rule[0]["explorer"]["behavior"]["externalProtocol"]["mode"] = "browser".into();
+        rule[0]["explorer"]["policy"]["externalProtocol"]["mode"] = "browser".into();
         assert!(check_origin_rules(&rule).unwrap_err().contains("timeoutMs"));
-        rule[0]["explorer"]["behavior"]["externalProtocol"]["mode"] = "delegate".into();
-        rule[0]["explorer"]["behavior"]["externalProtocol"]["timeoutMs"] = 0.into();
+        rule[0]["explorer"]["policy"]["externalProtocol"]["mode"] = "delegate".into();
+        rule[0]["explorer"]["policy"]["externalProtocol"]["timeoutMs"] = 0.into();
         assert!(check_origin_rules(&rule).is_err());
-        rule[0]["explorer"]["behavior"] =
-            serde_json::json!({"externalProtcol": {"mode": "browser"}});
+        rule[0]["explorer"]["policy"] = serde_json::json!({"externalProtcol": {"mode": "browser"}});
         assert!(
             check_origin_rules(&rule)
                 .unwrap_err()
                 .contains("externalProtcol")
         );
-        rule[0]["explorer"]["behavior"] = serde_json::json!({"dialog": {"mode": "allow"}});
+        rule[0]["explorer"]["policy"] = serde_json::json!({"dialog": {"mode": "allow"}});
         assert!(check_origin_rules(&rule).unwrap_err().contains("mode"));
+        rule[0]["explorer"]["policy"] = serde_json::json!({
+            "contextMenu": {"mode": "browser"}, "freeze": "never", "discard": 900_000
+        });
+        assert!(check_origin_rules(&rule).is_ok());
+        for invalid in [
+            serde_json::json!(-1),
+            serde_json::json!(86_400_001),
+            serde_json::json!("15m"),
+            serde_json::json!(0.5),
+        ] {
+            rule[0]["explorer"]["policy"]["freeze"] = invalid;
+            assert!(check_origin_rules(&rule).is_err());
+        }
+        rule[0]["explorer"]["policy"] = serde_json::json!({"contextMenu": {"mode": "delegate"}});
+        assert!(check_origin_rules(&rule).is_err());
     }
 
     #[test]

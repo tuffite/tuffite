@@ -16,3 +16,11 @@ module {{module_namespace}}.wire;
 {{structure(interface.name+method.name+'Request',method.parameters)}}
 {{structure(interface.name+method.name+'Response',method.response_parameters)}}
 {% endfor %}{% endfor %}
+
+// Canonical transport contracts. Parameters are direct typed Mojo arguments;
+// each reply carries a typed result or dispatch failure, never opaque bytes.
+{% for interface in interfaces %}interface {{interface.name}} {
+{% for method in interface.methods %}  {{method.name}}@{{method.ordinal}}({% for field in method.parameters %}{{m.idl(field.kind)}} {{m.snake(field.name)}}{% if not loop.last %}, {% endif %}{% endfor %})
+      => (int32 status, {{interface.name}}{{method.name}}Response? value, string? error);
+{% endfor %}};
+{% endfor %}

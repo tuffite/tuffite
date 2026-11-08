@@ -5,6 +5,7 @@
 #define TUFFITE_FRAMEWORK_PUBLIC_C_API_APPLICATION_H_
 
 #include "tuffite/framework/public/c_api/host.h"
+#include "tuffite/framework/public/c_api/mojom.h"
 #include "tuffite/framework/public/c_api/utility.h"
 
 typedef tuffite_status_t (*tuffite_application_start_fn)(
@@ -120,6 +121,9 @@ typedef struct tuffite_application {
   tuffite_command_scope_fn command_scope;
   // Application-lifetime owned declarations, frozen before Chromium startup.
   tuffite_byte_slice_t (*configuration)(void);
+  tuffite_resolve_mojom_method_fn resolve_mojom_method;
+  tuffite_dispatch_mojom_fn dispatch_mojom;
+  tuffite_invoke_utility_mojom_fn invoke_utility_mojom;
 } tuffite_application;
 
 #if defined(_WIN32)

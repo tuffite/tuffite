@@ -14,12 +14,24 @@ mojom("mojom") {
   ]
 }
 
-source_set("external_protocol") {
+source_set("policy") {
   public = [
-    "explorer_behavior.h",
-    "external_protocol.h",
+    "explorer_declarations.h",
+    "explorer_policy.h",
   ]
-  public_deps = [ "//url" ]
+  sources = [
+    "explorer_declarations.cc",
+    "explorer_policy.cc",
+  ]
+  deps = [ "//base" ]
+}
+
+source_set("external_protocol") {
+  public = [ "external_protocol.h" ]
+  public_deps = [
+    ":policy",
+    "//url",
+  ]
 }
 
 if (tuffite_in_chromium) {

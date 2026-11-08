@@ -1,13 +1,12 @@
-# CI packaging: size-oriented artifacts with deterministic release settings.
-# Keep is_official_build=false until the framework is a production target;
-# official builds are not a synonym for CI and can require PGO inputs.
+# Production distribution: size-oriented compilation plus optimized ThinLTO at
+# the final Framework link. Local iteration uses the separate release preset.
 is_component_build = false
 
 # CI workers need no locally installed compiler cache wrapper.
 cc_wrapper = ""
 target_cpu = "x64"
 is_debug = false
-is_official_build = false
+is_official_build = true
 dcheck_always_on = false
 symbol_level = 0
 v8_symbol_level = 0
@@ -16,11 +15,24 @@ optimize_for_size = true
 proprietary_codecs = true
 ffmpeg_branding = "Chrome"
 
-# Avoid ThinLTO's high memory cost on CI workers.
-use_thin_lto = false
+# Let the linker optimize across Chromium component boundaries. The Framework
+# target selects thinlto_optimize_max; ordinary helper links keep upstream
+# defaults.
+use_lld = true
+use_thin_lto = true
+thin_lto_enable_optimizations = true
+
+# Clean CI output should not depend on an incremental ThinLTO cache.
+thin_lto_enable_cache = false
+
+# Official builds otherwise select phase 2 implicitly. No version/architecture-
+# matched Tuffite workload profile is provisioned yet; do not require a missing
+# Chrome profile or silently train the optimizer on an unrelated workload.
 chrome_pgo_phase = 0
 use_siso = false
-concurrent_links = 1
+
+# ThinLTO requires Chromium's automatic, memory-aware link pool.
+concurrent_links = -1
 tuffite_in_chromium = true
 tuffite_dev_mode = false
 root_extra_deps = [ "//tuffite" ]

@@ -43,6 +43,9 @@ pub(super) fn generate(
     let mut ordinals = BTreeSet::new();
     let mut handlers = BTreeSet::new();
     for method in &schema.methods {
+        if method.ordinal >= 0xffff_fffe {
+            return Err("Mojom method ordinal is reserved for interface control".into());
+        }
         let handler = snake(&method.name);
         if schema.structures.contains_key(&method.interface)
             || handler.starts_with("__tuffite_")
@@ -134,11 +137,10 @@ fn emit(schema: &Schema, root: &str, application: &str) -> Result<GeneratedBindi
             command_ids.insert(channel.clone(), format!("{id:016x}"));
             entries.push(json!([
                 path,
-                format!("0x{id:016x}"),
-                format!("0x{fingerprint:016x}"),
+                method.ordinal,
                 request,
                 response,
-                channel
+                format!("{root}.wire.{}", method.interface)
             ]));
             endpoints.push(Endpoint {
                 method,

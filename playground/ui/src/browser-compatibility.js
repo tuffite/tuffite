@@ -3,7 +3,7 @@ import { runBrowserCompatibilityProbe, readTurnstileResult } from './browser-com
 const status = document.querySelector('#compatibility-status');
 const output = document.querySelector('#compatibility-report');
 const explorer = document.createElement('explorer');
-explorer.behavior = "navigation: browser;";
+explorer.policy = "navigation: browser;";
 explorer.style.height = '650px';
 document.querySelector('#compatibility-host').append(explorer);
 const fixture = new URLSearchParams(location.search).get('fixture');

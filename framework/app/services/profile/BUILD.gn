@@ -28,6 +28,7 @@ source_set("profile") {
     "//tuffite/framework/browser:support",
     "//tuffite/framework/common:languages",
     "//ui/base",
+    "//ui/events:event_constants",
     "//url",
   ]
 }

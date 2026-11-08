@@ -50,8 +50,8 @@ class CORE_EXPORT HTMLExplorerElement final
   void setSrc(const String& value);
   String partition() const;
   void setPartition(const String& value);
-  String behavior() const;
-  void setBehavior(const String& value);
+  String policy() const;
+  void setPolicy(const String& value);
   bool isolated() const;
   void setIsolated(bool);
   EventListener* onexternalprotocol() {
@@ -60,8 +60,6 @@ class CORE_EXPORT HTMLExplorerElement final
   void setOnexternalprotocol(EventListener* listener) {
     SetAttributeEventListener(AtomicString("externalprotocol"), listener);
   }
-  bool contextMenuEnabled() const;
-  void setContextMenuEnabled(bool enabled);
   ScriptPromise<ExplorerHandle> detach(ScriptState*);
   ScriptPromise<IDLUndefined> attach(ScriptState*, ExplorerHandle*);
   ScriptPromise<IDLUndefined> AttachToken(ScriptState*, const String& token);
@@ -161,6 +159,7 @@ class CORE_EXPORT HTMLExplorerElement final
   void setOndialog(EventListener* listener) {
     SetAttributeEventListener(AtomicString("dialog"), listener);
   }
+  ScriptPromise<IDLBoolean> discard(ScriptState*);
   void load(const String& value);
   ScriptPromise<IDLBoolean> cancelDownload(ScriptState*, uint32_t id);
   ScriptPromise<IDLBoolean> pauseDownload(ScriptState*, uint32_t id);
@@ -208,6 +207,7 @@ class CORE_EXPORT HTMLExplorerElement final
   void DidNotifySubtreeInsertionsToDocument() final;
   void RemovedFrom(ContainerNode&) override;
   void ParseAttribute(const AttributeModificationParams&) override;
+  void AttachLayoutTree(AttachContext&) override;
   bool LayoutObjectIsNeeded(const DisplayStyle&) const override;
   LayoutObject* CreateLayoutObject(const ComputedStyle&) override;
   bool IsInteractiveContent() const override;
@@ -222,7 +222,7 @@ class CORE_EXPORT HTMLExplorerElement final
   void BeginAttach(const String& token);
   void FinishAttach(const String& error);
   void OnConnectionError();
-  String FrozenAttribute(const char* name, const char* default_value) const;
+  String AttributeOrDefault(const char* name, const char* default_value) const;
   void DispatchJsonEvent(const AtomicString& type, const String& json);
 
   void DidDownload(const String& detail_json) override;
@@ -256,7 +256,6 @@ class CORE_EXPORT HTMLExplorerElement final
   String create_initial_url_;
   bool create_pending_ = false;
   bool attached_ = false;
-  bool context_menu_enabled_ = false;
   bool detached_empty_ = false;
   Member<ScriptPromiseResolver<ExplorerHandle>> detach_resolver_;
   Member<ScriptPromiseResolver<IDLUndefined>> attach_resolver_;

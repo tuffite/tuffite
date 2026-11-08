@@ -292,9 +292,24 @@ std::unique_ptr<Application> Application::Create(
       offsetof(tuffite_application, command_scope)) {
     snapshot.start_profile = application->start_profile;
   }
-  if (application->header.struct_size >= sizeof(tuffite_application)) {
+  if (application->header.struct_size >=
+      offsetof(tuffite_application, configuration)) {
     snapshot.command_scope = application->command_scope;
+  }
+  if (application->header.struct_size >=
+      offsetof(tuffite_application, resolve_mojom_method)) {
     snapshot.configuration = application->configuration;
+  }
+  if (application->header.struct_size >=
+      offsetof(tuffite_application, dispatch_mojom)) {
+    snapshot.resolve_mojom_method = application->resolve_mojom_method;
+  }
+  if (application->header.struct_size >=
+      offsetof(tuffite_application, invoke_utility_mojom)) {
+    snapshot.dispatch_mojom = application->dispatch_mojom;
+  }
+  if (application->header.struct_size >= sizeof(tuffite_application)) {
+    snapshot.invoke_utility_mojom = application->invoke_utility_mojom;
   }
   return base::WrapUnique(new Application(snapshot));
 }
@@ -427,6 +442,108 @@ void Application::BindBrowserTaskRunner() {
   weak_this_ = weak;
 }
 
+std::optional<MojomMethod> Application::ResolveMojomMethod(
+    const std::string& name,
+    uint32_t ordinal) const {
+  if (!application_.resolve_mojom_method) {
+    return std::nullopt;
+  }
+  tuffite_mojom_method method{};
+  if (application_.resolve_mojom_method(
+          {reinterpret_cast<const uint8_t*>(name.data()), name.size()}, ordinal,
+          &method) != TUFFITE_STATUS_OK ||
+      !method.channel.data || method.channel.len > 4096) {
+    return std::nullopt;
+  }
+  // SAFETY: Application-lifetime generated registry borrows the declared bytes.
+  const auto channel =
+      UNSAFE_BUFFERS(base::span(method.channel.data, method.channel.len));
+  return MojomMethod{std::string(channel.begin(), channel.end()),
+                     method.command_id, method.schema_fingerprint};
+}
+
+void Application::DispatchMojom(const MojomMethod& method,
+                                const std::vector<uint8_t>& parameters,
+                                const base::UnguessableToken& document,
+                                HostDispatch::MojomReply reply) {
+  if (!accepting_requests_ || !browser_initialized_ ||
+      !application_.dispatch_mojom || parameters.size() > 16 * 1024 * 1024) {
+    std::move(reply).Run(3, {});
+    return;
+  }
+  const auto scope = application_.command_scope
+                         ? application_.command_scope(method.command_id)
+                         : 0;
+  if (parent_ && scope == 1) {
+    parent_->DispatchMojom(method, parameters, document, std::move(reply));
+    return;
+  }
+  if (scope != (parent_ ? 2u : 1u)) {
+    std::move(reply).Run(2, {});
+    return;
+  }
+  if (pending_.size() + mojom_pending_.size() >= 256 || next_request_id_ == 0) {
+    std::move(reply).Run(6, {});
+    return;
+  }
+  const auto id = next_request_id_++;
+  mojom_pending_.emplace(
+      id, PendingMojomRequest{std::move(reply), document,
+                              std::make_unique<base::OneShotTimer>()});
+  mojom_pending_.at(id).timeout->Start(
+      FROM_HERE, base::Seconds(30),
+      base::BindOnce(&Application::CompleteMojomPending, weak_this_, id, 5,
+                     std::vector<uint8_t>()));
+  struct ReplyState {
+    base::WeakPtr<Application> application;
+    scoped_refptr<base::SequencedTaskRunner> runner;
+    uint64_t id;
+  };
+  auto* state = new ReplyState{weak_this_, browser_task_runner_, id};
+  const auto status = application_.dispatch_mojom(
+      runtime(), method.command_id, method.schema_fingerprint,
+      {parameters.data(), parameters.size()}, state,
+      [](void* data, tuffite_status_t status,
+         tuffite_byte_slice_t bytes) -> tuffite_status_t {
+        std::unique_ptr<ReplyState> state(static_cast<ReplyState*>(data));
+        std::vector<uint8_t> payload;
+        if (bytes.len <= 16 * 1024 * 1024 && (bytes.len == 0 || bytes.data)) {
+          // SAFETY: The Rust completion borrows the declared result range.
+          auto range = UNSAFE_BUFFERS(base::span(bytes.data, bytes.len));
+          payload.assign(range.begin(), range.end());
+        } else {
+          status = TUFFITE_STATUS_INVALID_ARGUMENT;
+        }
+        state->runner->PostTask(
+            FROM_HERE,
+            base::BindOnce(&Application::CompleteMojomPending,
+                           state->application, state->id,
+                           status == TUFFITE_STATUS_OK                   ? 0
+                           : status == TUFFITE_STATUS_INVALID_ARGUMENT   ? 1
+                           : status == TUFFITE_STATUS_RESOURCE_EXHAUSTED ? 6
+                                                                         : 3,
+                           std::move(payload)));
+        return TUFFITE_STATUS_OK;
+      });
+  if (status != TUFFITE_STATUS_OK) {
+    delete state;
+    CompleteMojomPending(id,
+                         status == TUFFITE_STATUS_RESOURCE_EXHAUSTED ? 6
+                         : status == TUFFITE_STATUS_INVALID_ARGUMENT ? 1
+                                                                     : 3,
+                         {});
+  }
+}
+
+void Application::CompleteMojomPending(uint64_t id,
+                                       int32_t status,
+                                       std::vector<uint8_t> bytes) {
+  auto pending = mojom_pending_.extract(id);
+  if (!pending.empty()) {
+    std::move(pending.mapped().callback).Run(status, bytes);
+  }
+}
+
 bool Application::Dispatch(std::vector<uint8_t> event,
                            DispatchCallback callback,
                            const base::UnguessableToken& document) {
@@ -464,8 +581,8 @@ bool Application::DispatchImpl(std::vector<uint8_t> event,
   uint64_t request_id;
   // Bound browser-side state even when the host finishes faster than the UI can
   // consume replies. Zero is reserved, and IDs must never wrap and collide.
-  if (!accepting_requests_ || !browser_initialized_ || pending_.size() >= 256 ||
-      next_request_id_ == 0) {
+  if (!accepting_requests_ || !browser_initialized_ ||
+      pending_.size() + mojom_pending_.size() >= 256 || next_request_id_ == 0) {
     request_id = 0;
   } else {
     request_id = next_request_id_++;
@@ -511,6 +628,20 @@ bool Application::DispatchImpl(std::vector<uint8_t> event,
 void Application::DispatchFramework(uint64_t command,
                                     std::string payload,
                                     DispatchCallback callback) {
+  if (application_.dispatch_mojom && application_.command_scope) {
+    DispatchMojom(MojomMethod{"", command, 0},
+                  std::vector<uint8_t>(payload.begin(), payload.end()),
+                  base::UnguessableToken::Create(),
+                  base::BindOnce(
+                      [](DispatchCallback reply, int32_t status,
+                         const std::vector<uint8_t>& result) {
+                        std::move(reply).Run(status == 0, result);
+                      },
+                      std::move(callback)));
+    return;
+  }
+  // Compatibility with older native ABI tables. New application tables use
+  // direct borrowed parameters and result callbacks above.
   rpc::Request request;
   request.command_id = command;
   request.payload.assign(payload.begin(), payload.end());
@@ -535,6 +666,9 @@ void Application::CancelDocument(const base::UnguessableToken& document) {
   }
   DCHECK_CALLED_ON_VALID_SEQUENCE(browser_sequence_checker_);
   std::erase_if(pending_, [&](const auto& entry) {
+    return entry.second.document == document;
+  });
+  std::erase_if(mojom_pending_, [&](const auto& entry) {
     return entry.second.document == document;
   });
 }
@@ -573,6 +707,11 @@ void Application::FailPending() {
   to_fail.swap(pending_);
   for (auto& entry : to_fail) {
     std::move(entry.second.callback).Run(false, {});
+  }
+  decltype(mojom_pending_) typed;
+  typed.swap(mojom_pending_);
+  for (auto& [id, pending] : typed) {
+    std::move(pending.callback).Run(3, {});
   }
 }
 

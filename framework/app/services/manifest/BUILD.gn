@@ -6,14 +6,13 @@ import("//testing/test.gni")
 
 source_set("manifest") {
   public = [
-    "app_config.h",
-    "manifest_configuration.h",
+    "effective_manifest.h",
+    "manifest_loader.h",
     "manifest_service.h",
     "manifest_service_factory.h",
   ]
   sources = public + [
-              "configuration_assembler.cc",
-              "manifest_configuration_data.h",
+              "effective_manifest.cc",
               "manifest_loader.cc",
               "manifest_service_factory.cc",
               "manifest_service_impl.cc",
@@ -22,15 +21,16 @@ source_set("manifest") {
   public_deps = [
     "//base",
     "//components/keyed_service/core",
-    "//tuffite/components/explorer/common:external_protocol",
+    "//tuffite/components/explorer/common:policy",
     "//tuffite/components/isolated/common:configuration",
+    "//tuffite/components/manifest/common:configuration",
     "//tuffite/framework/app/services:factory",
-    "//tuffite/framework/app/services/asset:configuration",
     "//url",
   ]
   deps = [
     "//net",
-    "//tuffite/framework/common:access",
+    "//tuffite/components/explorer/common:external_protocol",
+    "//tuffite/components/manifest/common:access",
   ]
 }
 
@@ -43,6 +43,7 @@ test("manifest_service_unittests") {
     "//base",
     "//testing/gtest",
     "//testing/gtest:gtest_main",
+    "//tuffite/components/explorer/common:external_protocol",
     "//tuffite/framework/browser/services/isolated:registry",
     "//url",
   ]

@@ -85,7 +85,7 @@ try {
     const transfer = await first.detach();
     if (await first.setZoomFactor(2) || await first.setAudioMuted(false)) throw new Error('Detached element accepted a control');
     const receiver = document.createElement('explorer');
-    receiver.behavior = "navigation: browser;";
+    receiver.policy = "navigation: browser;";
     receiver.style.cssText = first.style.cssText;
     first.replaceWith(receiver); receiver.id = 'tab-primary';
     await receiver.attach(transfer);

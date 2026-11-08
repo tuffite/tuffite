@@ -64,7 +64,9 @@
     const input = document.querySelector('#url');
     const status = document.querySelector('#status');
     let explorer = document.querySelector('#view');
-    explorer.contextMenuEnabled = true;
+    explorer.policy += " context-menu: browser;";
+
+    let contextMenuEnabled = true;
 
     function log(message) {
       status.textContent = `${new Date().toLocaleTimeString()} ${message}`;
@@ -89,11 +91,12 @@
       explorer.load(`explorer_target.html?t=${Date.now()}`);
     });
     document.querySelector('#context-menu').addEventListener('click', (event) => {
-      explorer.contextMenuEnabled = !explorer.contextMenuEnabled;
-      event.currentTarget.textContent = explorer.contextMenuEnabled
+      contextMenuEnabled = !contextMenuEnabled;
+      explorer.policy += ` context-menu: ${contextMenuEnabled ? "browser" : "block"};`;
+      event.currentTarget.textContent = contextMenuEnabled
         ? '禁用右键菜单'
         : '启用右键菜单';
-      log(`context menu ${explorer.contextMenuEnabled ? 'enabled' : 'disabled'}`);
+      log(`context menu ${contextMenuEnabled ? 'enabled' : 'disabled'}`);
     });
     document.querySelector('#toggle').addEventListener('click', (event) => {
       if (explorer.isConnected) {
@@ -105,7 +108,7 @@
       explorer = document.createElement('explorer');
       explorer.id = 'view';
       explorer.src = 'explorer_target.html';
-      explorer.contextMenuEnabled = true;
+      explorer.policy += " context-menu: browser;";
       bindEvents(explorer);
       mount.append(explorer);
       event.currentTarget.textContent = '移除元素';

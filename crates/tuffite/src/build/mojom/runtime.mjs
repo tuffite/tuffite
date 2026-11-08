@@ -1,15 +1,8 @@
-// Browser SDK for the Tuffite binary Shell Protocol. Applications
-// normally consume this through generated bindings instead of calling it.
+// Typed clients use Chromium's Mojo message pipes and interface bindings.
+import {mojo} from './chromium_mojo.mjs';
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 const codecDecoder = new TextDecoder('utf-8', {fatal: true});
 const MAX_COLLECTION_LENGTH = 16 * 1024 * 1024;
-const REQUEST_HEADER_LENGTH = 36;
-const RESPONSE_HEADER_LENGTH = 20;
-const FRAME_MAGIC = Object.freeze([0x43, 0x45, 0x52, 0x4d]);
-const REQUEST_KIND = 1;
-const RESPONSE_KIND = 2;
-let nextRequestId = 1n;
 // Primitive metadata is shared by all schemas, rather than rebuilt per element.
 const mojomScalars = Object.freeze(Object.fromEntries(
   ['u8','i8','u16','i16','u32','i32','u64','i64','f32','f64'].map(type => {
@@ -152,10 +145,11 @@ export function decodeMojom(schema, bytes) {
   return value;
 }
 
-export function createMojomCommandApi(entries, namespace, transport = invokeBinary) {
-  if (typeof transport !== 'function') throw new TypeError('expected Mojom transport');
+// The endpoint factory is injectable for tests and alternate typed hosts.
+export function createMojomCommandApi(entries, namespace, transport = sendTypedRequest) {
+  if (typeof transport !== 'function') throw new TypeError('expected typed Mojo transport');
   const root = Object.create(null);
-  for (const [path, id, fingerprint, request, response, channel = `${namespace}.${path}`] of entries) {
+  for (const [path, ordinal, request, response, interfaceName] of entries) {
     const segments = path.split('.');
     let node = root;
     for (const segment of segments.slice(0, -1)) {
@@ -164,21 +158,16 @@ export function createMojomCommandApi(entries, namespace, transport = invokeBina
     }
     const leaf = segments.at(-1);
     if (['then', '__proto__', 'constructor', 'prototype'].includes(leaf) || Object.hasOwn(node, leaf)) throw new TypeError('duplicate/reserved Mojom endpoint');
+    const endpoint = Object.freeze({interfaceName, ordinal, request, response});
     node[leaf] = async (...args) => {
       if (args.length > request.fields.length || request.fields.slice(args.length).some(([, , , type]) => !type?.nullable)) throw new TypeError('invalid Mojom argument count');
       const value = Object.fromEntries(request.fields.map(([name], index) => [name, args[index]]));
-      const payload = await transport(channel, BigInt(id), BigInt(fingerprint), encodeMojom(request, value));
-      const result = decodeMojom(response, payload);
+      // Validate the typed data before sending any message. No request envelope.
+      encodeMojom(request, value);
+      const result = await transport(endpoint, value);
       const decoded = response.fields.length ? result[response.fields[0][0]] : undefined;
-      if (channel.startsWith('tuffite.Window.')) {
-        const enrich = info => {
-          if (info && typeof info.id === 'bigint') {
-            const id = info.id;
-            Object.defineProperty(info,'postMessage',{value:(...args)=>globalThis.tuffite.postWindowMessage(id,...args)});
-          }
-          return info;
-        };
-        return Array.isArray(decoded) ? decoded.map(enrich) : enrich(decoded);
+      if (interfaceName === 'tuffite.wire.Window') {
+        return Array.isArray(decoded) ? decoded.map(windowReference) : windowReference(decoded);
       }
       return decoded;
     };
@@ -208,76 +197,79 @@ const transportCodes = Object.freeze({
   5: 'timed_out',
   6: 'resource_exhausted',
 });
-const commandCodes = Object.freeze({
-  1: 'invalid_request',
-  2: 'unknown_command',
-  3: 'handler_failed',
-  4: 'invalid_argument',
-  5: 'schema_mismatch',
-});
-
-async function invokeNative(channel, payload) {
-  const bridge = globalThis.tuffite;
-  if (!bridge || typeof bridge.invoke !== 'function') {
-    throw new Error('Tuffite native bridge is unavailable for this document');
+const mojoTypes = new WeakMap();
+const nativeRemotes = new Map();
+const responseTypes = new WeakMap();
+function nativeType(schema) {
+  if (typeof schema === 'string') {
+    if (schema === 'bytes') return mojo.internal.Array(mojo.internal.Uint8, false);
+    const names = {bool:'Bool',string:'String',u8:'Uint8',i8:'Int8',u16:'Uint16',i16:'Int16',u32:'Uint32',i32:'Int32',u64:'Uint64',i64:'Int64',f32:'Float',f64:'Double'};
+    return mojo.internal[names[schema]];
   }
-  let response;
+  if (schema.nullable) return nativeType(schema.nullable);
+  if (schema.enum) return mojo.internal.Enum();
+  if (schema.array) return mojo.internal.Array(nativeType(schema.array), !!schema.array.nullable);
+  if (mojoTypes.has(schema)) return mojoTypes.get(schema);
+  const type = {};
+  mojoTypes.set(schema,type);
+  const fields = [];
+  for (const [name,offset,bit,field,presence] of schema.fields) {
+    if (presence) {
+      const primary = {isPrimary:true,originalFieldName:name,linkedValueFieldName:name+'Value'};
+      const secondary = {isPrimary:false,originalFieldName:name,linkedValueFieldName:name+'Present'};
+      fields.push(mojo.internal.StructField(name+'Present',presence[0]-8,presence[1],mojo.internal.Bool,false,false,0,primary));
+      const fallback = field.nullable?.enum?.[0] ?? (['u64','i64'].includes(field.nullable)?0n:field.nullable==='bool'?false:0);
+      fields.push(mojo.internal.StructField(name+'Value',offset-8,bit,nativeType(field.nullable),fallback,false,0,secondary));
+    } else {
+      fields.push(mojo.internal.StructField(name,offset-8,bit,nativeType(field),null,!!field?.nullable));
+    }
+  }
+  mojo.internal.Struct(type,'Tuffite typed parameters',fields,[[0,schema.size]]);
+  return type;
+}
+function normalizeNative(schema, value) {
+  if (value == null) return value;
+  if (schema === 'bytes') return new Uint8Array(value);
+  if (typeof schema !== 'object') return value;
+  if (schema.nullable) return normalizeNative(schema.nullable,value);
+  if (schema.array) return value.map(item=>normalizeNative(schema.array,item));
+  if (schema.enum) return value;
+  return Object.fromEntries(schema.fields.map(([name,,,type])=>[name,normalizeNative(type,value[name])]));
+}
+async function sendTypedRequest(endpoint, value) {
+  if (typeof globalThis.Mojo?.bindInterface !== 'function') {
+    throw new TuffiteError('transport_unavailable','Mojo is unavailable for this document');
+  }
+  let remote = nativeRemotes.get(endpoint.interfaceName);
+  if (!remote) {
+    const {handle0,handle1} = Mojo.createMessagePipe();
+    remote = new mojo.internal.interfaceSupport.InterfaceRemoteBase(null,handle0);
+    Mojo.bindInterface(endpoint.interfaceName,handle1);
+    remote.getConnectionErrorEventRouter().addListener(()=>nativeRemotes.delete(endpoint.interfaceName));
+    nativeRemotes.set(endpoint.interfaceName,remote);
+  }
+  let responseType=responseTypes.get(endpoint);
+  if(!responseType) {
+    responseType=nativeType({size:32,fields:[['status',8,0,'i32'],['value',16,0,{nullable:endpoint.response}],['error',24,0,{nullable:'string'}]]});
+    responseTypes.set(endpoint,responseType);
+  }
+  let reply;
   try {
-    response = await bridge.invoke(channel, payload);
-  } catch (cause) {
-    if (cause instanceof TuffiteError) throw cause;
-    const status = Number.isInteger(cause?.status) ? cause.status : undefined;
-    throw new TuffiteError(
-      cause?.code ?? transportCodes[status] ?? 'transport_unavailable',
-      cause?.message ?? 'ShellAPI transport unavailable',
-      {cause},
-    );
+    reply = await remote.sendMessage(endpoint.ordinal,nativeType(endpoint.request),responseType,endpoint.request.fields.map(([name])=>value[name]),false);
+  } catch(cause) {
+    throw new TuffiteError('transport_unavailable',cause?.message || 'Mojo interface disconnected',{cause});
   }
-  if (!(response instanceof Uint8Array)) {
-    throw new TypeError('Tuffite native bridge returned a non-binary response');
-  }
-  return response;
+  if (reply.status !== 0) throw new TuffiteError(transportCodes[reply.status] ?? 'internal',reply.error ?? 'Mojo method failed', {cause:{status:reply.status}});
+  if (!reply.value) throw new TuffiteError('decode_error','Missing typed Mojo response');
+  const result = normalizeNative(endpoint.response,reply.value);
+  encodeMojom(endpoint.response,result);
+  return result;
 }
 
-// Framework routes already carry request identity and RPC status in dispatch.
-export async function invokeFrameworkMojom(channel, _id, _fingerprint, payload) {
-  return invokeNative(channel, payload);
-}
-
-export async function invokeBinary(channel, commandId, schemaFingerprint, payload = new Uint8Array()) {
-  if (typeof channel !== 'string' || !channel.includes('.')) {
-    throw new TypeError('ShellAPI channel must be a fully qualified API path');
+function windowReference(info) {
+  if (info && typeof info.id === 'bigint') {
+    const id = info.id;
+    Object.defineProperty(info,'postMessage',{value:(...args)=>globalThis.tuffite.postWindowMessage(id,...args)});
   }
-  if (!(payload instanceof Uint8Array)) {
-    throw new TypeError('ShellAPI payload must be a Uint8Array');
-  }
-  const requestId = nextRequestId++;
-  const body = new Uint8Array(REQUEST_HEADER_LENGTH + payload.byteLength);
-  body.set(FRAME_MAGIC);
-  const view = new DataView(body.buffer);
-  view.setUint16(4, REQUEST_KIND, true);
-  view.setBigUint64(8, requestId, true);
-  view.setBigUint64(16, commandId, true);
-  view.setBigUint64(24, schemaFingerprint, true);
-  view.setUint32(32, payload.byteLength, true);
-  body.set(payload, REQUEST_HEADER_LENGTH);
-  const response = await invokeNative(channel, body);
-  if (response.byteLength < RESPONSE_HEADER_LENGTH || decoder.decode(response.subarray(0, 4)) !== 'CERM') {
-    throw new TuffiteError('decode_error', 'Malformed ShellAPI response', {requestId});
-  }
-  const responseView = new DataView(response.buffer, response.byteOffset);
-  if (responseView.getUint16(4, true) !== RESPONSE_KIND ||
-      responseView.getBigUint64(8, true) !== requestId ||
-      responseView.getUint32(16, true) !== response.byteLength - RESPONSE_HEADER_LENGTH) {
-    throw new TuffiteError('protocol_mismatch', 'Mismatched ShellAPI response', {requestId});
-  }
-  const status = responseView.getUint16(6, true);
-  if (status !== 0) {
-    throw new TuffiteError(
-      commandCodes[status] ?? 'command_failed',
-      decoder.decode(response.subarray(RESPONSE_HEADER_LENGTH)) || `command failed (${status})`,
-      {requestId},
-    );
-  }
-  return response.subarray(RESPONSE_HEADER_LENGTH);
+  return info;
 }

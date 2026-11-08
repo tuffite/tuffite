@@ -142,3 +142,38 @@ test("remoting_service_unittests") {
     ]
   }
 }
+
+# Browser-backed lifecycle and process-domain tests use Content's test clients.
+test("explorer_lifecycle_unittests") {
+  sources =
+      [ "//tuffite/components/explorer/test/explorer_lifecycle_unittest.cc" ]
+  deps = [
+    "//base",
+    "//base/test:test_support",
+    "//content/public/browser",
+    "//content/test:test_support",
+    "//testing/gtest",
+    "//tuffite/components/explorer/browser",
+    "//url",
+  ]
+}
+
+test("configuration_unittests") {
+  sources = [
+    "//tuffite/components/manifest/renderer/content/document_configuration_conversion_unittest.cc",
+    "//tuffite/components/manifest/test/document_configuration_provider_unittest.cc",
+    "//tuffite/components/manifest/test/process_configuration_unittest.cc",
+  ]
+  deps = [
+    "//base",
+    "//base/test:test_support",
+    "//content/public/browser",
+    "//content/public/renderer",
+    "//content/test:test_support",
+    "//testing/gtest",
+    "//tuffite/components/manifest/bootstrap",
+    "//tuffite/components/manifest/browser:interfaces",
+    "//tuffite/components/manifest/common:mojom",
+    "//url",
+  ]
+}

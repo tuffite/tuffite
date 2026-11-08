@@ -49,7 +49,7 @@ async function explorer(root, partition) {
   await root.evaluate(({ partition, url }) => {
     const element = document.createElement("explorer");
     element.partition = partition;
-    element.behavior = "navigation: browser;";
+    element.policy = "navigation: browser;";
     element.style.cssText = "display:block;width:400px;height:250px";
     element.src = url;
     document.body.append(element);

@@ -93,7 +93,7 @@ try {
   await wait(
     () =>
       app.evaluate(() =>
-        behaviorLab.events.some((event) => event.type === "navigation"),
+        policyLab.events.some((event) => event.type === "navigation"),
       ),
     "delegated navigation",
   );
@@ -106,35 +106,41 @@ try {
   await click("#external");
   await app.locator("#confirmation").waitFor({ state: "visible" });
   assert.equal(
-    await app.evaluate(() => behaviorLab.pending.initiatingOrigin),
+    await app.evaluate(() => policyLab.pending.initiatingOrigin),
     "playground://behavior.fixture",
   );
+  await source.evaluate(async (element) => {
+    element.policy += " context-menu: browser; freeze: never; discard: never;";
+    await element.getNavigationState();
+  });
+  assert.equal(await app.evaluate(() => !!policyLab.pending && !policyLab.pending.signal.aborted),
+    true, "Unrelated policy changes must preserve a pending decision");
   await app.locator("#dismiss").click();
   await wait(
-    () => app.evaluate(() => behaviorLab.events.at(-1).type === "dismissed"),
+    () => app.evaluate(() => policyLab.events.at(-1).type === "dismissed"),
     "external protocol dismissal",
   );
   assert.equal(
-    await app.evaluate(() => behaviorLab.events.at(-1).result),
+    await app.evaluate(() => policyLab.events.at(-1).result),
     true,
   );
   await source.evaluate((element) => {
-    element.behavior = "external-protocol: delegate timeout(40ms);";
+    element.policy = "external-protocol: delegate timeout(40ms);";
   });
   await click("#external");
   await wait(
     () =>
       app.evaluate(() =>
-        behaviorLab.events.some((event) => event.type === "canceled"),
+        policyLab.events.some((event) => event.type === "canceled"),
       ),
     "request timeout",
   );
   await source.evaluate((element) => {
-    element.behavior = "external-protocol: block; navigation: browser;";
+    element.policy = "external-protocol: block; navigation: browser;";
   });
   const count = await app.evaluate(
     () =>
-      behaviorLab.events.filter((event) => event.type === "externalprotocol")
+      policyLab.events.filter((event) => event.type === "externalprotocol")
         .length,
   );
   await click("#external");
@@ -142,7 +148,7 @@ try {
   assert.equal(
     await app.evaluate(
       () =>
-        behaviorLab.events.filter((event) => event.type === "externalprotocol")
+        policyLab.events.filter((event) => event.type === "externalprotocol")
           .length,
     ),
     count,
@@ -153,7 +159,7 @@ try {
     "browser navigation",
   );
   await source.evaluate((element) => {
-    element.behavior = "navigation: block;";
+    element.policy = "navigation: block;";
   });
   await execute(
     'document.querySelector("#navigate").href = "fixtures/behavior.html?blocked"; true',
@@ -162,13 +168,13 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 100));
   assert.equal(new URL((await state()).url).search, "?navigated");
   await source.evaluate((element) => {
-    element.behavior = "navigation: browser; dialog: unknown;";
+    element.policy = "navigation: browser; dialog: unknown;";
   });
   await click("#navigate");
   await new Promise((resolve) => setTimeout(resolve, 100));
   assert.equal(new URL((await state()).url).search, "?navigated");
   await source.evaluate((element) => {
-    element.behavior = "navigation: browser; new-window: browser;";
+    element.policy = "navigation: browser; new-window: browser;";
   });
   await click("#popup");
   await wait(
@@ -195,7 +201,7 @@ try {
   })`);
   assert.deepEqual(csp, { serverBlocked: true, manifestBlocked: true });
   await source.evaluate((element) => {
-    element.behavior = "navigation: delegate; external-protocol: delegate;";
+    element.policy = "navigation: delegate; external-protocol: delegate;";
     element.load("playground-resource://main/ui/dist/fixtures/behavior.html");
   });
   await wait(
@@ -216,14 +222,14 @@ try {
     null,
   );
   const navigationCount = await app.evaluate(
-    () => behaviorLab.events.filter((e) => e.type === "navigation").length,
+    () => policyLab.events.filter((e) => e.type === "navigation").length,
   );
   await click("#navigate");
   await wait(
     () =>
       app.evaluate(
         (count) =>
-          behaviorLab.events.filter((e) => e.type === "navigation").length >
+          policyLab.events.filter((e) => e.type === "navigation").length >
           count,
         navigationCount,
       ),
@@ -231,7 +237,7 @@ try {
   );
   assert.equal(new URL((await state()).url).search, "");
   console.log(
-    "browser_behavior=passed origin defaults, delegate, browser, block, timeout, initiating origin, HTTP/server CSP intersection, secondary scheme assets/fetch/Worker/storage/navigation",
+    "browser_policy=passed origin defaults, delegate, browser, block, timeout, initiating origin, HTTP/server CSP intersection, secondary scheme assets/fetch/Worker/storage/navigation",
   );
 } finally {
   await browser.close();

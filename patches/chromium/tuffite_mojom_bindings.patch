@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Garey Chan <garey.chan@outlook.com>
+Date: Sun, 8 Nov 2026 15:22:18 +0800
+Subject: Preserve document Mojo brokers across initial empty contexts
+
+
+diff --git a/content/renderer/render_frame_impl.cc b/content/renderer/render_frame_impl.cc
+index 65fb9b22a9c48b59138cfbefe1b00026b6f62d7c..475b19776accc207e93ad73e2c567b588d65baa1 100644
+--- a/content/renderer/render_frame_impl.cc
++++ b/content/renderer/render_frame_impl.cc
+@@ -264,6 +264,10 @@
+ #include "mojo/public/cpp/bindings/self_owned_associated_receiver.h"
+ #endif
+ 
++// TUFFITE_BEGIN
++#include "tuffite/buildflags.h"
++// TUFFITE_END
++
+ using base::Time;
+ using blink::ContextMenuData;
+ using blink::WebContentDecryptionModule;
+@@ -4957,6 +4961,11 @@ void RenderFrameImpl::DidCreateScriptContext(v8::Local<v8::Context> context,
+   }
+ 
+   if (world_id == ISOLATED_WORLD_ID_GLOBAL &&
++#if BUILDFLAG(TUFFITE_IN_CHROMIUM)
++      // A newly created Explorer can initialize an empty context before its
++      // navigation commits. Keep the document broker for the real context.
++      !frame_->GetDocument().Url().IsEmpty() &&
++#endif
+       mojo_js_interface_broker_.is_valid()) {
+     // MojoJS interface broker can be enabled on subframes, and will limit the
+     // interfaces JavaScript can request to those provided in the broker.

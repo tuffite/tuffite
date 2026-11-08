@@ -171,7 +171,7 @@ URLServiceImpl::CreateSubresourceLoaderFactory(
   auto memory = base::BindRepeating(
       [](base::WeakPtr<IsolatedService> service,
          content::GlobalRenderFrameHostId id,
-         const GURL& url) -> std::optional<asset::MemoryAsset> {
+         const GURL& url) -> std::optional<MemoryAsset> {
         auto* frame = content::RenderFrameHost::FromID(id);
         return service && frame ? service->ResourceForFrame(*frame, url)
                                 : std::nullopt;

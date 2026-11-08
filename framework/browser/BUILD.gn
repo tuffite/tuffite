@@ -25,6 +25,7 @@ source_set("support") {
     "//content/public/browser",
     "//tuffite/components/dispatch/browser",
     "//tuffite/components/explorer/browser",
+    "//tuffite/components/manifest/browser:interfaces",
   ]
 }
 
@@ -66,6 +67,8 @@ source_set("browser") {
     "browser_main_parts.h",
     "content_browser_client.cc",
     "content_browser_client.h",
+    "mojom_bindings.cc",
+    "mojom_bindings.h",
     "test_support/browser_test_observers.cc",
     "test_support/browser_test_observers.h",
     "web_contents_view_delegate.cc",
@@ -102,6 +105,7 @@ source_set("browser") {
     "//tuffite/components/explorer/browser",
     "//tuffite/components/explorer/common:external_protocol",
     "//tuffite/components/explorer/common:mojom",
+    "//tuffite/components/manifest/browser:interfaces",
     "//tuffite/framework/app:abi_headers",
     "//tuffite/framework/common:languages",
     "//tuffite/framework/common:switches",

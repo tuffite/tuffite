@@ -329,6 +329,18 @@ def compiler_cache_environment() -> dict[str, str]:
 
 def build(args: argparse.Namespace) -> None:
     configure(args)
+    # The former GN copy target could hard-link the locale pack to the common
+    # pack. Unlink that alias before repack writes the independently split data.
+    output = chromium_output(args)
+    common_pak = output / "tuffite.pak"
+    locale_pak = output / "tuffite_locales" / "en-US.pak"
+    if (
+        common_pak.is_file()
+        and locale_pak.is_file()
+        and common_pak.samefile(locale_pak)
+    ):
+        locale_pak.unlink()
+        print("Rebuilding locale pack independently of the former common-pack alias")
     targets = args.targets or [NINJA_TARGET]
     ninja = SOURCE / "third_party" / "ninja" / executable_name("ninja")
     command = [str(ninja), "-C", str(chromium_output(args)), "-j", str(args.jobs)]

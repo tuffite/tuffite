@@ -1,0 +1,15 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//testing/test.gni")
+
+test("access_unittests") {
+  sources = [ "access_rules_unittest.cc" ]
+  deps = [
+    "//base",
+    "//testing/gtest",
+    "//testing/gtest:gtest_main",
+    "//tuffite/components/manifest/common:access",
+    "//url",
+  ]
+}

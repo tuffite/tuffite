@@ -38,14 +38,34 @@ const file = await fs.readFile(BaseDirectory.Data,'settings.json');
 
 Application and Framework clients are ES modules. There is no application global
 or installation of Framework business methods on `globalThis.tuffite`. The
-native global remains the transport and native DOM integration surface.
+native global retains native DOM integration only. There is no public
+`globalThis.tuffite.invoke`, `invokeBinary` or byte-channel transport. Generated
+clients use Chromium's official Mojo JavaScript runtime, a Remote for each
+interface, and native message pipes bound through a document-scoped broker.
+The broker is delivered before commit; only the matching committed document can
+bind registered interfaces. Every method call rechecks its origin and grants.
+
+The generator projects the API into canonical `<module>.wire` Mojom interfaces.
+Arguments are direct typed parameters; the generated response is
+`(int32 status, MethodResponse? value, string? error)` so native failures remain typed and cannot
+be mistaken for a successful empty result. Framework builds emit these contracts
+as `*-wire.mojom`, with normal Chromium C++ Remote/Receiver bindings. Declared
+ordinals stay stable in production builds. No `CERM` request header, frontend
+command ID or schema fingerprint is sent over the renderer connection.
+Native Rust adapters receive trusted registry metadata and borrowed parameter
+structs through the C ABI; accepted calls own one asynchronous result callback.
+Closing one interface pipe cancels only its own operations; all pipes share the
+document admission limit. Document destruction revokes the complete broker and
+prevents late replies from reaching a replacement document. BFCache retains its
+original document-owned broker; inactive documents cannot issue native calls.
+
 Framework clients export numeric enums directly. Nullable fields/results use
 `null`; nullable arguments may be omitted when trailing, and nullable object
 fields may be omitted. A present `false`, zero or empty string remains present.
 
 The `createExampleApi(transport)` factory accepts an explicit `MojomTransport`.
-A transport receives canonical channel, command ID, schema fingerprint and
-encoded request bytes, and returns response bytes. Importing a client or
+A transport receives the wire interface name, method ordinal, generated schemas
+and a typed parameter object, and returns a typed result object. Importing a client or
 injecting a transport grants no native authority.
 
 ## Supported data profile
@@ -66,8 +86,13 @@ root-confined, cycle checked, source limited and tracked for rebuilds.
 The codec limits payloads to 16 MiB, validates UTF-8, scalar ranges, enums, headers,
 array lengths, pointer bounds and forward non-overlapping allocations. Rust/JS
 accept the generated version-zero layout and reject truncation and trailing data.
-Schema fingerprints require matching schemas; mixed-version evolution is not
-implemented. None of these codecs is a standalone Mojo message-pipe runtime.
+The standalone data codecs remain handle-free. Message headers, pipes and
+request correlation use Chromium's official runtime. Mixed-version interface
+evolution is not implemented.
+
+The checked-in runtime and BSD license come from the pinned Chromium build.
+After a Chromium roll, build `//mojo/public/js:bindings_module`, then
+run `python3 scripts/update-mojo-runtime.py`; `--check` verifies the exact source.
 
 ## Process implementations and interfaces
 
@@ -181,9 +206,11 @@ Mojom modules; native routing uses the generated method table, never a module
 prefix configured by hand. The source frontend currently compiles one module
 per SDK generation, with dotted module names supported.
 
-Framework dispatch already carries RPC identity/status and transports raw typed
-struct bodies. Application dispatch retains the CERM request/response/cancel
-envelope around Mojom structs to preserve the standalone C ABI. Rust-to-native calls use dedicated capabilities and reach domain services directly;
+Framework and application calls use standard Mojo interface pipes, method ordinals
+and typed parameter structs. Browser-to-Rust adapters pass trusted generated method
+metadata separately from those structs. The legacy standalone native C ABI retains
+its CERM codec for older native clients; generated JS clients never use it.
+Rust-to-native calls use dedicated capabilities and reach domain services directly;
 they share protocol data models where useful, without entering renderer routing. Window snapshots
 retain their captured messaging identity independently of the data codec.
 
@@ -206,10 +233,11 @@ covers direct capability calls and shutdown admission.
 Use `python3 x.py build` / `package` for Framework, then package Playground with
 the `tuff` CLI. Packaged smoke checks cover normal startup, Framework methods,
 Browser and Utility typed calls, shared Worker state, process separation, origin
-and endpoint permissions, raw bypass attempts, forged IDs and schema mismatch.
+and endpoint permissions, raw bypass attempts, unknown interfaces/ordinals and
+malformed typed parameters.
 
 Performance checks: `node scripts/bench-mojom-codec.mjs` measures local codec
 round trips. Set `TUFFITE_MOJOM_BENCHMARK=1` when running the packaged `--mojom`
 smoke check for C++/Rust Browser, Rust Utility, large payload and concurrent-call
 latencies. Results are diagnostic, not timing assertions. Utility unary replies
-currently have a 1 MiB total-frame budget (including the envelope).
+currently have a 1 MiB payload budget.

@@ -1,0 +1,8 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+tuffite_manifest_document_browser_sources = [
+  "//tuffite/components/manifest/browser/content/document_configuration_provider.cc",
+  "//tuffite/components/manifest/browser/content/document_configuration_provider.h",
+]

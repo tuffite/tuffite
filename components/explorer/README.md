@@ -13,9 +13,9 @@ capability policy. It is intended for conversations, extension UI, previews,
 and remote pages that must not be able to stall or compromise the app renderer.
 
 The implementation is compiled only with `tuffite_in_chromium = true`. The app
-manifest controls document-origin grants and independent Explorer behavior.
+manifest controls document-origin grants and default Explorer policy.
 
-## Origin rules and behavior
+## Origin rules and policy
 
 `browser.rules[]` is the shared origin-scoped configuration entry point. Each
 rule requires `origins`; `identifier` is optional. Matching uses canonical
@@ -32,32 +32,87 @@ All matching `csp` values are enforced together on the document's packaged or
 HTTP(S) response, alongside server CSP. They never replace server restrictions.
 The secure built-in packaged CSP applies when no manifest CSP matches.
 
-`explorer.behavior` sets defaults for Explorers created by that origin's document,
-not for every page that happens to navigate to that origin. Later matching rules
-replace individual action entries. An element's `behavior` declarations override
-those defaults, independently of the creation/script grants. The framework
-defaults are normal `browser` behavior for all actions.
+`explorer.policy` in an origin rule provides defaults for Explorers created by
+that origin's document. Later matching rules replace individual properties.
+The element's `policy` attribute overrides these defaults. It never expands
+creation, script, messaging or Shell API grants.
 
 ```html
-<explorer behavior="navigation: delegate; dialog: delegate timeout(15s); external-protocol: browser; new-window: block;"></explorer>
+<explorer
+  src="https://example.test/"
+  policy="navigation: delegate; dialog: delegate timeout(15s);
+          context-menu: browser; freeze: 30s; discard: 15m;">
+</explorer>
 ```
 
-The supported actions are `navigation`, `dialog`, `external-protocol` and
-`new-window`; modes are `browser`, `delegate` and `block`. Declarations use a
-restricted CSS-style grammar, not CSS styles, selectors, variables or cascade.
-Names are lowercase, whitespace and trailing semicolons are accepted, and the
-last duplicate declaration wins. Unknown actions/modes reject the whole update;
-the previous native behavior remains active. Invalid initial declarations reject
-creation. Setting an empty attribute restores manifest defaults.
+| Declaration | Accepted values | Framework default |
+| --- | --- | --- |
+| `navigation` | `browser`, `delegate`, `block` | `browser` |
+| `dialog` | `browser`, `delegate [timeout(duration)]`, `block` | `browser` |
+| `external-protocol` | `browser`, `delegate [timeout(duration)]`, `block` | `browser` |
+| `new-window` | `browser`, `delegate [timeout(duration)]`, `block` | `browser` |
+| `context-menu` | `browser`, `block` | `block` |
+| `freeze` | `never`, `default`, duration | `default` (30s) |
+| `discard` | `never`, `default`, duration | `default` (15m) |
 
-Manifest entries are objects, e.g. `"externalProtocol": {"mode": "delegate",
-"timeoutMs": 15000}`. `timeout(15s)`/`timeout(15000ms)` maps to that value. Deadlines
-are positive integer durations up to five minutes; the default is 30 seconds. Navigation has no asynchronous decision and does not accept a timeout.
-Delegated dialog/protocol controllers are single-use and abort on source document
-retirement, Explorer destruction, policy update or timeout. Pending popup handles
-expire at their deadline. Unhandled external protocols are rejected, never sent
-to the OS through an implicit native fallback. Navigation delegation cancels the
-page's navigation and emits the existing navigation request event.
+`freeze` and `discard` are independent automatic schedules. Both count from the
+same eligible hidden-idle interval; discard does not require prior freezing.
+`freeze: never; discard: never` keeps background work running. `discard: never`
+preserves the document while still allowing freezing. Showing a frozen page
+thaws it; showing a discarded page reloads its preserved navigation entry.
+Changing either schedule restarts its idle interval. Activity, audio, capture,
+dialogs, attached debugging and other native protections can postpone either
+action. Delays are earliest eligibility thresholds, not execution deadlines.
+Under memory pressure, `discard: default` may reclaim an eligible page after
+30 seconds; explicit durations retain their configured minimum interval.
+
+Durations accept `ms`, `s`, `m` and `h`, including fractions that resolve to a
+whole millisecond. Freeze/discard accept 0ms through 24h. Controller `timeout()`
+accepts positive durations up to 5m and defaults to 30s; navigation and context
+menus do not accept it. `default` selects the framework's default schedule;
+omitting a property preserves the matching manifest default. Assigning an empty
+`policy` restores all manifest defaults.
+
+The declaration syntax accepts whitespace, block comments and trailing
+semicolons. The last duplicate property wins. Unknown properties, unknown
+functions, unsupported modes and invalid values reject the whole native update,
+leaving its previous policy active. Invalid initial declarations reject creation.
+The old `behavior`, `backgroundPolicy` and `contextMenuEnabled` APIs are removed.
+
+The parser separates generic declaration/function syntax from typed property
+validation. Its syntax tree retains component kinds, nested function arguments,
+quoted strings and UTF-8 byte offsets for diagnostics. Syntax parsing does not
+make a new property valid: each property must have an explicit compiler. Input
+is bounded to 4096 bytes, 256 component values and eight nested functions. This
+is a declaration language; it has no selectors, CSS cascade, variables or script
+evaluation.
+
+Native runtime descriptors use camelCase action names and typed values:
+
+```json
+{
+  "explorer": {
+    "create": true,
+    "policy": {
+      "dialog": {"mode": "delegate", "timeoutMs": 15000},
+      "contextMenu": {"mode": "browser"},
+      "freeze": 30000,
+      "discard": "never"
+    }
+  }
+}
+```
+
+The Rust configuration equivalents are `ExplorerPolicy`, `ActionPolicy` and
+`ExplorerDelay::{Default, Never, AfterMs(u32)}`. Runtime descriptor durations are
+integer milliseconds or the strings `default`/`never`; the native loader applies
+the same limits. These declarations belong in Rust `app::Configuration`, not in
+the source tool/build `tuffite.json`.
+
+Delegated controllers remain single-use and expire on their native deadline or
+source-document retirement. Unhandled external protocols are rejected. Browser
+mode keeps the native confirmation path, and navigation delegation cancels the
+navigation before emitting its request event.
 
 `externalprotocol.detail` provides `url`, `initiatingOrigin`, `from`, `signal`,
 `accept()` and `dismiss()`. A listener claims it with `preventDefault()` and must
@@ -66,8 +121,8 @@ sandbox checks happen before delegation. Acceptance cannot bypass those checks.
 `browser` retains the native confirmation dialog; `block` performs no launch.
 
 Live-page transfer checks immutable security/partition constraints, while the
-destination rebinds behavior to its own owner and declarations. Behavior equality
-is not an authorization requirement. Apps can copy `target.behavior = source.behavior`
+destination resolves policy against its own owner and declarations. Policy equality
+is not an authorization requirement. Apps can copy `target.policy = source.policy`
 to retain explicit overrides during promotion. Inherited defaults are resolved against the destination owner.
 
 Runtime declarations use the typed Rust `configuration` module and native
@@ -88,6 +143,11 @@ implementation. These files define the source, dependency and IDL/V8 input
 lists. Chromium build files import them directly; no mirrored forwarding
 files are needed. Generated IDL/V8 paths are unchanged.
 
+`common/explorer_declarations.{h,cc}` owns tokenization and the generic value
+syntax tree. `common/explorer_policy.{h,cc}` compiles that tree to action and
+delay settings. Browser policy application retains immutable grants, while
+`ExplorerLifecycle` consumes only the resolved automatic schedules.
+
 The component has no framework dependency. Browser hosts receive an
 `ExplorerPolicyProvider` interface; the framework's ExplorerService
 implements manifest and application-role rules. BrowserContext owns the router,
@@ -95,252 +155,12 @@ and document/WebContents destruction cleans up hosts and surface state.
 The manifest example below describes Tuffite framework configuration, rather
 than a manifest format parsed by this component.
 
-## Manifest
-
-The configuration separates resource routing, runtime settings and authorization:
-
-| Field | Responsibility |
-| --- | --- |
-| `app.assets[]` | Map request origin + path to a packaged file or directory. |
-| `build.mojomSources` | Mojom source paths; module names come from IDL. |
-| `app.windows[]` | Startup state and per-window min/max size constraints. |
-| `app.network` | Request timeout, maximum response size and HTTP/2 setting. |
-| `browser.rules[]` | Positive operation grants and resource scopes by committed document origin. |
-
-```json
-{
-  "app": {
-    "assets": [
-      {
-        "origins": [
-          "myapp://main"
-        ],
-        "paths": [
-          "/main",
-          "/explorer"
-        ],
-        "file": "ui/dist/index.html"
-      },
-      {
-        "origins": [
-          "myapp://main",
-          "myapp://*.artifact",
-          "myapp://*.preview"
-        ],
-        "paths": [
-          "/assets/*"
-        ],
-        "directory": "ui/dist/assets"
-      }
-    ],
-    "windows": [
-      {
-        "label": "main",
-        "url": "myapp://main/main",
-        "width": 1100,
-        "height": 800,
-        "minWidth": 640,
-        "minHeight": 480,
-        "maxWidth": 1920,
-        "maxHeight": 1200
-      }
-    ],
-    "network": {
-      "timeoutSeconds": 30,
-      "maxResponseBytes": 1048576,
-      "disableHttp2": false
-    }
-  },
-  "build": {
-    "shellApi": {
-      "namespace": "myapp",
-      "definitions": [
-        "shell_api.d.ts"
-      ]
-    }
-  },
-  "browser": {
-    "rules": [
-      {
-        "identifier": "app-shell",
-        "origins": [
-          "myapp://main"
-        ],
-        "explorer": {
-          "create": true,
-          "executeJavaScript": true
-        },
-        "shellApi": [
-          "myapp.*",
-          "tuffite.storage.*",
-          "tuffite.window.current",
-          "tuffite.window.list",
-          "tuffite.window.create",
-          "tuffite.window.getBounds",
-          "tuffite.window.focus",
-          "tuffite.window.minimize",
-          "tuffite.window.maximize",
-          "tuffite.window.restore",
-          "tuffite.window.setFullscreen",
-          "tuffite.window.close",
-          "tuffite.window.setTitle",
-          "tuffite.window.setBounds",
-          {
-            "method": "tuffite.fs.readFile",
-            "allow": [
-              {
-                "path": "resource/*"
-              },
-              {
-                "path": "data/*"
-              }
-            ]
-          },
-          {
-            "method": "tuffite.fs.exists",
-            "allow": [
-              {
-                "path": "resource/*"
-              },
-              {
-                "path": "data/*"
-              }
-            ]
-          },
-          {
-            "method": "tuffite.fs.writeFile",
-            "allow": [
-              {
-                "path": "data/*"
-              }
-            ]
-          },
-          {
-            "method": "tuffite.fs.createDir",
-            "allow": [
-              {
-                "path": "data/*"
-              }
-            ]
-          },
-          {
-            "method": "tuffite.fs.removeFile",
-            "allow": [
-              {
-                "path": "data/*"
-              }
-            ]
-          },
-          "tuffite.path.directories",
-          {
-            "method": "tuffite.path.resolve",
-            "allow": [
-              {
-                "path": "resource/*"
-              },
-              {
-                "path": "data/*"
-              }
-            ]
-          },
-          {
-            "method": "tuffite.net.request",
-            "allow": [
-              {
-                "url": "https://api.example.com/*"
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "identifier": "artifact-and-preview",
-        "origins": [
-          "myapp://*.artifact",
-          "myapp://*.preview"
-        ],
-        "shellApi": [
-          "tuffite.path.directories",
-          "tuffite.storage.get"
-        ]
-      }
-    ]
-  }
-}
-```
-
-Assets and capabilities match independently. A public application origin can
-load an explicitly mapped page without receiving any native API. Each asset
-route has nonempty `origins` and `paths` arrays and exactly one `file` or
-`directory`, relative to the project directory. Sources are bundled automatically.
-Paths are exact or terminal `/*` prefixes; directory routes strip the matching
-prefix and append the suffix to the configured directory. Exact routes win,
-then the longest prefix. Equal-priority rules with overlapping origins are
-configuration errors. There is no implicit root/SPA fallback: unmatched paths
-and missing files return 404. The framework owns `/tuffite.js` and
-`/tuffite.js`; applications cannot replace those resources. URL and
-origin are preserved even when multiple origins map to the same bytes.
-
-Capabilities are selected by the caller's committed document origin. Unmatched
-origins receive no native APIs, including the startup document. Multiple matching
-capabilities union grants; explicit resource denials take precedence across all
-matching entries. `identifier` is a configuration label, not an element role.
-
-- `shellApi` grants both framework and business methods. A string is shorthand
-  for `{ "method": "qualified.method" }`; an object can add `allow` and `deny`
-  arrays of JSON values. Only exact methods and trailing `.*` namespace patterns
-  are supported. Patterns are expanded against the current IDL registry during
-  packaging; zero matches are an error. Rebuilding after an API upgrade can
-  expand a wildcard grant. Business channels must also match their binary IDs.
-- Scope validation belongs to the API module, not the main manifest schema.
-  `tuffite.fs.*` and `tuffite.path.resolve` accept `{ "path": "data/**" }`;
-  `tuffite.net.request` accepts `{ "url": "https://api.example.com/**" }`.
-  These methods default to no allowed resources. Resource writes are forbidden.
-  Network redirects repeat the scope check; private endpoints require an exact
-  allow declaration. This does not change web fetch/SOP/CSP behavior.
-- Window target methods accept `{ "window": "current" | "others" | "*" }`.
-  Their default scope is the current window. `create`, `list`, and `current` are
-  independent methods without scopes. A created document does not inherit its
-  caller's native permissions. Dimensions remain in `app.windows[]`.
-- Scope objects must have the shape accepted by every matched method; unknown
-  fields, unsupported scopes, and incorrect value types fail validation. An
-  explicit `allow: []` allows no resources. Deny-only entries use the method's
-  default allow scope and do not implicitly grant all resources. JSON values
-  are an extensible carrier, not a generic parameter-matching language.
-- `explorer.create` permits creating/attaching owned Explorers with any valid
-  partition. Each guest needs its own origin grant to create descendants. No
-  configurable depth limit applies. Navigation supports HTTP(S), file, and the
-  application scheme without a destination-origin allowlist.
-- `explorer.executeJavaScript` permits isolated-world execution in an owned
-  Explorer, including cross-origin DOM access. Calls check the current owner
-  and the captured element grant. Transfer checks the receiving owner's policy.
-- Dialogs use the native browser UI by default. `behavior="dialog: delegate;"` forwards them to the owner, and
-  messages follow actual owner relations. Neither grants guest ShellAPI access.
-  Business-wide event subscriptions require all registered business commands.
-
-Origin rules use exact schemes and canonical hosts, optionally a leading `*.`
-that matches one or more nonempty host labels and excludes the bare suffix.
-HTTP(S) effective ports are significant. Chromium application schemes use
-host-only origins, so use distinct hosts rather than ports for isolation.
-Paths, credentials, queries and fragments are invalid in origin rules; opaque
-origins never match, including `*`. A shared capability or asset mapping does
-not merge origins, cookies or DOM access. Ordinary iframes remain ineligible for
-the native ShellAPI transport.
-
-Development aliases only capabilities matching the packaged entry origin to
-the explicitly configured loopback dev origin. Asset routes continue to serve
-the packaged application origins. No implicit grants are added.
-
-`app.frontend`, top-level `app.capabilities`, `assetRoutes`, named Explorer
-profiles and element-selected capabilities are not supported.
-
 ## Element
 
 ```html
 <explorer id="browser"
   src="https://example.com/"
-  behavior="navigation: delegate;"
-  behavior="dialog: delegate;">
+  policy="navigation: delegate; dialog: delegate;">
 </explorer>
 ```
 
@@ -349,12 +169,23 @@ profiles and element-selected capabilities are not supported.
 | `src` | Initial/current requested URL; assigning it uses the `load()` path | yes |
 | `partition` | omitted, `persist:<name>`, `memory:<name>`, `inherit+persist:<name>`, or `inherit+memory:<name>` | no |
 | `isolated` | Boolean; omission (or JS property false) preserves composed DOM ancestry; presence makes this Explorer its own `window.parent/top` root | no |
-| `behavior` | CSS-style declarations selecting browser, delegate or block per action | yes |
-| `contextMenuEnabled` | Enables the browser-owned native context menu | yes |
+| `policy` | Action handling, context menu, automatic freeze and discard declarations | yes |
 
 Creation attributes are frozen for that WebContents. Remove and recreate the
-element to change its partition, isolated mode, navigation, or dialog policy.
+element to change its partition or isolated mode. Policy declarations remain mutable.
 `partition="shared"` is intentionally invalid: `shared` is an internal partition kind; omission is the public element syntax.
+
+## Process sharing
+
+Compatible Explorers from the same owner origin reuse Chromium renderers for
+the same site and security principal. Separate WebContents retain independent
+DOMs, JavaScript realms and navigation history. The application renderer remains
+outside their process domain. Storage partitions, sandboxing and immutable
+grants continue to constrain reuse.
+
+Mutable `policy` declarations do not select a renderer process. Process sharing
+uses the owner origin and immutable capability/partition constraints; changing
+menus, delegation or idle schedules cannot fragment that process domain.
 
 ## Independent browsing context
 
@@ -538,7 +369,7 @@ audiostatechange and faviconchange. Both element and surface message events use
 window.tuffite.addEventListener('newwindow', event => {
   event.preventDefault();
   const target = document.createElement('explorer');
-  target.behavior = source.behavior; // copy explicit interaction overrides
+  target.policy = source.policy; // copy explicit interaction overrides
   document.querySelector('#tabs').append(target);
   void event.detail.attach(target);
 });
@@ -617,10 +448,12 @@ Applications that need request/response semantics use ordinary message types
 and IDs, and own their timeout and authorization policy. Tuffite does not add an
 Explorer RPC envelope.
 
-The low-level ShellAPI transport is separately:
+Shell API calls use generated typed Mojom clients and native Mojo pipes,
+independently of Explorer tree messaging. There is no public `tuffite.invoke`.
+An Explorer can bind these interfaces only when its current document has the
+required origin and command grants. Runtime application events remain DOM events:
 
 ```js
-await window.tuffite.invoke(route, binaryPayload); // Promise<Uint8Array>
 const listener = ({detail}) => {
   if (detail.channel !== 'app:changed') return;
   const payload = detail.data; // Uint8Array
@@ -629,9 +462,6 @@ window.tuffite.addEventListener('channel', listener);
 // Later:
 window.tuffite.removeEventListener('channel', listener);
 ```
-
-It accepts no `to` option and never routes through the Explorer tree. An
-Explorer receives it only when its current committed origin has ShellAPI grants.
 
 Runtime application events use `tuffite.addEventListener('channel', ...)` and
 carry `{channel, data}` in `detail`. Explorer tree delivery uses
@@ -644,7 +474,7 @@ Nested Explorers use the same element and normal-WebContents path:
 
 ```html
 <explorer
-  behavior="navigation: delegate;" behavior="dialog: block;"></explorer>
+  policy="navigation: delegate; dialog: block;"></explorer>
 ```
 
 Here the omitted partition shares the immediate parent's actual partition,
@@ -656,7 +486,7 @@ content to message the top app surface without relying on intermediate renderer 
 Browser-owned menus are off by default and can be toggled at runtime:
 
 ```js
-explorer.contextMenuEnabled = true;
+explorer.policy += " context-menu: browser;";
 ```
 
 The menu includes history/reload, applicable editing actions, opening links

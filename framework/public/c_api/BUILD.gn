@@ -7,13 +7,14 @@ assert(tuffite_in_chromium)
 
 source_set("abi") {
   sources = [
-    "types.h",
-    "version.h",
     "application.h",
     "contexts.h",
     "host.h",
     "isolated.h",
+    "mojom.h",
     "remoting.h",
+    "types.h",
     "utility.h",
+    "version.h",
   ]
 }

@@ -1,3 +1,7 @@
 tuffite_explorer_support.patch
 tuffite_isolated_support.patch
+tuffite_configuration.patch
+tuffite_manifest_component.patch
+tuffite_mojom_bindings.patch
 tuffite_isolated_mojo_boundary.patch
+tuffite_explorer_lifecycle.patch

@@ -15,9 +15,9 @@
 #include "base/strings/string_view_util.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
+#include "tuffite/components/manifest/common/access_rules.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 #include "tuffite/framework/browser/services/shell_api/commands/manifest.h"
-#include "tuffite/framework/common/access.h"
 
 namespace tuffite::shell_api::storage {
 

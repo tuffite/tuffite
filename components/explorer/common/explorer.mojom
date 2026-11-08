@@ -12,9 +12,8 @@ struct ExplorerCreateParams {
   blink.mojom.LocalFrameToken frame_to_replace;
   string initial_url;
   string partition;
-  string behavior;
+  string policy;
   bool isolated = false;
-  bool context_menu_enabled;
   blink.mojom.FramePolicy frame_policy;
 };
 
@@ -77,8 +76,8 @@ interface ExplorerHost {
   DiscardWindow(string token) => (bool accepted);
   CompleteOpen(uint64 request_id, bool propagate);
   CompleteDialog(uint64 request_id, bool propagate);
-  SetBehavior(string declarations) => (bool accepted);
-  SetContextMenuEnabled(bool enabled);
+  SetPolicy(string declarations) => (bool accepted);
+  Discard() => (bool accepted);
   SetFramePolicy(blink.mojom.FramePolicy frame_policy);
   Download(string url) => (bool accepted);
   GetDownloads() => (string detail_json);

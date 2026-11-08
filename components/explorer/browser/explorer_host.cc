@@ -5,7 +5,6 @@
 #include "tuffite/components/explorer/browser/explorer_host.h"
 
 #include <algorithm>
-#include <atomic>
 #include <utility>
 
 #include "base/base64.h"
@@ -53,6 +52,7 @@
 #include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
 #include "tuffite/components/explorer/browser/content/explorer_isolation.h"
 #include "tuffite/components/explorer/browser/explorer_browser_support.h"
+#include "tuffite/components/explorer/browser/explorer_lifecycle.h"
 #include "tuffite/components/explorer/browser/explorer_partition.h"
 #include "tuffite/components/explorer/browser/explorer_partition_snapshot.h"
 #include "tuffite/components/explorer/browser/explorer_policy_provider.h"
@@ -73,23 +73,16 @@ constexpr int32_t kExplorerIsolatedWorldId =
     content::ISOLATED_WORLD_ID_CONTENT_END;
 constexpr char kExplorerPartitionDomain[] = "tuffite-explorer";
 
-int64_t NextExplorerIsolationId() {
-  // Keep Explorer ids in a range navigation ids will not realistically reach
-  // while still satisfying EmbedderIsolationInfo's non-negative contract.
-  static std::atomic<int64_t> next_id{int64_t{1} << 62};
-  return next_id.fetch_add(1, std::memory_order_relaxed);
-}
-
 }  // namespace
 
 namespace {
-bool ApplyBehavior(const std::string& declarations, ExplorerPolicy* policy) {
-  auto overrides = ParseExplorerBehavior(declarations);
+bool ApplyPolicy(const std::string& declarations, ExplorerPolicy* policy) {
+  auto overrides = ParseExplorerPolicy(declarations);
   if (!overrides) {
     return false;
   }
-  policy->behavior.Apply(*overrides);
-  switch (policy->behavior[ExplorerAction::kNavigation].mode) {
+  policy->settings.Apply(*overrides);
+  switch (policy->settings[ExplorerAction::kNavigation].mode) {
     case ExplorerMode::kBrowser:
       policy->navigation = ExplorerNavigationPolicy::kAllow;
       break;
@@ -100,7 +93,7 @@ bool ApplyBehavior(const std::string& declarations, ExplorerPolicy* policy) {
       policy->navigation = ExplorerNavigationPolicy::kBlock;
       break;
   }
-  switch (policy->behavior[ExplorerAction::kDialog].mode) {
+  switch (policy->settings[ExplorerAction::kDialog].mode) {
     case ExplorerMode::kBrowser:
       policy->dialogs = ExplorerDialogPolicy::kBrowser;
       break;
@@ -170,6 +163,7 @@ class ExplorerDialogManager final : public content::JavaScriptDialogManager,
           host_->render_frame_host().GetBrowserContext(), request_id);
     }
     state_.Cancel();
+    SetDialogPending(false);
   }
 
   bool Respond(uint64_t request_id,
@@ -187,7 +181,9 @@ class ExplorerDialogManager final : public content::JavaScriptDialogManager,
     }
     ExplorerSurfaceHost::ForgetDialog(
         host_->render_frame_host().GetBrowserContext(), request_id, canceled);
-    return state_.Respond(request_id, accept, prompt_text);
+    const bool accepted = state_.Respond(request_id, accept, prompt_text);
+    SetDialogPending(state_.has_pending_dialog());
+    return accepted;
   }
 
   uint64_t Begin(DialogClosedCallback callback) {
@@ -198,10 +194,20 @@ class ExplorerDialogManager final : public content::JavaScriptDialogManager,
     }
     // Begin dismisses an older callback before installing the new one. Its
     // surface bookkeeping has already been removed above.
-    return state_.Begin(std::move(callback));
+    const auto id = state_.Begin(std::move(callback));
+    SetDialogPending(true);
+    return id;
   }
 
  private:
+  void SetDialogPending(bool pending) {
+    if (web_contents()) {
+      if (auto* lifecycle =
+              ExplorerLifecycle::FromWebContents(web_contents())) {
+        lifecycle->SetDialogPending(pending);
+      }
+    }
+  }
   void RenderFrameDeleted(content::RenderFrameHost* frame) override {
     if (state_.has_pending_dialog() &&
         (!source_document_.AsRenderFrameHostIfValid() ||
@@ -302,6 +308,11 @@ void ExplorerHost::Detach(
     std::move(callback).Run("", {}, "InvalidStateError");
     return;
   }
+  if (auto* lifecycle = ExplorerLifecycle::FromWebContents(contents);
+      lifecycle && !lifecycle->Wake()) {
+    std::move(callback).Run("", {}, "InvalidStateError");
+    return;
+  }
   if (dialog_manager_) {
     dialog_manager_->CancelDialogs(nullptr, true);
   }
@@ -315,6 +326,9 @@ void ExplorerHost::Detach(
   contents->SetDelegate(nullptr);
   client_.reset();
   SetExplorerOwner(contents, nullptr, false);
+  if (auto* lifecycle = ExplorerLifecycle::FromWebContents(contents)) {
+    lifecycle->SetAttached(false);
+  }
   auto owned = DetachExplorerWebContents(contents);
   auto& record =
       ExplorerTransferStore::GetOrCreateForCurrentDocument(&render_frame_host())
@@ -364,13 +378,13 @@ void ExplorerHost::Attach(const std::string& token,
     std::move(callback).Run("SecurityError");
     return;
   }
-  if (!ApplyBehavior(params->behavior, &policy)) {
+  if (!ApplyPolicy(params->policy, &policy)) {
     std::move(callback).Run("SyntaxError");
     return;
   }
   policy.isolated_browsing_context = params->isolated;
   auto security_policy = policy;
-  security_policy.behavior = record->policy().behavior;
+  security_policy.settings = record->policy().settings;
   security_policy.navigation = record->policy().navigation;
   security_policy.dialogs = record->policy().dialogs;
   // Exact policy equality keeps existing nested-tree grants valid.
@@ -414,6 +428,7 @@ void ExplorerHost::Attach(const std::string& token,
       return;
     }
   }
+  ExplorerLifecycle::CreateForWebContents(record->contents());
   attaching_policy_ = policy;
   attaching_transfer_ = record->GetWeakPtr();
   record->SetState("attaching");
@@ -440,7 +455,7 @@ void ExplorerHost::AttachTransferred(blink::FramePolicy frame_policy,
   auto owned = record->TakeContents();
   policy_ = std::move(attaching_policy_);
   attaching_policy_.reset();
-  ExplorerSurfaceData::UpdateExplorerBehavior(owned.get(), *policy_);
+  ExplorerSurfaceData::UpdateExplorerPolicy(owned.get(), *policy_);
   document_id_ = record->document_id();
   primary_navigation_error_.reset();
   const auto& partition = owned->GetPrimaryMainFrame()
@@ -461,6 +476,8 @@ void ExplorerHost::AttachTransferred(blink::FramePolicy frame_policy,
   SetExplorerOwner(WebContentsObserver::web_contents(), &render_frame_host(),
                    record->policy().allow_parent_messages, frame_policy,
                    record->policy().isolated_browsing_context);
+  ExplorerLifecycle::FromWebContents(WebContentsObserver::web_contents())
+      ->SetAttached(true);
   WebContentsObserver::web_contents()->UpdateWebContentsVisibility(
       outer->GetVisibility());
   attaching_transfer_.reset();
@@ -496,7 +513,7 @@ void ExplorerHost::Create(mojom::ExplorerCreateParamsPtr params,
   if (params->partition == "shared" ||
       !ResolvePolicy(params->partition.empty() ? "shared" : params->partition,
                      &policy) ||
-      !ApplyBehavior(params->behavior, &policy)) {
+      !ApplyPolicy(params->policy, &policy)) {
     std::move(callback).Run(false);
     return;
   }
@@ -550,7 +567,8 @@ void ExplorerHost::Create(mojom::ExplorerCreateParamsPtr params,
       !partition_config.is_default() && url.IsAboutBlank()
           ? render_frame_host().GetLastCommittedURL()
           : url;
-  const int64_t explorer_isolation_id = NextExplorerIsolationId();
+  const int64_t explorer_isolation_id = ResolveExplorerIsolationId(
+      *browser_context, render_frame_host().GetLastCommittedOrigin(), *policy_);
   scoped_refptr<content::SiteInstance> site_instance =
       CreateExplorerSiteInstance(browser_context, site_instance_url,
                                  partition_config, explorer_isolation_id);
@@ -559,6 +577,7 @@ void ExplorerHost::Create(mojom::ExplorerCreateParamsPtr params,
   owner_renderer_process_id_ =
       render_frame_host().GetProcess()->GetDeprecatedID();
   pending_inner_web_contents_ = content::WebContents::Create(create_params);
+  ExplorerLifecycle::CreateForWebContents(pending_inner_web_contents_.get());
   pending_inner_web_contents_->GetMutableRendererPrefs()->accept_languages =
       content::WebContents::FromRenderFrameHost(&render_frame_host())
           ->GetMutableRendererPrefs()
@@ -590,8 +609,6 @@ void ExplorerHost::Create(mojom::ExplorerCreateParamsPtr params,
   }
   ExplorerSurfaceData::SetExplorerPolicy(pending_inner_web_contents_.get(),
                                          *policy_);
-  ExplorerSurfaceData::SetExplorerContextMenuEnabled(
-      pending_inner_web_contents_.get(), params->context_menu_enabled);
   pending_frame_token_ = params->frame_to_replace;
   pending_create_callback_ = std::move(callback);
   client_.Bind(std::move(client));
@@ -651,6 +668,7 @@ void ExplorerHost::AttachPrepared(
   SetExplorerOwner(attached, &render_frame_host(),
                    policy_->allow_parent_messages, frame_policy,
                    policy_->isolated_browsing_context);
+  ExplorerLifecycle::FromWebContents(attached)->SetAttached(true);
   attached->UpdateWebContentsVisibility(outer->GetVisibility());
   pending_create_callback_ = std::move(callback);
   preparing_attachment_ = false;
@@ -680,6 +698,13 @@ void ExplorerHost::BeginAttach(GURL initial_url,
       &ExplorerHost::AttachPrepared, weak_factory_.GetWeakPtr(),
       std::move(pending_inner_web_contents_),
       std::move(pending_create_callback_), initial_url, frame_policy));
+}
+
+void ExplorerHost::Discard(DiscardCallback callback) {
+  auto* contents = WebContentsObserver::web_contents();
+  auto* lifecycle =
+      contents ? ExplorerLifecycle::FromWebContents(contents) : nullptr;
+  std::move(callback).Run(lifecycle && lifecycle->Discard());
 }
 
 void ExplorerHost::Navigate(const std::string& url, NavigateCallback callback) {
@@ -753,6 +778,11 @@ void ExplorerHost::ExecuteJavaScript(const std::string& source,
     // remains reserved until Content exposes an framework-safe API.
     std::move(callback).Run(false, std::string(),
                             "main-world execution is not available");
+    return;
+  }
+  if (auto* lifecycle = ExplorerLifecycle::FromWebContents(contents);
+      lifecycle && !lifecycle->Wake()) {
+    std::move(callback).Run(false, std::string(), "Explorer page is discarded");
     return;
   }
   contents->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
@@ -1064,12 +1094,6 @@ void ExplorerHost::SetFramePolicy(const blink::FramePolicy& policy) {
     ExplorerSurfaceHost::UpdateFrameAncestors(contents, base::DoNothing());
   }
 }
-void ExplorerHost::SetContextMenuEnabled(bool enabled) {
-  if (content::WebContents* contents = WebContentsObserver::web_contents()) {
-    ExplorerSurfaceData::SetExplorerContextMenuEnabled(contents, enabled);
-  }
-}
-
 bool ExplorerHost::LoadURL(const GURL& url) {
   if (!WebContentsObserver::web_contents() || !CanNavigateTo(url)) {
     if (client_) {
@@ -1117,6 +1141,9 @@ std::string ExplorerHost::NavigationStateJson() const {
   state.Set("canGoBack", contents->GetController().CanGoBack());
   state.Set("canGoForward", contents->GetController().CanGoForward());
   state.Set("isLoading", contents->IsLoading());
+  auto* lifecycle = ExplorerLifecycle::FromWebContents(contents);
+  state.Set("frozen", lifecycle && lifecycle->frozen());
+  state.Set("discarded", lifecycle && lifecycle->discarded());
   state.Set("zoomFactor", ExplorerSurfaceData::GetZoomFactor(contents));
   state.Set("audioMuted", contents->IsAudioMuted());
   state.Set("audible", contents->IsCurrentlyAudible());
@@ -1351,7 +1378,7 @@ content::WebContents* ExplorerHost::AddNewContents(
   }
   auto* source_frame = ExplorerSurfaceData::GetWindowSource(new_contents.get());
   if (!source_frame || !source_frame->IsActive() || !policy_ ||
-      policy_->behavior[ExplorerAction::kNewWindow].mode ==
+      policy_->settings[ExplorerAction::kNewWindow].mode ==
           ExplorerMode::kBlock ||
       !CanNavigateTo(target_url) ||
       ExplorerRouter::Get(source).transfer_count() >=
@@ -1362,7 +1389,7 @@ content::WebContents* ExplorerHost::AddNewContents(
     return nullptr;
   }
   auto* contents = new_contents.get();
-  if (policy_->behavior[ExplorerAction::kNewWindow].mode ==
+  if (policy_->settings[ExplorerAction::kNewWindow].mode ==
       ExplorerMode::kBrowser) {
     auto* opened = policy_provider_->OpenBrowserWindow(std::move(new_contents));
     if (was_blocked) {
@@ -1388,7 +1415,7 @@ content::WebContents* ExplorerHost::AddNewContents(
           },
           weak_factory_.GetWeakPtr(), token),
       base::Milliseconds(
-          policy_->behavior[ExplorerAction::kNewWindow].timeout_ms));
+          policy_->settings[ExplorerAction::kNewWindow].timeout_ms));
   base::DictValue request;
   request.Set("token", record.token());
   request.Set("url", target_url.spec());
@@ -1501,30 +1528,43 @@ void ExplorerHost::ExitPictureInPicture() {
   }
 }
 
-void ExplorerHost::SetBehavior(const std::string& declarations,
-                               SetBehaviorCallback callback) {
+void ExplorerHost::SetPolicy(const std::string& declarations,
+                             SetPolicyCallback callback) {
   if (!policy_) {
     std::move(callback).Run(false);
     return;
   }
   ExplorerPolicy policy;
   if (!ResolvePolicy(policy_->partition, &policy) ||
-      !ApplyBehavior(declarations, &policy)) {
+      !ApplyPolicy(declarations, &policy)) {
     std::move(callback).Run(false);
     return;
   }
-  policy_->behavior = policy.behavior;
+  const bool dialogs_changed =
+      policy_->settings[ExplorerAction::kDialog] !=
+          policy.settings[ExplorerAction::kDialog] ||
+      policy_->settings[ExplorerAction::kExternalProtocol] !=
+          policy.settings[ExplorerAction::kExternalProtocol];
+  const bool popups_changed = policy_->settings[ExplorerAction::kNewWindow] !=
+                              policy.settings[ExplorerAction::kNewWindow];
+  policy_->settings = policy.settings;
   policy_->navigation = policy.navigation;
   policy_->dialogs = policy.dialogs;
-  if (dialog_manager_) {
+  if (dialogs_changed && dialog_manager_) {
     dialog_manager_->CancelDialogs(nullptr, true);
+  }
+  if (popups_changed) {
+    auto windows = std::move(offered_windows_);
+    for (const auto& token : windows) {
+      ExplorerTransferRecord::DiscardWindow(render_frame_host(), token, true);
+    }
   }
   auto* contents = WebContentsObserver::web_contents();
   if (!contents) {
     contents = pending_inner_web_contents_.get();
   }
   if (contents) {
-    ExplorerSurfaceData::UpdateExplorerBehavior(contents, *policy_);
+    ExplorerSurfaceData::UpdateExplorerPolicy(contents, *policy_);
   }
   std::move(callback).Run(true);
 }
@@ -1540,14 +1580,14 @@ bool ExplorerHost::DelegateExternalProtocol(content::WebContents* contents,
     // window still has its policy and may use normal native confirmation.
     return ExplorerRouter::Get(contents).FindTransferForContents(contents) ||
            !policy ||
-           policy->behavior[ExplorerAction::kExternalProtocol].mode !=
+           policy->settings[ExplorerAction::kExternalProtocol].mode !=
                ExplorerMode::kBrowser;
   }
   if (!host->policy_ || !host->dialog_manager_) {
     return true;
   }
   const auto behavior =
-      host->policy_->behavior[ExplorerAction::kExternalProtocol];
+      host->policy_->settings[ExplorerAction::kExternalProtocol];
   if (behavior.mode == ExplorerMode::kBrowser) {
     return false;
   }
@@ -1638,7 +1678,7 @@ void ExplorerHost::RequestDialog(
           },
           weak_factory_.GetWeakPtr(), request_id),
       base::Milliseconds(
-          policy_->behavior[ExplorerAction::kDialog].timeout_ms));
+          policy_->settings[ExplorerAction::kDialog].timeout_ms));
   EmitDialogBubble(request_id, kind, base::UTF16ToUTF8(message),
                    base::UTF16ToUTF8(default_value), is_reload,
                    ExplorerSurfaceHost::RefForWebContents(

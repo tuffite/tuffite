@@ -52,7 +52,7 @@ try {
   assert.equal(await evaluate(() => window.__frameworkModuleOnly), true, 'Framework clients are module-only');
   assert.equal(await evaluate(() => window.__scopedGrantsRejected), true, 'Incompatible scopes fail closed in Browser C++, Browser Rust and Utility Rust');
   assert.deepEqual(await evaluate(() => window.__typedUtilitySecurity), {
-    rawBypassDenied:true, rawCancelDenied:true, forgedServiceDenied:true, schemaMismatchRejected:true,
+    rawBypassDenied:true, rawCancelDenied:true, forgedServiceDenied:true, malformedParametersRejected:true,
   });
   const ownership = await evaluate(() => window.__interfaceOwnership);
   assert.equal(ownership.sharedState, true);

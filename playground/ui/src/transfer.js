@@ -12,9 +12,9 @@ let before;
 const events = [];
 const create = () => {
   const element = document.createElement("explorer");
-  element.behavior = "navigation: browser;";
-  element.behavior += " dialog: delegate;";
-  element.contextMenuEnabled = true;
+  element.policy = "navigation: browser;";
+  element.policy += " dialog: delegate;";
+  element.policy += " context-menu: browser;";
   element.style.cssText =
     "display:block;flex:1;min-width:0;height:100%;border:1px solid #888";
   for (const name of [

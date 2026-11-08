@@ -1,11 +1,14 @@
 // Copyright 2026 The Tuffite Authors
 // SPDX-License-Identifier: MIT OR Apache-2.0
+#include <utility>
+
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "tuffite/components/explorer/common/external_protocol.h"
+#include "tuffite/framework/app/services/manifest/manifest_loader.h"
 #include "tuffite/framework/app/services/manifest/manifest_service_factory.h"
 #include "tuffite/framework/browser/services/isolated/isolated_registry.h"
 #include "url/url_util.h"
@@ -15,17 +18,11 @@ namespace {
 std::unique_ptr<ManifestService> LoadManifest(
     const base::FilePath& root,
     std::string* error,
-    const app::StartupEnvironment& environment = {},
-    const app::BrowserOptions& options = {}) {
-  auto definition = app::ManifestLoader::Load(root, error);
-  if (!definition) {
-    return nullptr;
-  }
-  auto configuration = app::ConfigurationAssembler::Build(
-      std::move(*definition), environment, options, error);
-  return configuration
-             ? ManifestServiceFactory::Create(std::move(*configuration))
-             : nullptr;
+    const ManifestEnvironment& environment = {},
+    const ManifestOptions& options = {}) {
+  auto manifest = ManifestLoader::Load(root, error, {}, environment, options);
+  return manifest ? ManifestServiceFactory::Create(std::move(*manifest))
+                  : nullptr;
 }
 
 constexpr char kManifest[] = R"({
@@ -252,27 +249,92 @@ class OriginCapabilityTest : public testing::Test {
   std::unique_ptr<ManifestService> manifest_;
   std::string error_;
 };
-TEST(ExplorerBehaviorTest, ParsesAtomicDeclarationsAndDurations) {
-  auto parsed = ParseExplorerBehavior(
+TEST(ExplorerPolicySettingsTest, ParsesAtomicDeclarationsAndDurations) {
+  auto parsed = ParseExplorerPolicy(
       " navigation: delegate; dialog: block; external-protocol: delegate "
       "timeout(15s); new-window: browser; ");
   ASSERT_TRUE(parsed);
-  ExplorerBehavior behavior;
+  ExplorerPolicySettings behavior;
   behavior.Apply(*parsed);
   EXPECT_EQ(behavior[ExplorerAction::kNavigation].mode,
             ExplorerMode::kDelegate);
   EXPECT_EQ(behavior[ExplorerAction::kExternalProtocol].timeout_ms, 15000);
   EXPECT_EQ(behavior[ExplorerAction::kNewWindow].mode, ExplorerMode::kBrowser);
-  EXPECT_FALSE(
-      ParseExplorerBehavior("external-protocol: browser timeout(15s)"));
-  EXPECT_FALSE(ParseExplorerBehavior("dialog: delegate timeout(300001ms)"));
-  EXPECT_FALSE(ParseExplorerBehavior("unknown: browser"));
-  EXPECT_FALSE(ParseExplorerBehavior("navigation: allow"));
-  EXPECT_FALSE(ParseExplorerBehavior("dialog: delegate, timeout=15"));
-  parsed = ParseExplorerBehavior("navigation: block; navigation: browser;");
+  EXPECT_FALSE(ParseExplorerPolicy("external-protocol: browser timeout(15s)"));
+  EXPECT_FALSE(ParseExplorerPolicy("dialog: delegate timeout(300001ms)"));
+  EXPECT_FALSE(ParseExplorerPolicy("unknown: browser"));
+  EXPECT_FALSE(ParseExplorerPolicy("navigation: allow"));
+  EXPECT_FALSE(ParseExplorerPolicy("dialog: delegate, timeout=15"));
+  parsed = ParseExplorerPolicy("navigation: block; navigation: browser;");
   ASSERT_TRUE(parsed);
   behavior.Apply(*parsed);
   EXPECT_EQ(behavior[ExplorerAction::kNavigation].mode, ExplorerMode::kBrowser);
+}
+
+TEST(ExplorerPolicyTest, IndependentDurationsAndStrictValueTypes) {
+  ExplorerDeclarationError error;
+  auto parsed = ParseExplorerPolicy(
+      "/* bounded idle policies */ freeze: never; discard: 1.5m; "
+      "context-menu: browser; dialog: delegate timeout(.5s);",
+      &error);
+  ASSERT_TRUE(parsed) << error.message;
+  ExplorerPolicySettings settings;
+  settings.Apply(*parsed);
+  EXPECT_FALSE(settings.freeze.Resolve(kExplorerDefaultFreezeMs));
+  EXPECT_EQ(settings.discard.Resolve(kExplorerDefaultDiscardMs), 90000);
+  EXPECT_EQ(settings[ExplorerAction::kContextMenu].mode,
+            ExplorerMode::kBrowser);
+  EXPECT_EQ(settings[ExplorerAction::kDialog].timeout_ms, 500);
+  parsed = ParseExplorerPolicy("freeze: never; freeze: default; discard: 0ms;");
+  ASSERT_TRUE(parsed);
+  settings.Apply(*parsed);
+  EXPECT_EQ(settings.freeze.Resolve(kExplorerDefaultFreezeMs), 30000);
+  EXPECT_EQ(settings.discard.Resolve(kExplorerDefaultDiscardMs), 0);
+  for (const auto& [duration, expected] : {std::pair{"1.001s", 1001},
+                                           {"0.00005m", 3},
+                                           {".0000025h", 9},
+                                           {"1.0000000000000000s", 1000}}) {
+    parsed = ParseExplorerPolicy(std::string("freeze: ") + duration);
+    ASSERT_TRUE(parsed) << duration;
+    settings.Apply(*parsed);
+    EXPECT_EQ(settings.freeze.Resolve(kExplorerDefaultFreezeMs), expected);
+  }
+  for (const char* invalid :
+       {"freeze: -1s", "freeze: 25h", "freeze: 1", "discard: 0.0001s",
+        "freeze: .0000000001h", "freeze: 24.0000000001h",
+        "context-menu: delegate", "dialog: delegate timeout(0s)",
+        "dialog: delegate timeout(1s, 2s)", "freeze: default never",
+        "background: auto", "freeze: never; unexpected: browser",
+        "freeze: never; /* unfinished"}) {
+    EXPECT_FALSE(ParseExplorerPolicy(invalid, &error)) << invalid;
+    EXPECT_FALSE(error.message.empty());
+  }
+}
+
+TEST(ExplorerPolicyTest, GenericSyntaxRetainsFunctionsAndSourceLocations) {
+  ExplorerDeclarationError error;
+  auto parsed = ParseExplorerDeclarations(
+      " future: choose(nested(2s), 'a;b:c'); /* comment */ freeze: 30s;",
+      &error);
+  ASSERT_TRUE(parsed) << error.message;
+  ASSERT_EQ(parsed->size(), 2u);
+  EXPECT_EQ(parsed->front().name, "future");
+  EXPECT_EQ(parsed->front().offset, 1u);
+  const auto& value = parsed->front().values.front();
+  EXPECT_EQ(value.kind, ExplorerValue::Kind::kFunction);
+  EXPECT_EQ(value.text, "choose");
+  ASSERT_EQ(value.arguments.size(), 3u);
+  EXPECT_EQ(value.arguments[0].kind, ExplorerValue::Kind::kFunction);
+  EXPECT_EQ(value.arguments[1].kind, ExplorerValue::Kind::kComma);
+  EXPECT_EQ(value.arguments[2].text, "a;b:c");
+  EXPECT_FALSE(ParseExplorerPolicy("future: choose(nested(2s), 'a;b:c');"));
+  for (const char* invalid :
+       {"freeze 30s", "freeze:", "dialog: delegate timeout(1s", "x: f(,1s)",
+        "x: f(1s,)", "x: 'unterminated", "x: f(f(f(f(f(f(f(f(f(1s)))))))))"}) {
+    EXPECT_FALSE(ParseExplorerDeclarations(invalid, &error)) << invalid;
+    EXPECT_FALSE(error.message.empty());
+  }
+  EXPECT_FALSE(ParseExplorerDeclarations(std::string(4097, ' '), &error));
 }
 
 TEST_F(OriginCapabilityTest, RouteProvidersAreExclusiveAndTyped) {
@@ -327,7 +389,7 @@ TEST_F(OriginCapabilityTest, DynamicRoutesUseSpecificityAndStaticFallback) {
   EXPECT_FALSE(LoadManifest(root_.GetPath(), &error_));
 }
 
-TEST_F(OriginCapabilityTest, OriginRulesComposeBehaviorAndCspIndependently) {
+TEST_F(OriginCapabilityTest, OriginRulesComposePolicyAndCspIndependently) {
   auto text = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
   auto* rules = text->FindDict("browser")->FindList("rules");
   rules->Append(
@@ -336,20 +398,24 @@ TEST_F(OriginCapabilityTest, OriginRulesComposeBehaviorAndCspIndependently) {
           .Set("csp", "img-src 'none'")
           .Set("explorer",
                base::DictValue().Set(
-                   "behavior", base::DictValue()
-                                   .Set("navigation", base::DictValue().Set(
-                                                          "mode", "delegate"))
-                                   .Set("externalProtocol",
-                                        base::DictValue()
-                                            .Set("mode", "delegate")
-                                            .Set("timeoutMs", 15000)))));
+                   "policy", base::DictValue()
+                                 .Set("freeze", 1000)
+                                 .Set("discard", "never")
+                                 .Set("contextMenu",
+                                      base::DictValue().Set("mode", "browser"))
+                                 .Set("navigation",
+                                      base::DictValue().Set("mode", "delegate"))
+                                 .Set("externalProtocol",
+                                      base::DictValue()
+                                          .Set("mode", "delegate")
+                                          .Set("timeoutMs", 15000)))));
   rules->Append(
       base::DictValue()
           .Set("origins", base::ListValue().Append("originlab://main"))
           .Set("csp", "font-src 'none'")
           .Set("explorer",
                base::DictValue().Set(
-                   "behavior",
+                   "policy",
                    base::DictValue().Set(
                        "navigation", base::DictValue().Set("mode", "block")))));
   ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
@@ -359,6 +425,10 @@ TEST_F(OriginCapabilityTest, OriginRulesComposeBehaviorAndCspIndependently) {
   auto behavior = manifest->ExplorerDefaults(Origin("originlab://main/path"));
   EXPECT_EQ(behavior[ExplorerAction::kNavigation].mode, ExplorerMode::kBlock);
   EXPECT_EQ(behavior[ExplorerAction::kExternalProtocol].timeout_ms, 15000);
+  EXPECT_EQ(behavior.freeze.Resolve(kExplorerDefaultFreezeMs), 1000);
+  EXPECT_FALSE(behavior.discard.Resolve(kExplorerDefaultDiscardMs));
+  EXPECT_EQ(behavior[ExplorerAction::kContextMenu].mode,
+            ExplorerMode::kBrowser);
   EXPECT_EQ(manifest
                 ->ExplorerDefaults(
                     Origin("https://example.com"))[ExplorerAction::kNavigation]
@@ -772,15 +842,14 @@ TEST(ManifestBootstrapTest, ReadsBeforeApplicationSchemeRegistration) {
       root.GetPath().AppendASCII("tuffite.json"),
       R"({"app":{"schemes":["bootstraponly"],"windows":[{"url":"bootstraponly://main/index.html"}],"network":{"disableHttp2":true}}})"));
   std::string error;
-  EXPECT_EQ(app::ManifestLoader::ReadApplicationSchemes(root.GetPath(), &error),
+  EXPECT_EQ(ManifestLoader::ReadApplicationSchemes(root.GetPath(), &error),
             std::make_optional(std::vector<std::string>{"bootstraponly"}));
-  EXPECT_TRUE(app::ManifestLoader::ReadNetworkDisableHttp2(root.GetPath()));
+  EXPECT_TRUE(ManifestLoader::ReadNetworkDisableHttp2(root.GetPath()));
   ASSERT_TRUE(base::WriteFile(
       root.GetPath().AppendASCII("tuffite.json"),
       R"({"app":{"windows":[{"url":"https://example.com/"}]}})"));
-  EXPECT_FALSE(
-      app::ManifestLoader::ReadApplicationSchemes(root.GetPath(), &error));
-  EXPECT_FALSE(app::ManifestLoader::ReadNetworkDisableHttp2(root.GetPath()));
+  EXPECT_FALSE(ManifestLoader::ReadApplicationSchemes(root.GetPath(), &error));
+  EXPECT_FALSE(ManifestLoader::ReadNetworkDisableHttp2(root.GetPath()));
 }
 TEST_F(OriginCapabilityTest, MultipleSchemesRemainInternalAndOriginScoped) {
   auto document = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
@@ -829,7 +898,7 @@ TEST_F(OriginCapabilityTest, InvalidSchemeDeclarationsAreRejected) {
     ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
                                 *base::WriteJson(*document)));
     EXPECT_FALSE(
-        app::ManifestLoader::ReadApplicationSchemes(root_.GetPath(), &error_));
+        ManifestLoader::ReadApplicationSchemes(root_.GetPath(), &error_));
     EXPECT_FALSE(LoadManifest(root_.GetPath(), &error_));
   }
 }
@@ -850,12 +919,9 @@ TEST_F(OriginCapabilityTest, FrozenRustDeclarationsPrecedePackagedSnapshot) {
   ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
                               *base::WriteJson(metadata)));
   const auto bytes = *base::WriteJson(*runtime);
-  EXPECT_TRUE(app::ManifestLoader::ReadApplicationSchemes(root_.GetPath(),
-                                                          &error_, bytes));
-  auto definition = app::ManifestLoader::Load(root_.GetPath(), &error_, bytes);
-  ASSERT_TRUE(definition) << error_;
-  auto configuration = app::ConfigurationAssembler::Build(
-      std::move(*definition), {}, {}, &error_);
+  EXPECT_TRUE(
+      ManifestLoader::ReadApplicationSchemes(root_.GetPath(), &error_, bytes));
+  auto configuration = ManifestLoader::Load(root_.GetPath(), &error_, bytes);
   ASSERT_TRUE(configuration) << error_;
   auto service = ManifestServiceFactory::Create(std::move(*configuration));
   EXPECT_FALSE(service->IsDevToolsEnabled());
@@ -942,7 +1008,7 @@ TEST_F(OriginCapabilityTest, RemovedUtilitiesAndMalformedDevToolsAreRejected) {
 
 TEST_F(OriginCapabilityTest, BrowserSetupAddsDenialsAndRejectsInvalidPatterns) {
   std::string error;
-  app::BrowserOptions options;
+  ManifestOptions options;
   options.security.devtools.denied_origins = {"originlab://main"};
   auto manifest = LoadManifest(root_.GetPath(), &error, {}, options);
   ASSERT_TRUE(manifest) << error;
@@ -958,28 +1024,26 @@ TEST_F(OriginCapabilityTest, BrowserSetupAddsDenialsAndRejectsInvalidPatterns) {
   EXPECT_FALSE(LoadManifest(root_.GetPath(), &error, {}, options));
 }
 
-TEST_F(OriginCapabilityTest,
-       EffectiveConfigurationOwnsInputsBeforeServiceCreation) {
+TEST_F(OriginCapabilityTest, EffectiveManifestOwnsInputsBeforeServiceCreation) {
   auto document = base::JSONReader::ReadDict(kManifest, base::JSON_PARSE_RFC);
   ASSERT_TRUE(document);
   ASSERT_TRUE(base::WriteFile(root_.GetPath().AppendASCII("tuffite.json"),
                               *base::WriteJson(*document)));
-  auto definition = app::ManifestLoader::Load(root_.GetPath(), &error_);
-  ASSERT_TRUE(definition) << error_;
-  app::StartupEnvironment environment{.development_url =
-                                          GURL("http://127.0.0.1:5173/main")};
-  app::BrowserOptions options;
+  ManifestEnvironment environment{.development_url =
+                                      GURL("http://127.0.0.1:5173/main")};
+  ManifestOptions options;
   options.security.devtools.denied_origins = {"originlab://main"};
-  auto configuration = app::ConfigurationAssembler::Build(
-      std::move(*definition), environment, options, &error_);
+  auto configuration =
+      ManifestLoader::Load(root_.GetPath(), &error_, {}, environment, options);
   ASSERT_TRUE(configuration) << error_;
 
-  // Creating/querying the service uses only the frozen snapshot, not caller
-  // options or the package file. Runtime bytes retain the package declaration.
+  // The frozen result owns input values before service creation and does not
+  // re-read the package. Runtime bytes retain the package declaration.
   environment.development_url = GURL("http://127.0.0.1:6000/");
   options.security.devtools.denied_origins.clear();
   ASSERT_TRUE(base::DeleteFile(root_.GetPath().AppendASCII("tuffite.json")));
   auto service = ManifestServiceFactory::Create(std::move(*configuration));
+  ASSERT_TRUE(service) << error_;
   EXPECT_EQ(service->startup_windows().front().url,
             GURL("http://127.0.0.1:5173/main"));
   EXPECT_FALSE(service->IsDevToolsAllowed(Origin("originlab://main")));
@@ -997,7 +1061,7 @@ TEST_F(OriginCapabilityTest,
 }
 
 TEST_F(OriginCapabilityTest, HostRestrictionsDoNotIntroduceCapabilityGrants) {
-  app::BrowserOptions options;
+  ManifestOptions options;
   options.security.devtools.denied_origins = {"https://*.example.com"};
   auto service = LoadManifest(root_.GetPath(), &error_, {}, options);
   ASSERT_TRUE(service) << error_;

@@ -222,14 +222,6 @@ pub(super) fn generate(
     let mut facade = Quote::new(ast)
         .bind("$Factory", Hole::Ident(ast.ident(&factory)))
         .bind(
-            "$Transport",
-            Hole::Ident(ast.ident(if root == "tuffite" {
-                "invokeFrameworkMojom"
-            } else {
-                "invokeBinary"
-            })),
-        )
-        .bind(
             "$Namespace",
             Hole::Expr(ast.expression_string_literal(SPAN, ast.atom(root), None)),
         )
@@ -271,7 +263,16 @@ pub(super) fn generate(
             .body
             .retain(|s| !matches!(s, Statement::ImportDeclaration(_)));
         let runtime_source = include_str!("runtime.mjs");
-        let mut runtime = quote::parse(ast, runtime_source, "runtime.mjs")?;
+        let mut runtime =
+            quote::parse(ast, include_str!("chromium_mojo.mjs"), "chromium_mojo.mjs")?;
+        runtime
+            .body
+            .retain(|s| !matches!(s, Statement::ExportNamedDeclaration(_)));
+        let mut client_runtime = quote::parse(ast, runtime_source, "runtime.mjs")?;
+        client_runtime
+            .body
+            .retain(|s| !matches!(s, Statement::ImportDeclaration(_)));
+        runtime.body.extend(client_runtime.body);
         runtime.body.extend(metadata.body);
         metadata = runtime;
         let mut runtime_types = quote::parse(ast, include_str!("runtime.d.ts"), "runtime.d.ts")?;
@@ -280,7 +281,14 @@ pub(super) fn generate(
     }
     metadata.body.extend(facade.body);
     Ok(Bindings {
-        javascript: quote::emit(&metadata, "index.js")?,
+        javascript: if root == "tuffite" {
+            format!(
+                "// Includes Chromium Mojo bindings (BSD-3-Clause); see tuffite/CHROMIUM_LICENSE.\n{}",
+                quote::emit(&metadata, "index.js")?
+            )
+        } else {
+            quote::emit(&metadata, "index.js")?
+        },
         declarations: quote::emit(&types, "index.d.ts")?,
     })
 }

@@ -60,6 +60,7 @@ struct DispatchTask {
     request_id: u64,
     enqueued_at: Instant,
     event: Vec<u8>,
+    mojom: Option<(u64, u64, crate::native_mojom::Reply)>,
 }
 
 /// Sender side of the dispatch queue. Cheap to clone but only the ABI
@@ -72,6 +73,33 @@ pub(crate) struct DispatchSender {
 }
 
 impl DispatchSender {
+    pub(crate) fn enqueue_mojom(
+        &self,
+        command: u64,
+        fingerprint: u64,
+        payload: Vec<u8>,
+        reply: crate::native_mojom::Reply,
+    ) -> Result<(), Status> {
+        self.in_flight
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+                (n < self.max_queue_depth).then_some(n + 1)
+            })
+            .map_err(|_| Status::ResourceExhausted)?;
+        let task = DispatchTask {
+            request_id: 0,
+            enqueued_at: Instant::now(),
+            event: payload,
+            mojom: Some((command, fingerprint, reply)),
+        };
+        self.tx.try_send(task).map_err(|error| {
+            self.in_flight.fetch_sub(1, Ordering::AcqRel);
+            match error {
+                mpsc::TrySendError::Full(_) => Status::ResourceExhausted,
+                mpsc::TrySendError::Disconnected(_) => Status::InvalidState,
+            }
+        })
+    }
+
     /// Attempts to enqueue a dispatch. Returns
     /// - `Ok(())` when the request is enqueued and the worker will process it.
     /// - `Err(Status::ResourceExhausted)` when the bounded queue is full.
@@ -87,6 +115,7 @@ impl DispatchSender {
             request_id,
             enqueued_at: Instant::now(),
             event,
+            mojom: None,
         };
         if let Err(error) = self.tx.try_send(task) {
             // Roll back the reservation. Either the worker is gone
@@ -200,6 +229,21 @@ impl DispatchScheduler {
     /// Enqueues one dispatch onto the worker. Returns the same status codes
     /// as [`DispatchSender::enqueue`] and additionally
     /// [`Status::InvalidState`] once [`shutdown`] has been called.
+    pub(crate) fn enqueue_mojom(
+        &self,
+        command: u64,
+        fingerprint: u64,
+        payload: Vec<u8>,
+        reply: crate::native_mojom::Reply,
+    ) -> Result<(), Status> {
+        if !self.ready.load(Ordering::Acquire) {
+            return Err(Status::InvalidState);
+        }
+        self.sender
+            .as_ref()
+            .ok_or(Status::InvalidState)?
+            .enqueue_mojom(command, fingerprint, payload, reply)
+    }
     pub(crate) fn enqueue(&self, request_id: u64, event: Vec<u8>) -> Result<(), Status> {
         if !self.ready.load(Ordering::Acquire) {
             return Err(Status::InvalidState);
@@ -249,6 +293,28 @@ fn run_worker(
         let _span =
             tracing::debug_span!("runtime.dispatch", request_id = task.request_id).entered();
         let sit_time = task.enqueued_at.elapsed();
+        if let Some((command, fingerprint, reply)) = task.mojom {
+            let outcome = if stopping.load(Ordering::Acquire) || sit_time > queue_deadline {
+                Err(crate::CommandError::Failed(
+                    "Mojo operation cancelled or expired".into(),
+                ))
+            } else {
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    dispatch_command(
+                        application.as_mut(),
+                        Command::new(command, fingerprint, &task.event),
+                        stop,
+                        task.enqueued_at + queue_deadline,
+                    )
+                }))
+                .unwrap_or_else(|_| {
+                    Err(crate::CommandError::Failed("Mojo handler panicked".into()))
+                })
+            };
+            reply.complete(outcome);
+            in_flight.fetch_sub(1, Ordering::AcqRel);
+            continue;
+        }
         let response = if stopping.load(Ordering::Acquire) {
             protocol::encode_scheduler_failure(task.request_id, SCHEDULER_CANCELLED_MSG)
         } else if sit_time > queue_deadline {
@@ -259,28 +325,13 @@ fn run_worker(
             tracing::warn!("dispatch queue deadline exceeded");
             protocol::encode_scheduler_failure(task.request_id, SCHEDULER_TIMEOUT_MSG)
         } else {
-            protocol::dispatch_with(&task.event, |id, schema_fingerprint, payload| {
-                if id == crate::url_handler::URL_COMMAND {
-                    let request: crate::url_handler::Request = serde_json::from_slice(payload)
-                        .map_err(|e| crate::CommandError::InvalidArgument(e.to_string()))?;
-                    let url = crate::Url::parse(&request.url)
-                        .map_err(|e| crate::CommandError::InvalidArgument(e.to_string()))?;
-                    let context = crate::ResolveContext {
-                        request,
-                        stop: stop.clone(),
-                        session: None,
-                        deadline: task.enqueued_at + queue_deadline,
-                    };
-                    crate::lifecycle::run_until(
-                        application.resolve(&url, context),
-                        &stop.0,
-                        task.enqueued_at + queue_deadline,
-                    )
-                    .and_then(crate::Resolution::encode)
-                    .map_err(|e| crate::CommandError::Failed(e.to_string()))
-                } else {
-                    application.dispatch(Command::new(id, schema_fingerprint, payload))
-                }
+            protocol::dispatch_with(&task.event, |id, fingerprint, payload| {
+                dispatch_command(
+                    application.as_mut(),
+                    Command::new(id, fingerprint, payload),
+                    stop,
+                    task.enqueued_at + queue_deadline,
+                )
             })
         };
         let runtime_handle = runtime_identity.load(Ordering::Acquire);
@@ -290,6 +341,30 @@ fn run_worker(
         in_flight.fetch_sub(1, Ordering::AcqRel);
     }
     application
+}
+
+fn dispatch_command(
+    application: &mut dyn ErasedBrowser,
+    command: Command<'_>,
+    stop: &crate::StopSignal,
+    deadline: Instant,
+) -> crate::CommandResult {
+    if command.id() != crate::url_handler::URL_COMMAND {
+        return application.dispatch(command);
+    }
+    let request: crate::url_handler::Request = serde_json::from_slice(command.payload())
+        .map_err(|e| crate::CommandError::InvalidArgument(e.to_string()))?;
+    let url = crate::Url::parse(&request.url)
+        .map_err(|e| crate::CommandError::InvalidArgument(e.to_string()))?;
+    let context = crate::ResolveContext {
+        request,
+        stop: stop.clone(),
+        session: None,
+        deadline,
+    };
+    crate::lifecycle::run_until(application.resolve(&url, context), &stop.0, deadline)
+        .and_then(crate::Resolution::encode)
+        .map_err(|e| crate::CommandError::Failed(e.to_string()))
 }
 
 fn post_response(runtime_handle: u64, callbacks: NativeHost, response: &[u8]) -> Status {
@@ -395,6 +470,7 @@ mod tests {
         let (tx, rx) = mpsc::sync_channel(1);
         tx.send(DispatchTask {
             request_id: 42,
+            mojom: None,
             event: Vec::new(),
             enqueued_at: Instant::now(),
         })
@@ -425,6 +501,94 @@ mod tests {
         assert_eq!(protocol::response_request_id(&replies[0]), Some(42));
         assert_eq!(&replies[0][20..], expected);
         assert_eq!(in_flight.load(Ordering::Acquire), 0);
+    }
+
+    struct TypedEcho;
+    impl Browser for TypedEcho {
+        fn new(_: crate::BrowserContext) -> crate::Result<Self> {
+            Ok(Self)
+        }
+        fn dispatch(&mut self, command: Command<'_>) -> crate::CommandResult {
+            assert_eq!(command.id(), 7);
+            assert_eq!(command.schema_fingerprint(), 11);
+            assert_eq!(command.payload(), [8, 0, 0, 0, 0, 0, 0, 0]);
+            Ok(command.payload().to_vec())
+        }
+    }
+    unsafe extern "C" fn collect_typed(
+        data: *mut std::ffi::c_void,
+        status: Status,
+        bytes: ByteSlice,
+    ) -> Status {
+        // SAFETY: The test keeps the collection alive through the worker and borrows this result only here.
+        let replies = unsafe { &*data.cast::<Mutex<Vec<(Status, Vec<u8>)>>>() };
+        let payload = if bytes.len == 0 {
+            Vec::new()
+        } else {
+            // SAFETY: The callback supplies readable result bytes for this call.
+            unsafe { std::slice::from_raw_parts(bytes.data, bytes.len) }.to_vec()
+        };
+        replies.lock().unwrap().push((status, payload));
+        Status::Ok
+    }
+    fn typed_worker(stopping: bool, expected: Status) {
+        let events = Mutex::new(Vec::<Vec<u8>>::new());
+        let replies = Mutex::new(Vec::<(Status, Vec<u8>)>::new());
+        let callbacks = NativeHost(tuffite_abi::Host {
+            header: tuffite_abi::Header::for_type::<tuffite_abi::Host>(),
+            user_data: (&raw const events).cast_mut().cast(),
+            post_event: Some(collect),
+            post_task: Some(reject_task),
+            query_extension: None,
+        });
+        let (tx, rx) = mpsc::sync_channel(1);
+        tx.send(DispatchTask {
+            request_id: 0,
+            enqueued_at: Instant::now(),
+            event: vec![8, 0, 0, 0, 0, 0, 0, 0],
+            mojom: Some((
+                7,
+                11,
+                crate::native_mojom::Reply::new(
+                    (&raw const replies).cast_mut().cast(),
+                    collect_typed,
+                ),
+            )),
+        })
+        .unwrap();
+        drop(tx);
+        let in_flight = Arc::new(AtomicU64::new(1));
+        run_worker(
+            &Arc::new(AtomicU64::new(1)),
+            rx,
+            Box::new(TypedEcho),
+            callbacks,
+            &in_flight,
+            Duration::from_secs(30),
+            &AtomicBool::new(stopping),
+            &crate::StopSignal(crate::supervisor::CancellationToken::new()),
+        );
+        assert!(
+            events.into_inner().unwrap().is_empty(),
+            "Typed replies must not use the legacy event envelope"
+        );
+        let replies = replies.into_inner().unwrap();
+        assert_eq!(replies.len(), 1);
+        assert_eq!(replies[0].0, expected);
+        if expected == Status::Ok {
+            assert_eq!(replies[0].1, [8, 0, 0, 0, 0, 0, 0, 0]);
+        } else {
+            assert_eq!(replies[0].1, b"Mojo operation cancelled or expired");
+        }
+        assert_eq!(in_flight.load(Ordering::Acquire), 0);
+    }
+    #[test]
+    fn typed_worker_uses_borrowed_structs_and_one_direct_completion() {
+        typed_worker(false, Status::Ok);
+    }
+    #[test]
+    fn typed_worker_shutdown_cancels_without_dispatching_or_leaking_capacity() {
+        typed_worker(true, Status::InvalidState);
     }
 
     #[test]

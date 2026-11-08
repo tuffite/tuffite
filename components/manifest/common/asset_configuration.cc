@@ -1,0 +1,110 @@
+// Copyright 2026 The Tuffite Authors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+#include "tuffite/components/manifest/common/asset_configuration.h"
+
+#include <algorithm>
+
+#include "base/strings/escape.h"
+#include "tuffite/components/manifest/common/access_rules.h"
+#include "url/origin.h"
+
+namespace tuffite::asset {
+const AssetRoute* AssetConfiguration::FindRoute(const GURL& url,
+                                                bool skip_resolvers) const {
+  const auto origin = url::Origin::Create(url);
+  const AssetRoute* best = nullptr;
+  for (const auto& route : routes) {
+    if (skip_resolvers && route.resolver) {
+      continue;
+    }
+    if (!std::ranges::any_of(route.origins, [&](const auto& pattern) {
+          return access::MatchesOrigin(origin, pattern);
+        })) {
+      continue;
+    }
+    const bool glob = route.path.ends_with('*');
+    const auto prefix =
+        glob ? route.path.substr(0, route.path.size() - 1) : route.path;
+    if (glob ? !url.path().starts_with(prefix) : url.path() != prefix) {
+      continue;
+    }
+    if (!best || (!glob && best->path.ends_with('*')) ||
+        (glob == best->path.ends_with('*') &&
+         route.path.size() > best->path.size())) {
+      best = &route;
+    }
+  }
+  return best;
+}
+bool AssetConfiguration::IsResolverUrl(const GURL& url) const {
+  const auto* route = FindRoute(url);
+  return IsAppUrl(url) && route && route->resolver;
+}
+std::string AssetConfiguration::ResolveAssetRoute(const GURL& url,
+                                                  bool fallback) const {
+  if (url.path() == "/tuffite.js") {
+    return std::string(url.path());
+  }
+  const auto* best = FindRoute(url, fallback);
+  if (!best || best->resolver) {
+    return {};
+  }
+  if (!best->directory) {
+    return "/" + best->source;
+  }
+  return "/" + best->source + "/" +
+         std::string(url.path().substr(best->path.size() - 1));
+}
+
+std::optional<base::FilePath> AssetConfiguration::ResolveAssetFile(
+    const GURL& url,
+    bool fallback) const {
+  if (!IsAppUrl(url)) {
+    return std::nullopt;
+  }
+  const std::string escaped = ResolveAssetRoute(url, fallback);
+  std::string decoded;
+  if (escaped.empty() || escaped.front() != '/' ||
+      !base::UnescapeBinaryURLComponentSafe(escaped.substr(1), true,
+                                            &decoded) ||
+      decoded.empty()) {
+    return std::nullopt;
+  }
+  const auto relative = base::FilePath::FromUTF8Unsafe(decoded);
+  if (relative.IsAbsolute() || relative.ReferencesParent()) {
+    return std::nullopt;
+  }
+  return root.Append(relative);
+}
+
+std::string AssetConfiguration::ContentSecurityPolicy(const GURL& url,
+                                                      bool fallback) const {
+  std::string policies;
+  const auto origin = url::Origin::Create(url);
+  for (const auto& [origins, csp] : csp_rules) {
+    if (std::ranges::any_of(origins, [&](const auto& pattern) {
+          return access::MatchesOrigin(origin, pattern);
+        })) {
+      if (!policies.empty()) {
+        policies += ", ";
+      }
+      policies += csp;
+    }
+  }
+  return policies.empty() && fallback ? content_security_policy : policies;
+}
+bool AssetConfiguration::HandlesScheme(std::string_view scheme) const {
+  return std::ranges::contains(schemes, scheme);
+}
+bool AssetConfiguration::IsAppUrl(const GURL& url) const {
+  return url.is_valid() && HandlesScheme(url.scheme()) && !url.has_username() &&
+         !url.has_password() && !url.has_port() &&
+         std::ranges::any_of(routes, [&](const auto& route) {
+           return std::ranges::any_of(route.origins, [&](const auto& pattern) {
+             return access::MatchesOrigin(url::Origin::Create(url), pattern);
+           });
+         });
+}
+
+}  // namespace tuffite::asset

@@ -8,6 +8,7 @@
 
 #include "base/containers/span.h"
 #include "tuffite/components/dispatch/common/message.h"
+// Compatibility codec for older native ABI tables; not used by Mojo clients.
 namespace tuffite::rpc {
 std::optional<Request> DecodeRequest(base::span<const uint8_t>);
 std::optional<Response> DecodeResponse(base::span<const uint8_t>);

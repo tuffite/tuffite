@@ -36,7 +36,9 @@
 #include "third_party/blink/public/common/loader/url_loader_throttle.h"
 #include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
 #include "tuffite/components/dispatch/browser/dispatch_host.h"
+#include "tuffite/components/dispatch/browser/mojom_interface_broker.h"
 #include "tuffite/components/dispatch/common/dispatcher.mojom.h"
+#include "tuffite/components/explorer/browser/content/explorer_isolation.h"
 #include "tuffite/components/explorer/browser/explorer_host.h"
 #include "tuffite/components/explorer/browser/explorer_surface_host.h"
 #include "tuffite/components/explorer/common/explorer.mojom.h"
@@ -51,6 +53,7 @@
 #include "tuffite/framework/app/services/window/window_service.h"
 #include "tuffite/framework/browser/browser_context.h"
 #include "tuffite/framework/browser/browser_main_parts.h"
+#include "tuffite/framework/browser/mojom_bindings.h"
 #include "tuffite/framework/browser/services/context_menu/context_menu_service.h"
 #include "tuffite/framework/browser/services/context_menu/context_menu_service_factory.h"
 #include "tuffite/framework/browser/services/devtools/devtools_service.h"
@@ -249,6 +252,12 @@ ContentBrowserClient::CreateDevToolsManagerDelegate() {
   return tuffite::CreateDevToolsManagerDelegate();
 }
 
+bool ContentBrowserClient::ShouldUseProcessPerSite(
+    content::BrowserContext* browser_context,
+    const content::SecurityPrincipal& principal) {
+  return ShouldUseExplorerProcessPerSite(principal);
+}
+
 bool ContentBrowserClient::IsHandledURL(const GURL& url) {
   if (!url.is_valid()) {
     return false;
@@ -294,35 +303,39 @@ ContentBrowserClient::CreateWindowForVideoPictureInPicture(
 void ContentBrowserClient::AppendExtraCommandLineSwitches(
     base::CommandLine* command_line,
     int child_process_id) {
-  const ManifestService* manifest =
-      application_context()
-          ? application_context()->GetService<ManifestService>()
-          : nullptr;
-  if (manifest) {
-    command_line->AppendSwitchASCII(kShellApiOriginsSwitch,
-                                    manifest->SerializeShellApiOrigins());
-    command_line->AppendSwitchASCII(
-        kAppSchemesSwitch, base::JoinString(manifest->app_info().schemes, ","));
-    const std::string explorer_origins = manifest->SerializeExplorerOrigins();
-    command_line->AppendSwitchASCII(kExplorerOriginsSwitch, explorer_origins);
-    if (!explorer_origins.empty()) {
-      std::string features =
-          command_line->GetSwitchValueASCII(switches::kEnableBlinkFeatures);
-      if (!features.empty()) {
-        features.push_back(',');
-      }
-      features.append("TuffiteExplorer");
-      command_line->AppendSwitchASCII(switches::kEnableBlinkFeatures, features);
+  if (command_line->GetSwitchValueASCII(switches::kProcessType) ==
+      switches::kRendererProcess) {
+    std::string features =
+        command_line->GetSwitchValueASCII(switches::kEnableBlinkFeatures);
+    if (!features.empty()) {
+      features.push_back(',');
     }
+    features.append("TuffiteExplorer");
+    command_line->AppendSwitchASCII(switches::kEnableBlinkFeatures, features);
   }
+}
+
+void ContentBrowserClient::OnWebContentsCreated(
+    content::WebContents* contents) {
+  ObserveMojomDocuments(contents);
+}
+
+bool ContentBrowserClient::ShouldAllowMojoJsBindingsForFrame(
+    content::RenderFrameHost& frame) {
+  const auto* contents = content::WebContents::FromRenderFrameHost(&frame);
+  const auto role = WebContentsRoleData::GetRole(contents);
+  const auto* policy = WebContentsRoleData::GetExplorerPolicy(contents);
+  return !frame.GetParent() && (role == WebContentsRole::kApp ||
+                                (role == WebContentsRole::kExplorer && policy &&
+                                 policy->allow_shell_api));
 }
 
 void ContentBrowserClient::RegisterBrowserInterfaceBindersForFrame(
     content::RenderFrameHost* render_frame_host,
     mojo::BinderMapWithContext<content::RenderFrameHost*>* map) {
-  map->Add<mojom::Dispatcher>(base::BindRepeating(
+  map->Add<mojom::EventSource>(base::BindRepeating(
       [](content::RenderFrameHost* frame,
-         mojo::PendingReceiver<mojom::Dispatcher> receiver) {
+         mojo::PendingReceiver<mojom::EventSource> receiver) {
         DispatchHost::Create(ShellApiServiceFactory::GetForBrowserContext(
                                  frame->GetBrowserContext()),
                              frame, std::move(receiver));

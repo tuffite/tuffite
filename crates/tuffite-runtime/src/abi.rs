@@ -770,6 +770,55 @@ pub(crate) unsafe extern "C" fn setup_browser<B: Browser>(
     })
 }
 
+/// Copies typed Mojo parameters into the existing supervised browser worker.
+/// # Safety
+/// Parameters borrow readable bytes; accepted reply context remains valid until completion.
+pub unsafe extern "C" fn dispatch_browser_mojom(
+    runtime: FfiHandle,
+    command: u64,
+    fingerprint: u64,
+    parameters: tuffite_abi::ByteSlice,
+    data: *mut std::ffi::c_void,
+    reply: Option<tuffite_abi::UtilityReplyFn>,
+) -> Status {
+    ffi_guard(|| {
+        let Some(reply) = reply else {
+            return Status::InvalidArgument;
+        };
+        let handle = match parse_runtime_handle(runtime) {
+            Ok(h) => h,
+            Err(s) => return s,
+        };
+        if parameters.len > 16 * 1024 * 1024 {
+            return Status::ResourceExhausted;
+        }
+        // SAFETY: The caller supplies the declared borrowed parameter range.
+        let bytes = match unsafe { borrowed_bytes(parameters.data, parameters.len) } {
+            Ok(b) => b.to_vec(),
+            Err(s) => return s,
+        };
+        let table = runtimes()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let instance = match table.get(handle) {
+            Ok(i) => i,
+            Err(e) => return map_handle_error(e),
+        };
+        if instance.runtime.state() != crate::RuntimeState::Running {
+            return Status::InvalidState;
+        }
+        instance
+            .scheduler
+            .enqueue_mojom(
+                command,
+                fingerprint,
+                bytes,
+                crate::native_mojom::Reply::new(data, reply),
+            )
+            .map_or_else(|s| s, |()| Status::Ok)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::ffi::c_void;

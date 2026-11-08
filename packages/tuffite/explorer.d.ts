@@ -1,6 +1,6 @@
-export type ExplorerBehaviorMode = "browser" | "delegate" | "block";
-export type ExplorerJavaScriptWorld = "isolated" | "main";
-export type ExplorerPartitionMode = "shared" | "persist" | "memory";
+export type ExplorerPolicyMode = 'browser' | 'delegate' | 'block';
+export type ExplorerJavaScriptWorld = 'isolated' | 'main';
+export type ExplorerPartitionMode = 'shared' | 'persist' | 'memory';
 
 export interface ExplorerNavigationState {
   readonly url: string;
@@ -9,12 +9,14 @@ export interface ExplorerNavigationState {
   readonly canGoBack: boolean;
   readonly canGoForward: boolean;
   readonly isLoading: boolean;
+  readonly frozen: boolean;
+  readonly discarded: boolean;
   readonly zoomFactor: number;
   readonly audioMuted: boolean;
   readonly audible: boolean;
   readonly crashed: boolean;
   readonly fullscreen: boolean;
-  readonly pictureInPicture: "none" | "video" | "document";
+  readonly pictureInPicture: 'none' | 'video' | 'document';
   readonly favicons: readonly ExplorerFavicon[];
   readonly rendererProcess: Readonly<{
     id: number;
@@ -46,7 +48,7 @@ export interface ExplorerFavicon {
   readonly url: string;
   /** Chromium FaviconIconType: 1 favicon, 2 touch, 3 precomposed touch. */
   readonly type: number;
-  readonly sizes: readonly Readonly<{width: number; height: number}>[];
+  readonly sizes: readonly Readonly<{ width: number; height: number }>[];
   readonly isDefault: boolean;
 }
 
@@ -61,7 +63,7 @@ export interface ExplorerFindResult {
   readonly matches: number;
   readonly activeMatchOrdinal: number;
   readonly finalUpdate: boolean;
-  readonly selectionRect: Readonly<{x: number; y: number; width: number; height: number}>;
+  readonly selectionRect: Readonly<{ x: number; y: number; width: number; height: number }>;
 }
 
 export interface ExplorerOpenDetail {
@@ -80,7 +82,7 @@ export interface ExplorerNewWindowController extends ExplorerOpenDetail {
 
 export interface ExplorerDialogController {
   readonly signal: AbortSignal;
-  readonly type: "alert" | "confirm" | "prompt" | "beforeunload";
+  readonly type: 'alert' | 'confirm' | 'prompt' | 'beforeunload';
   readonly message: string;
   readonly defaultValue: string;
   readonly isReload: boolean;
@@ -98,7 +100,7 @@ export interface ExplorerExternalProtocolController {
   dismiss(): Promise<boolean>;
 }
 
-export type ExplorerHandleState = "pending" | "attaching" | "transferred" | "closed";
+export type ExplorerHandleState = 'pending' | 'attaching' | 'transferred' | 'closed';
 
 /** Exclusive native page ownership; no serializable credential is exposed. */
 export interface ExplorerHandle extends EventTarget {
@@ -117,12 +119,29 @@ export interface ExplorerEventMap {
   loaderror: CustomEvent<ExplorerLoadErrorState>;
   findresult: CustomEvent<ExplorerFindResult>;
   titlechange: CustomEvent<ExplorerNavigationState>;
-  fullscreenchange: CustomEvent<{readonly entered: boolean}>;
-  pictureinpicturechange: CustomEvent<{readonly type: "video" | "document"; readonly entered: boolean}>;
-  zoomchange: CustomEvent<ExplorerNavigationState & {readonly oldFactor: number; readonly newFactor: number}>;
+  fullscreenchange: CustomEvent<{ readonly entered: boolean }>;
+  pictureinpicturechange: CustomEvent<{
+    readonly type: 'video' | 'document';
+    readonly entered: boolean;
+  }>;
+  zoomchange: CustomEvent<
+    ExplorerNavigationState & { readonly oldFactor: number; readonly newFactor: number }
+  >;
   audiostatechange: CustomEvent<ExplorerNavigationState>;
   faviconchange: CustomEvent<ExplorerNavigationState>;
-  renderprocessgone: CustomEvent<ExplorerNavigationState & {readonly reason: "normal" | "abnormal" | "killed" | "crashed" | "oom" | "evicted" | "launch-failed"; readonly terminationStatus: number}>;
+  renderprocessgone: CustomEvent<
+    ExplorerNavigationState & {
+      readonly reason:
+        | 'normal'
+        | 'abnormal'
+        | 'killed'
+        | 'crashed'
+        | 'oom'
+        | 'evicted'
+        | 'launch-failed';
+      readonly terminationStatus: number;
+    }
+  >;
   newwindow: CustomEvent<ExplorerNewWindowController>;
   navigation: CustomEvent<ExplorerOpenDetail>;
   dialog: CustomEvent<ExplorerDialogController>;
@@ -136,30 +155,31 @@ export interface HTMLExplorerElement extends HTMLElement {
   partition: string;
   /** Fixed at creation. Isolated keeps window.parent/top within this Explorer's frame tree. */
   isolated: boolean;
+  /** Requests a protected, hidden-page discard. Resolves whether it was accepted. */
+  discard(): Promise<boolean>;
   /** CSS-style declarations, e.g. `navigation: delegate; dialog: browser;`. */
-  behavior: string;
-  contextMenuEnabled: boolean;
+  policy: string;
   detach(): Promise<ExplorerHandle>;
   attach(handle: ExplorerHandle): Promise<void>;
   ondetached: ((event: Event) => void) | null;
   onattached: ((event: Event) => void) | null;
-  onloadstart: HTMLElement["onloadstart"];
-  onloadstop: ((event: ExplorerEventMap["loadstop"]) => void) | null;
-  onloadcommit: ((event: ExplorerEventMap["loadcommit"]) => void) | null;
-  onloaderror: ((event: ExplorerEventMap["loaderror"]) => void) | null;
-  ontitlechange: ((event: ExplorerEventMap["titlechange"]) => void) | null;
-  ondownload: ((event: ExplorerEventMap["download"]) => void) | null;
-  onfindresult: ((event: ExplorerEventMap["findresult"]) => void) | null;
-  onzoomchange: ((event: ExplorerEventMap["zoomchange"]) => void) | null;
-  onaudiostatechange: ((event: ExplorerEventMap["audiostatechange"]) => void) | null;
-  onfaviconchange: ((event: ExplorerEventMap["faviconchange"]) => void) | null;
-  onrenderprocessgone: ((event: ExplorerEventMap["renderprocessgone"]) => void) | null;
-  onfullscreenchange: HTMLElement["onfullscreenchange"];
-  onpictureinpicturechange: ((event: ExplorerEventMap["pictureinpicturechange"]) => void) | null;
-  onnavigation: ((event: ExplorerEventMap["navigation"]) => void) | null;
-  onnewwindow: ((event: ExplorerEventMap["newwindow"]) => void) | null;
-  ondialog: ((event: ExplorerEventMap["dialog"]) => void) | null;
-  onexternalprotocol: ((event: ExplorerEventMap["externalprotocol"]) => void) | null;
+  onloadstart: HTMLElement['onloadstart'];
+  onloadstop: ((event: ExplorerEventMap['loadstop']) => void) | null;
+  onloadcommit: ((event: ExplorerEventMap['loadcommit']) => void) | null;
+  onloaderror: ((event: ExplorerEventMap['loaderror']) => void) | null;
+  ontitlechange: ((event: ExplorerEventMap['titlechange']) => void) | null;
+  ondownload: ((event: ExplorerEventMap['download']) => void) | null;
+  onfindresult: ((event: ExplorerEventMap['findresult']) => void) | null;
+  onzoomchange: ((event: ExplorerEventMap['zoomchange']) => void) | null;
+  onaudiostatechange: ((event: ExplorerEventMap['audiostatechange']) => void) | null;
+  onfaviconchange: ((event: ExplorerEventMap['faviconchange']) => void) | null;
+  onrenderprocessgone: ((event: ExplorerEventMap['renderprocessgone']) => void) | null;
+  onfullscreenchange: HTMLElement['onfullscreenchange'];
+  onpictureinpicturechange: ((event: ExplorerEventMap['pictureinpicturechange']) => void) | null;
+  onnavigation: ((event: ExplorerEventMap['navigation']) => void) | null;
+  onnewwindow: ((event: ExplorerEventMap['newwindow']) => void) | null;
+  ondialog: ((event: ExplorerEventMap['dialog']) => void) | null;
+  onexternalprotocol: ((event: ExplorerEventMap['externalprotocol']) => void) | null;
   /** Starts navigation; completion is reported by load events. */
   load(url: string): void;
   download(url: string): Promise<boolean>;
@@ -179,7 +199,7 @@ export interface HTMLExplorerElement extends HTMLElement {
   getNavigationState(): Promise<ExplorerNavigationState>;
   /** Returns an accepted request ID; asynchronous updates arrive via findresult. */
   findInPage(text: string, options?: ExplorerFindOptions): Promise<number>;
-  stopFindInPage(action?: "clear" | "keep" | "activate"): Promise<boolean>;
+  stopFindInPage(action?: 'clear' | 'keep' | 'activate'): Promise<boolean>;
   /** Native per-Explorer page zoom, from 0.25 through 5.0; survives navigation/transfer. */
   setZoomFactor(factor: number): Promise<boolean>;
   getZoomFactor(): Promise<number>;
@@ -219,13 +239,17 @@ export interface HTMLExplorerElement extends HTMLElement {
 }
 
 export type ExplorerTransferable = Transferable | ExplorerHandle;
-export type ExplorerWindowPostMessageOptions = Omit<WindowPostMessageOptions, "transfer"> & {
+export type ExplorerWindowPostMessageOptions = Omit<WindowPostMessageOptions, 'transfer'> & {
   transfer?: ExplorerTransferable[];
 };
 
 declare global {
   function postMessage(message: unknown, options?: ExplorerWindowPostMessageOptions): void;
-  function postMessage(message: unknown, targetOrigin: string, transfer: ExplorerTransferable[]): void;
+  function postMessage(
+    message: unknown,
+    targetOrigin: string,
+    transfer: ExplorerTransferable[],
+  ): void;
   function structuredClone<T>(value: T, options: { transfer: ExplorerTransferable[] }): T;
   interface Window {
     postMessage(message: unknown, options: ExplorerWindowPostMessageOptions): void;
@@ -246,7 +270,7 @@ export type ExplorerDownload = {
   filename: string;
   path: string;
   mimeType: string;
-  state: "in-progress" | "complete" | "cancelled" | "interrupted";
+  state: 'in-progress' | 'complete' | 'cancelled' | 'interrupted';
   paused?: boolean;
   canResume?: boolean;
   receivedBytes: number;

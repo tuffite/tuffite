@@ -6,10 +6,9 @@ source_set("renderer") {
   deps = [
     "//base",
     "//content/public/renderer",
-    "//gin",
     "//third_party/blink/public:blink",
-    "//tuffite/components/dispatch/common:implementation",
     "//tuffite/components/dispatch/common:mojom",
+    "//tuffite/components/manifest/renderer/blink:bridge",
     "//url",
     "//v8",
   ]

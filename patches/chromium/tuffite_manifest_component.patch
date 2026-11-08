@@ -1,0 +1,238 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Garey Chan <garey.chan@outlook.com>
+Date: Sat, 7 Nov 2026 18:43:04 +0800
+Subject: Tuffite: consolidate configuration under the manifest component
+
+
+diff --git a/content/browser/BUILD.gn b/content/browser/BUILD.gn
+index 602c640928e3dedc0529c382c4bbea8828f4df20..867bb75571491277d463bad15c9d6d679de0860d 100644
+--- a/content/browser/BUILD.gn
++++ b/content/browser/BUILD.gn
+@@ -30,12 +30,11 @@ import("//tools/ipc_fuzzer/ipc_fuzzer.gni")
+ 
+ # TUFFITE_BEGIN
+ 
+-import(
+-    "//tuffite/components/document_config/browser/content/tuffite_in_chromium.gni")
+-import("//tuffite/components/document_config/common/tuffite_in_chromium.gni")
++import("//tuffite/components/manifest/browser/content/tuffite_in_chromium.gni")
++import("//tuffite/components/manifest/common/tuffite_in_chromium.gni")
+ 
+ import("//tuffite/components/explorer/browser/content/tuffite_in_chromium.gni")
+-import("//tuffite/components/process_config/tuffite_in_chromium.gni")
++import("//tuffite/components/manifest/bootstrap/tuffite_in_chromium.gni")
+ 
+ # TUFFITE_END
+ 
+@@ -2395,9 +2394,9 @@ source_set("browser") {
+   # TUFFITE_BEGIN
+   if (tuffite_in_chromium) {
+     sources += tuffite_content_explorer_isolation_sources
+-    sources += tuffite_document_config_browser_sources
+-    deps += tuffite_process_config_deps
+-    deps += tuffite_document_config_mojom_deps
++    sources += tuffite_manifest_document_browser_sources
++    deps += tuffite_manifest_bootstrap_deps
++    deps += tuffite_manifest_document_mojom_deps
+   }
+ 
+   # TUFFITE_END
+diff --git a/content/browser/child_process_launcher_helper.cc b/content/browser/child_process_launcher_helper.cc
+index 8d9dc3a4a84ab9689a0ced337818ce73e58e867a..16d8946c3fa1934927b1d4de4e77dce1d80a4ff4 100644
+--- a/content/browser/child_process_launcher_helper.cc
++++ b/content/browser/child_process_launcher_helper.cc
+@@ -7,7 +7,7 @@
+ // TUFFITE_BEGIN
+ #include "tuffite/buildflags.h"
+ #if BUILDFLAG(TUFFITE_IN_CHROMIUM)
+-#include "tuffite/components/process_config/process_config.h"
++#include "tuffite/components/manifest/bootstrap/process_config.h"
+ #endif
+ // TUFFITE_END
+ 
+diff --git a/content/browser/renderer_host/render_frame_host_impl.cc b/content/browser/renderer_host/render_frame_host_impl.cc
+index 8407504171fa18deb828d5bbec0ca258f88c6be6..873871771c7b7b178699d97b038837b4cd281072 100644
+--- a/content/browser/renderer_host/render_frame_host_impl.cc
++++ b/content/browser/renderer_host/render_frame_host_impl.cc
+@@ -7,7 +7,7 @@
+ // TUFFITE_BEGIN
+ #include "tuffite/buildflags.h"
+ #if BUILDFLAG(TUFFITE_IN_CHROMIUM)
+-#include "tuffite/components/document_config/browser/content/document_configuration.h"
++#include "tuffite/components/manifest/browser/content/document_configuration.h"
+ #endif
+ // TUFFITE_END
+ 
+diff --git a/content/browser/renderer_host/render_view_host_impl.cc b/content/browser/renderer_host/render_view_host_impl.cc
+index dd11aebc56aef9a23a99d5ad4e80618c9daca8c0..a437ef4b7130e15afa267ba24b82ff814d9f5ac0 100644
+--- a/content/browser/renderer_host/render_view_host_impl.cc
++++ b/content/browser/renderer_host/render_view_host_impl.cc
+@@ -121,7 +121,7 @@ using blink::WebInputEvent;
+ // TUFFITE_BEGIN
+ #include "tuffite/buildflags.h"
+ #if BUILDFLAG(TUFFITE_IN_CHROMIUM)
+-#include "tuffite/components/document_config/browser/content/document_configuration.h"
++#include "tuffite/components/manifest/browser/content/document_configuration.h"
+ #include "tuffite/components/explorer/browser/content/explorer_isolation.h"
+ #endif
+ // TUFFITE_END
+diff --git a/content/browser/zygote_host/zygote_host_impl_linux.cc b/content/browser/zygote_host/zygote_host_impl_linux.cc
+index f9a8a10efd70b7bd7d3386ff98395fc9d323efc3..8b4e6bd981f18e7154c1ba15e40aa49979b1257d 100644
+--- a/content/browser/zygote_host/zygote_host_impl_linux.cc
++++ b/content/browser/zygote_host/zygote_host_impl_linux.cc
+@@ -7,7 +7,7 @@
+ // TUFFITE_BEGIN
+ #include "tuffite/buildflags.h"
+ #if BUILDFLAG(TUFFITE_IN_CHROMIUM)
+-#include "tuffite/components/process_config/process_config.h"
++#include "tuffite/components/manifest/bootstrap/process_config.h"
+ #endif
+ // TUFFITE_END
+ 
+diff --git a/third_party/blink/public/BUILD.gn b/third_party/blink/public/BUILD.gn
+index adc28492352af369574bb58f63cd153a2ec98804..bb30abcdc0af132f5949b04a478fb3100ebe633e 100644
+--- a/third_party/blink/public/BUILD.gn
++++ b/third_party/blink/public/BUILD.gn
+@@ -3,7 +3,7 @@
+ # found in the LICENSE file.
+ 
+ # TUFFITE_BEGIN
+-import("//tuffite/components/document_config/common/tuffite_in_chromium.gni")
++import("//tuffite/components/manifest/common/tuffite_in_chromium.gni")
+ 
+ # TUFFITE_END
+ 
+@@ -447,7 +447,7 @@ source_set("blink_headers") {
+   ]
+ 
+   # TUFFITE_BEGIN
+-  public_deps += tuffite_document_config_buildflag_deps
++  public_deps += tuffite_manifest_document_buildflag_deps
+ 
+   # TUFFITE_END
+ 
+diff --git a/third_party/blink/public/mojom/BUILD.gn b/third_party/blink/public/mojom/BUILD.gn
+index e2de23630068b651dc577513b9ce9caa18e16093..82d3e91e2679774b7b4b71e33bf09ee59f939ed3 100644
+--- a/third_party/blink/public/mojom/BUILD.gn
++++ b/third_party/blink/public/mojom/BUILD.gn
+@@ -3,7 +3,7 @@
+ # found in the LICENSE file.
+ 
+ # TUFFITE_BEGIN
+-import("//tuffite/components/document_config/common/tuffite_in_chromium.gni")
++import("//tuffite/components/manifest/common/tuffite_in_chromium.gni")
+ 
+ # TUFFITE_END
+ 
+@@ -431,7 +431,7 @@ mojom("mojom_platform") {
+   enabled_features = []
+   if (tuffite_in_chromium) {
+     enabled_features += [ "tuffite_in_chromium" ]
+-    public_deps += tuffite_document_config_mojom_deps
++    public_deps += tuffite_manifest_document_mojom_deps
+   }
+ 
+   if (use_ozone) {
+diff --git a/third_party/blink/public/mojom/frame/policy_container.mojom b/third_party/blink/public/mojom/frame/policy_container.mojom
+index 5f6fd12d8a7b51eed539f1ef5c6a0b43056f9471..dd081b28b6c6747f2913d46c2e2da3b2f5c7fc18 100644
+--- a/third_party/blink/public/mojom/frame/policy_container.mojom
++++ b/third_party/blink/public/mojom/frame/policy_container.mojom
+@@ -15,7 +15,7 @@ import "services/network/public/mojom/web_sandbox_flags.mojom";
+ 
+ // TUFFITE_BEGIN
+ [EnableIf=tuffite_in_chromium]
+-import "tuffite/components/document_config/common/document_configuration.mojom";
++import "tuffite/components/manifest/common/document_configuration.mojom";
+ // TUFFITE_END
+ 
+ // This are the document policies contained within PolicyContainer. These are
+diff --git a/third_party/blink/renderer/core/BUILD.gn b/third_party/blink/renderer/core/BUILD.gn
+index 64e6ca010e3e123fe46d62f6f7fdb2d89b2cf119..37f3f0a8c5414adc82ca81e089c95a6e16ac5dd7 100644
+--- a/third_party/blink/renderer/core/BUILD.gn
++++ b/third_party/blink/renderer/core/BUILD.gn
+@@ -96,8 +96,7 @@ import("//third_party/protobuf/proto_library.gni")
+ 
+ # TUFFITE_BEGIN
+ 
+-import(
+-    "//tuffite/components/document_config/renderer/blink/tuffite_in_chromium.gni")
++import("//tuffite/components/manifest/renderer/blink/tuffite_in_chromium.gni")
+ 
+ import("//tuffite/components/explorer/renderer/blink/tuffite_in_chromium.gni")
+ import("//tuffite/components/isolated/renderer/blink/tuffite_in_chromium.gni")
+@@ -278,7 +277,7 @@ component("core") {
+   if (tuffite_in_chromium) {
+     sources += tuffite_explorer_sources
+     sources += tuffite_isolated_sources
+-    sources += tuffite_document_config_blink_sources
++    sources += tuffite_manifest_document_blink_sources
+   }
+ 
+   sources += blink_core_sources_bindings
+@@ -470,7 +469,7 @@ component("core") {
+   if (tuffite_in_chromium) {
+     deps += tuffite_explorer_deps
+     deps += tuffite_isolated_deps
+-    deps += tuffite_document_config_blink_deps
++    deps += tuffite_manifest_document_blink_deps
+   }
+ 
+   if (is_mac) {
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Garey Chan <garey.chan@outlook.com>
+Date: Sat, 7 Nov 2026 19:05:10 +0800
+Subject: Tuffite: align manifest snapshot provider and bootstrap file names
+
+
+diff --git a/content/browser/child_process_launcher_helper.cc b/content/browser/child_process_launcher_helper.cc
+index 16d8946c3fa1934927b1d4de4e77dce1d80a4ff4..984c97ea2380eb225aaa74a05b22a5a0464bea25 100644
+--- a/content/browser/child_process_launcher_helper.cc
++++ b/content/browser/child_process_launcher_helper.cc
+@@ -7,7 +7,7 @@
+ // TUFFITE_BEGIN
+ #include "tuffite/buildflags.h"
+ #if BUILDFLAG(TUFFITE_IN_CHROMIUM)
+-#include "tuffite/components/manifest/bootstrap/process_config.h"
++#include "tuffite/components/manifest/bootstrap/process_configuration.h"
+ #endif
+ // TUFFITE_END
+ 
+diff --git a/content/browser/renderer_host/render_frame_host_impl.cc b/content/browser/renderer_host/render_frame_host_impl.cc
+index 873871771c7b7b178699d97b038837b4cd281072..73719397e5730b898995d943901046c5ccd37810 100644
+--- a/content/browser/renderer_host/render_frame_host_impl.cc
++++ b/content/browser/renderer_host/render_frame_host_impl.cc
+@@ -7,7 +7,7 @@
+ // TUFFITE_BEGIN
+ #include "tuffite/buildflags.h"
+ #if BUILDFLAG(TUFFITE_IN_CHROMIUM)
+-#include "tuffite/components/manifest/browser/content/document_configuration.h"
++#include "tuffite/components/manifest/browser/content/document_configuration_provider.h"
+ #endif
+ // TUFFITE_END
+ 
+diff --git a/content/browser/renderer_host/render_view_host_impl.cc b/content/browser/renderer_host/render_view_host_impl.cc
+index a437ef4b7130e15afa267ba24b82ff814d9f5ac0..3d9e71a5346d5d3ce8473b7eb3bf83a1eb4ad7b9 100644
+--- a/content/browser/renderer_host/render_view_host_impl.cc
++++ b/content/browser/renderer_host/render_view_host_impl.cc
+@@ -121,7 +121,7 @@ using blink::WebInputEvent;
+ // TUFFITE_BEGIN
+ #include "tuffite/buildflags.h"
+ #if BUILDFLAG(TUFFITE_IN_CHROMIUM)
+-#include "tuffite/components/manifest/browser/content/document_configuration.h"
++#include "tuffite/components/manifest/browser/content/document_configuration_provider.h"
+ #include "tuffite/components/explorer/browser/content/explorer_isolation.h"
+ #endif
+ // TUFFITE_END
+diff --git a/content/browser/zygote_host/zygote_host_impl_linux.cc b/content/browser/zygote_host/zygote_host_impl_linux.cc
+index 8b4e6bd981f18e7154c1ba15e40aa49979b1257d..25b7ec5d4301cd52d3b22a6bf601223f1cf23ef0 100644
+--- a/content/browser/zygote_host/zygote_host_impl_linux.cc
++++ b/content/browser/zygote_host/zygote_host_impl_linux.cc
+@@ -7,7 +7,7 @@
+ // TUFFITE_BEGIN
+ #include "tuffite/buildflags.h"
+ #if BUILDFLAG(TUFFITE_IN_CHROMIUM)
+-#include "tuffite/components/manifest/bootstrap/process_config.h"
++#include "tuffite/components/manifest/bootstrap/process_configuration.h"
+ #endif
+ // TUFFITE_END
+ 

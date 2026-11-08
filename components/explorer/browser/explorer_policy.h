@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "tuffite/components/explorer/common/explorer_behavior.h"
+#include "tuffite/components/explorer/common/explorer_policy.h"
 namespace tuffite {
 enum class ExplorerNavigationPolicy {
   kEmit,
@@ -22,7 +22,7 @@ enum class ExplorerDialogPolicy {
 
 struct ExplorerPolicy {
   bool operator==(const ExplorerPolicy&) const = default;
-  ExplorerBehavior behavior;
+  ExplorerPolicySettings settings;
   std::string partition;
   bool isolated_browsing_context = false;
   ExplorerNavigationPolicy navigation = ExplorerNavigationPolicy::kEmit;

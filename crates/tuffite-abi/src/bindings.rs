@@ -264,6 +264,35 @@ pub struct UtilityService {
     pub stop: ::std::option::Option<UtilityStopFn>,
     pub session: *const UtilitySessionService,
 }
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct MojomMethod {
+    pub channel: ByteSlice,
+    pub command_id: u64,
+    pub schema_fingerprint: u64,
+}
+pub type ResolveMojomMethodFn = unsafe extern "C" fn(
+    interface_name: ByteSlice,
+    ordinal: u32,
+    method_out: *mut MojomMethod,
+) -> Status;
+pub type DispatchMojomFn = unsafe extern "C" fn(
+    runtime: Handle,
+    command_id: u64,
+    schema_fingerprint: u64,
+    parameters: ByteSlice,
+    reply_data: *mut ::std::os::raw::c_void,
+    reply: ::std::option::Option<UtilityReplyFn>,
+) -> Status;
+pub type InvokeUtilityMojomFn = unsafe extern "C" fn(
+    service: Handle,
+    request_id: u64,
+    command_id: u64,
+    schema_fingerprint: u64,
+    parameters: ByteSlice,
+    reply_data: *mut ::std::os::raw::c_void,
+    reply: ::std::option::Option<UtilityReplyFn>,
+) -> Status;
 pub type ApplicationStartFn = unsafe extern "C" fn(
     host: *const Host,
     config: *const u8,
@@ -358,6 +387,9 @@ pub struct Application {
     pub start_profile: ::std::option::Option<StartProfileFn>,
     pub command_scope: ::std::option::Option<CommandScopeFn>,
     pub configuration: ::std::option::Option<unsafe extern "C" fn() -> ByteSlice>,
+    pub resolve_mojom_method: ::std::option::Option<ResolveMojomMethodFn>,
+    pub dispatch_mojom: ::std::option::Option<DispatchMojomFn>,
+    pub invoke_utility_mojom: ::std::option::Option<InvokeUtilityMojomFn>,
 }
 pub type ContextsApplyFn = unsafe extern "C" fn(
     host_data: *mut ::std::os::raw::c_void,

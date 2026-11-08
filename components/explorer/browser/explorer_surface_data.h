@@ -27,10 +27,9 @@ class ExplorerSurfaceData final
       const content::WebContents*);
   static void SetExplorerPolicy(content::WebContents*, ExplorerPolicy);
   // Only interaction behavior may change after creation; grants stay immutable.
-  static void UpdateExplorerBehavior(content::WebContents*,
-                                     const ExplorerPolicy&);
+  static void UpdateExplorerPolicy(content::WebContents*,
+                                   const ExplorerPolicy&);
   static const ExplorerPolicy* GetExplorerPolicy(const content::WebContents*);
-  static void SetExplorerContextMenuEnabled(content::WebContents*, bool);
   static bool IsExplorerContextMenuEnabled(const content::WebContents*);
   static bool SetZoomFactor(content::WebContents*, double factor);
   static double GetZoomFactor(content::WebContents*);
@@ -47,7 +46,6 @@ class ExplorerSurfaceData final
   double zoom_factor_ = 1.0;
   base::ListValue favicons_;
   std::optional<ExplorerPolicy> policy_;
-  bool menu_enabled_ = false;
   std::optional<uint32_t> navigation_download_;
   WEB_CONTENTS_USER_DATA_KEY_DECL();
 };

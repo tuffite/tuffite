@@ -18,6 +18,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
@@ -151,12 +152,32 @@ def run_explorer_demo(
     grant_sandbox_access(test_root)
     port = requested_port or free_port()
     fixture_port = None
-    if script in ("explorer-reload-smoke.mjs", "mojom-smoke.mjs", "profiles-smoke.mjs", "framework-extensions-smoke.mjs", "explorer-behavior-smoke.mjs"):
+    if script in ("configuration-smoke.mjs", "explorer-reload-smoke.mjs", "explorer-lifecycle-smoke.mjs", "mojom-smoke.mjs", "profiles-smoke.mjs", "framework-extensions-smoke.mjs", "explorer-behavior-smoke.mjs"):
         # Let sandboxed child processes read the disposable package through
         # test_root's inherited ACL, without changing workspace permissions.
         fixture_package = test_root / "application"
         shutil.copytree(package, fixture_package, symlinks=True)
-        if script == "explorer-behavior-smoke.mjs":
+        if script == "configuration-smoke.mjs":
+            manifest_path = fixture_package / "tuffite.json"
+            manifest = with_runtime_fixture(json.loads(manifest_path.read_text(encoding="utf-8")))
+            main = manifest["app"]["windows"][0]
+            main["url"] = "playground://main/ui/dist/fixtures/configuration.html"
+            manifest["app"]["windows"] = [main]
+            # CSP policies intersect, so replace this disposable fixture's
+            # matching CSP instead of adding a more permissive second policy.
+            # The rule grants no Shell API or Explorer exposure.
+            fixture_csp = "default-src 'self'; script-src 'self' 'unsafe-inline'"
+            matching = [rule for rule in manifest["browser"]["rules"]
+                        if "playground-resource://main" in rule.get("origins", [])]
+            for rule in matching:
+                rule["csp"] = fixture_csp
+            if not matching:
+                manifest["browser"]["rules"].append({
+                    "identifier": "configuration-fixture-csp",
+                    "origins": ["playground-resource://main"], "csp": fixture_csp,
+                })
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        elif script == "explorer-behavior-smoke.mjs":
             fixture_port = free_port()
             manifest_path = fixture_package / "tuffite.json"
             manifest = with_runtime_fixture(json.loads(manifest_path.read_text(encoding="utf-8")))
@@ -168,7 +189,7 @@ def run_explorer_demo(
                 "csp": "img-src 'none'; connect-src 'none'",
             })
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-        elif script == "explorer-reload-smoke.mjs":
+        elif script in ("explorer-reload-smoke.mjs", "explorer-lifecycle-smoke.mjs"):
             # Grant only the two local nested-Explorer fixture origins.
             fixture_port = free_port()
             manifest_path = fixture_package / "tuffite.json"
@@ -231,7 +252,7 @@ def run_explorer_demo(
         "--disable-features=CalculateNativeWinOcclusion",
         "--disable-backgrounding-occluded-windows",
     ]
-    if script not in ("explorer-reload-smoke.mjs", "mojom-smoke.mjs", "profiles-smoke.mjs", "framework-extensions-smoke.mjs", "explorer-behavior-smoke.mjs"):
+    if script not in ("configuration-smoke.mjs", "explorer-reload-smoke.mjs", "explorer-lifecycle-smoke.mjs", "mojom-smoke.mjs", "profiles-smoke.mjs", "framework-extensions-smoke.mjs", "explorer-behavior-smoke.mjs"):
         command.remove("--tuffite-runtime-snapshot")
     process = None
     try:
@@ -243,6 +264,9 @@ def run_explorer_demo(
                 stderr=stderr,
                 start_new_session=os.name != "nt",
             )
+            # Reap while the JS runner is alive: kill(pid, 0) also succeeds
+            # for an exited, unreaped child on POSIX cold-restart checks.
+            threading.Thread(target=process.wait, daemon=True).start()
             wait_for_cdp(port, process, timeout)
             environment = os.environ.copy()
             environment["TUFFITE_PLAYGROUND_CDP_PORT"] = str(port)
@@ -315,7 +339,7 @@ def main() -> int:
     parser.add_argument("--keep-files", action="store_true")
     parser.add_argument("--framework-extensions", action="store_true", help="Verify custom contexts, protocol resolution and scoped shortcuts.")
     parser.add_argument("--profiles", action="store_true", help="Verify profile isolation, view composition and context retirement.")
-    parser.add_argument("--browser-behavior", action="store_true", help="Verify origin rules, CSS-style behavior, delegated protocols and CSP composition.")
+    parser.add_argument("--browser-behavior", action="store_true", help="Verify origin rules, CSS-style policy, delegated protocols and CSP composition.")
     parser.add_argument("--mojom", action="store_true", help="Verify generated Mojom Browser/Utility round trips through CDP.")
     parser.add_argument(
         "--explorer-demo",
@@ -337,6 +361,8 @@ def main() -> int:
     parser.add_argument("--explorer-webauthn", action="store_true",
                         help="Run WebAuthn resident credential and cancellation smoke.")
     parser.add_argument("--isolated-worlds", action="store_true", help="Run isolated-world Web Components smoke.")
+    parser.add_argument("--configuration", action="store_true", help="Run process bootstrap and first-script document configuration smoke.")
+    parser.add_argument("--explorer-lifecycle", action="store_true", help="Run same-site reuse, background freeze/discard and restoration smoke.")
     parser.add_argument("--explorer-reload", action="store_true", help="Run nested cross-site reload, messaging and Cookie isolation smoke.")
     parser.add_argument("--explorer-isolated", action="store_true",
                         help="Run isolated top navigation, OAuth callback and transfer policy smoke.")
@@ -397,7 +423,7 @@ def main() -> int:
         if public
         else Path(tempfile.gettempdir())
     )
-    if args.framework_extensions or args.browser_behavior or args.profiles or args.isolated_worlds or args.mojom or args.explorer_isolated or args.explorer_reload or args.explorer_ancestry or args.explorer_events or args.explorer_tabs or args.browser_compatibility or args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
+    if args.configuration or args.framework_extensions or args.browser_behavior or args.profiles or args.isolated_worlds or args.mojom or args.explorer_isolated or args.explorer_lifecycle or args.explorer_reload or args.explorer_ancestry or args.explorer_events or args.explorer_tabs or args.browser_compatibility or args.browser_contract or args.explorer_demo or args.explorer_transfer or args.explorer_capabilities or args.explorer_resources or args.explorer_webauthn:
         return run_explorer_demo(
             package,
             application,
@@ -405,12 +431,14 @@ def main() -> int:
             args.timeout,
             args.keep_files,
             args.cdp_port,
+            "configuration-smoke.mjs" if args.configuration else
             "framework-extensions-smoke.mjs" if args.framework_extensions else
             "explorer-behavior-smoke.mjs" if args.browser_behavior else
             "profiles-smoke.mjs" if args.profiles else
             "isolated-worlds-smoke.mjs" if args.isolated_worlds else
             "mojom-smoke.mjs" if args.mojom else
             "explorer-isolated-smoke.mjs" if args.explorer_isolated else
+            "explorer-lifecycle-smoke.mjs" if args.explorer_lifecycle else
             "explorer-reload-smoke.mjs" if args.explorer_reload else
             "explorer-ancestry-smoke.mjs" if args.explorer_ancestry else
             "explorer-event-smoke.mjs" if args.explorer_events else
@@ -460,6 +488,14 @@ def main() -> int:
         "method": "tuffite.Net.Request",
         "allow": [{"url": f"http://127.0.0.1:{port}/*"}],
     })
+    # Keep test-only data in the disposable page URL, not process-wide flags.
+    main_window = config["app"]["windows"][0]
+    url = urllib.parse.urlsplit(main_window["url"])
+    query = urllib.parse.parse_qsl(url.query, keep_blank_values=True)
+    query.append(("network-test-url", f"http://127.0.0.1:{port}/"))
+    main_window["url"] = urllib.parse.urlunsplit(
+        url._replace(query=urllib.parse.urlencode(query))
+    )
     config_path.write_text(json.dumps(config))
     if bundle:
         # Fixture CSS and manifest edits invalidate the copied bundle's seal.
@@ -475,10 +511,12 @@ def main() -> int:
             command = [
                 str(application),
                 f"--tuffite-smoke-test={marker}",
-                f"--tuffite-network-test-url=http://127.0.0.1:{port}/",
                 f"--user-data-dir={profile}",
                 "--window-size=1100,1200",
                 "--force-device-scale-factor=1",
+                # Model one public endpoint locally, as Chromium's own network
+                # tests do, while retaining Net.Request's private-IP block.
+                f"--ip-address-space-overrides=127.0.0.1:{port}=public",
                 "--disable-features=CalculateNativeWinOcclusion",
                 "--disable-backgrounding-occluded-windows",
                 # Keep startup timers responsive while utility concurrency is

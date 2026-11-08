@@ -33,7 +33,7 @@ try {
     assert.equal(result.applicationGlobal, false);
     for (const field of ['typedUtility', 'deniedEndpoint', 'deniedService']) {
       assert.equal(result[field].allowed, false);
-      assert.equal(result[field].status, 2, 'Origin must not gain a Utility endpoint from another origin');
+      assert.equal(result[field].status, 2, `Origin must not gain a Utility endpoint from another origin: ${JSON.stringify({field,result:result[field]})}`);
     }
     assert.equal(result.typedCommand.allowed, false);
     assert.equal(result.typedCommand.status, 2, "Typed calls must be rejected by native authorization");
@@ -66,7 +66,7 @@ try {
   let publicPage;
   await until(() => (publicPage = pages().find((page) => page.url().includes("playground://public/"))), "Public asset-only origin missing");
   await publicPage.waitForFunction(() => document.querySelector("#history-state")?.textContent.includes("History length"));
-  const publicReport = await publicPage.evaluate(() => ({bridge: typeof globalThis.tuffite?.invoke, createExplorer: typeof document.createElement("explorer").getNavigationState}));
+  const publicReport = await publicPage.evaluate(() => ({bridge: typeof globalThis.Mojo?.bindInterface, createExplorer: typeof document.createElement("explorer").getNavigationState}));
   assert.equal(publicReport.bridge, "undefined", "Asset routing must not grant native APIs");
   assert.equal(publicReport.createExplorer, "undefined");
   await app.evaluate(() => window.capabilitiesDemo.publicHost.remove());
@@ -97,18 +97,24 @@ try {
   await app.evaluate(() => window.capabilitiesDemo.businessHost.remove());
   await until(() => !pages().some((page) => page.url().includes("playground://business/")), "Business-only page leaked after host removal");
 
-  // Forge an allowed application channel with a different wire command ID.
+  // The interface belongs to its pipe. Unknown ordinals must close that pipe.
   const forged = await artifact.evaluate(async () => {
-    const bytes = new Uint8Array(36);
-    const data = new DataView(bytes.buffer);
-    bytes.set([0x43, 0x45, 0x52, 0x4d]);
-    data.setUint16(4, 1, true);
-    data.setBigUint64(8, 1n, true);
-    data.setBigUint64(16, 0x12345678n, true);
-    try { await window.tuffite.invoke("playground.Commands.DoSomething", bytes); return "allowed"; }
-    catch (error) { return { status: error.status, message: error.message }; }
+    const {handle0,handle1}=Mojo.createMessagePipe();
+    Mojo.bindInterface('playground.wire.Commands',handle1);
+    const bytes=new ArrayBuffer(40);
+    const header=new DataView(bytes);
+    header.setUint32(0,32,true);header.setUint32(4,1,true);
+    header.setUint32(12,0x12345678,true);header.setUint32(16,1,true);
+    header.setBigUint64(24,1n,true);header.setUint32(32,8,true);
+    return await new Promise(resolve=>{
+      const timer=setTimeout(()=>{handle0.close();resolve(false);},5000);
+      const watcher=handle0.watch({peerClosed:true},()=>{
+        clearTimeout(timer);watcher.cancel();handle0.close();resolve(true);
+      });
+      handle0.writeMessage(bytes,[]);
+    });
   });
-  assert.equal(forged.status, 2, "A forged channel must be rejected at the native authorization boundary");
+  assert.equal(forged,true,'Unknown method ordinals must be rejected at the native interface boundary');
 
   // Navigation keeps the native target but recomputes document-origin grants.
   const changed = new URL(preview.url());

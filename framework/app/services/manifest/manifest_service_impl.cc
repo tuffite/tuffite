@@ -11,8 +11,8 @@
 #include "base/strings/string_util.h"
 #include "build/build_config.h"
 #include "tuffite/components/explorer/common/external_protocol.h"
-#include "tuffite/framework/app/services/manifest/manifest_configuration_data.h"
-#include "tuffite/framework/common/access.h"
+#include "tuffite/components/manifest/common/access_rules.h"
+#include "tuffite/components/manifest/common/manifest.h"
 namespace tuffite {
 namespace {
 // Rejects hosts that literally spell out addresses in RFC1918 private space,
@@ -76,8 +76,7 @@ bool IsLiteralPrivateOrLoopbackHost(std::string_view host_lower) {
 }
 
 }  // namespace
-ManifestServiceImpl::ManifestServiceImpl(
-    app::EffectiveConfiguration configuration)
+ManifestServiceImpl::ManifestServiceImpl(EffectiveManifest configuration)
     : configuration_(std::move(configuration)) {}
 ManifestServiceImpl::~ManifestServiceImpl() = default;
 bool ManifestServiceImpl::IsShellApiOriginAllowed(
@@ -104,14 +103,14 @@ bool ManifestServiceImpl::IsDevToolsEnabled() const {
   return data().devtools_enabled_;
 }
 
-ExplorerBehavior ManifestServiceImpl::ExplorerDefaults(
+ExplorerPolicySettings ManifestServiceImpl::ExplorerDefaults(
     const url::Origin& origin) const {
-  ExplorerBehavior behavior;
+  ExplorerPolicySettings behavior;
   for (const auto& rule : data().origin_rules_) {
     if (std::ranges::any_of(rule.origins, [&](const auto& pattern) {
           return access::MatchesOrigin(origin, pattern);
         })) {
-      behavior.Apply(rule.behavior);
+      behavior.Apply(rule.policy);
     }
   }
   return behavior;
@@ -264,31 +263,9 @@ bool ManifestServiceImpl::IsWindowUrlAllowed(const url::Origin& caller,
           data().assets_.HandlesScheme(url.scheme()));
 }
 
-std::string ManifestServiceImpl::SerializeShellApiOrigins() const {
-  std::string serialized;
-  for (const std::string& origin : data().shell_api_origin_patterns_) {
-    if (!serialized.empty()) {
-      serialized.push_back(',');
-    }
-    serialized.append(origin);
-  }
-  return serialized;
-}
-
 const std::map<std::string, isolated::WorldDefinition>&
 ManifestServiceImpl::IsolatedWorldDefinitions() const {
   return data().isolated_worlds_;
-}
-
-std::string ManifestServiceImpl::SerializeExplorerOrigins() const {
-  std::string serialized;
-  for (const std::string& origin : data().explorer_origin_patterns_) {
-    if (!serialized.empty()) {
-      serialized.push_back(',');
-    }
-    serialized.append(origin);
-  }
-  return serialized;
 }
 
 ManifestServiceImpl::OriginRule ManifestServiceImpl::GrantsFor(

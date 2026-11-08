@@ -34,14 +34,12 @@ assert.equal(Object.hasOwn(globalThis, 'playground'), false);
 assert.equal(typeof bindings.commands.echoMojom, 'function');
 assert.doesNotMatch(source, /Object\.defineProperty\(window|globalThis\.playground/);
 let calls = 0;
-const api = bindings.createPlaygroundApi(async (channel, id, fingerprint, payload) => {
+const api = bindings.createPlaygroundApi(async (endpoint, request) => {
   calls++;
-  assert.equal(channel, 'playground.Commands.EchoMojom');
-  assert.equal(typeof id, 'bigint');
-  assert.equal(typeof fingerprint, 'bigint');
-  const request = decodeMojom(mojomTypes.CommandsEchoMojomRequest, payload);
-  assert.deepEqual(request.value, sample);
-  return encodeMojom(mojomTypes.CommandsEchoMojomResponse, {result:request.value});
+  assert.equal(endpoint.interfaceName,'playground.wire.Commands');
+  assert.equal(typeof endpoint.ordinal,'number');
+  assert.deepEqual(request.value,sample);
+  return {result:request.value};
 });
 assert.ok(Object.isFrozen(api.commands));
 assert.deepEqual(await api.commands.echoMojom(sample), sample);

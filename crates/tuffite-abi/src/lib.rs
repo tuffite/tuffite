@@ -391,7 +391,24 @@ mod header_parity {
             offset_of!(Application, configuration),
             header + 20 * pointer
         );
-        assert_eq!(size_of::<Application>(), header + 21 * pointer);
+        assert_eq!(
+            offset_of!(Application, resolve_mojom_method),
+            header + 21 * pointer
+        );
+        assert_eq!(
+            offset_of!(Application, dispatch_mojom),
+            header + 22 * pointer
+        );
+        assert_eq!(
+            offset_of!(Application, invoke_utility_mojom),
+            header + 23 * pointer
+        );
+        assert_eq!(size_of::<Application>(), header + 24 * pointer);
+        assert_eq!(offset_of!(super::MojomMethod, command_id), 2 * pointer);
+        assert_eq!(
+            offset_of!(super::MojomMethod, schema_fingerprint),
+            2 * pointer + 8
+        );
         assert_eq!(offset_of!(UtilitySessionService, header), 0);
         assert_eq!(offset_of!(UtilitySessionService, create), header);
         assert_eq!(

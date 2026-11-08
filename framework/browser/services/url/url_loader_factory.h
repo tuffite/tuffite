@@ -11,7 +11,9 @@
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "services/network/public/cpp/self_deleting_url_loader_factory.h"
-#include "tuffite/framework/app/services/asset/asset_configuration.h"
+#include "tuffite/components/manifest/common/asset_configuration.h"
+#include "tuffite/framework/browser/services/url/url_types.h"
+#include "tuffite/framework/common/resource.h"
 
 namespace network {
 struct ResourceRequest;
@@ -19,28 +21,20 @@ struct ResourceRequest;
 
 namespace tuffite {
 
-struct URLResolution {
-  std::string kind;
-  base::FilePath file;
-  int status = 200;
-  std::string mime_type;
-  std::string contents;
-};
-using URLResolver = base::RepeatingCallback<void(
-    const network::ResourceRequest&,
-    base::OnceCallback<void(std::optional<URLResolution>)>)>;
-
 class URLLoaderFactory final : public network::SelfDeletingURLLoaderFactory {
  public:
+  using MemoryAssetResolver =
+      base::RepeatingCallback<std::optional<MemoryAsset>(const GURL&)>;
+
   static mojo::PendingRemote<network::mojom::URLLoaderFactory> Create(
       const asset::AssetConfiguration&,
-      asset::MemoryAssetResolver resolver = {},
+      MemoryAssetResolver resolver = {},
       URLResolver business_resolver = {});
 
   URLLoaderFactory(
       mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
       const asset::AssetConfiguration& assets,
-      asset::MemoryAssetResolver resolver,
+      MemoryAssetResolver resolver,
       URLResolver business_resolver,
       base::SelfDeletingPassKey key);
 
@@ -50,7 +44,7 @@ class URLLoaderFactory final : public network::SelfDeletingURLLoaderFactory {
  private:
   ~URLLoaderFactory() override;
   const asset::AssetConfiguration assets_;
-  asset::MemoryAssetResolver resolver_;
+  MemoryAssetResolver resolver_;
   URLResolver business_resolver_;
 
   void CreateLoaderAndStart(

@@ -53,7 +53,7 @@ await new Promise(resolve => setTimeout(resolve, 5));
       catch { this.dataset.foreignDenied = 'true'; }
       this.dataset.registryLocal = String(this.customElementRegistry === isolated.customElements);
       this.dataset.mainRegistry = String(window.customElements);
-      this.dataset.shellApi = String(typeof tuffite.invoke);
+      this.dataset.shellApi = String(typeof globalThis.Mojo?.bindInterface);
       this.context.signal.addEventListener('abort', () => { this.dataset.aborted = 'true'; });
       this.render();
     }

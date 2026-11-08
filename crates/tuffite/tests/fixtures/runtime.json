@@ -111,7 +111,7 @@
         "explorer": {
           "create": true,
           "executeJavaScript": true,
-          "behavior": {
+          "policy": {
             "navigation": {
               "mode": "delegate"
             },

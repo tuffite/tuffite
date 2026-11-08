@@ -10,7 +10,7 @@ rpc::Service {{interface.name}}::Bind(std::shared_ptr<{{interface.name}}> implem
           return {{method.name}}Method::Dispatch(std::move(service), context, input, reply, &{{interface.name}}::{{method.name}});
         }
 {% endfor %}        return false;
-      });
+      }, { {% for method in interface.methods %}{"{{method.name}}", {{method.ordinal}}}{% if not loop.last %}, {% endif %}{% endfor %} });
 }
 {% endfor %}
 }  // namespace tuffite::shell_api::generated

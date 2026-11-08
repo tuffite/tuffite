@@ -62,6 +62,12 @@ class Application final : public HostDispatch {
     application_event_ = std::move(event);
   }
   void InitializeBrowser(base::OnceCallback<void(bool)> callback);
+  std::optional<MojomMethod> ResolveMojomMethod(const std::string&,
+                                                uint32_t) const override;
+  void DispatchMojom(const MojomMethod&,
+                     const std::vector<uint8_t>&,
+                     const base::UnguessableToken&,
+                     HostDispatch::MojomReply) override;
   bool Dispatch(std::vector<uint8_t>,
                 DispatchCallback,
                 const base::UnguessableToken&) override;
@@ -91,6 +97,7 @@ class Application final : public HostDispatch {
   explicit Application(const tuffite_application& application);
   static bool ReadResponseRequestId(base::span<const uint8_t>, uint64_t*);
   void CompletePending(uint64_t, bool, std::vector<uint8_t>);
+  void CompleteMojomPending(uint64_t, int32_t, std::vector<uint8_t>);
   void FailPending();
   void PublishApplicationEvent(std::string, std::vector<uint8_t>);
   const tuffite_application application_;
@@ -111,6 +118,12 @@ class Application final : public HostDispatch {
     std::unique_ptr<base::OneShotTimer> timeout;
   };
   std::unordered_map<uint64_t, PendingRequest> pending_;
+  struct PendingMojomRequest {
+    HostDispatch::MojomReply callback;
+    base::UnguessableToken document;
+    std::unique_ptr<base::OneShotTimer> timeout;
+  };
+  std::unordered_map<uint64_t, PendingMojomRequest> mojom_pending_;
   uint64_t next_request_id_ = 1;
   // Publish the UI destination atomically to Runtime event producers.
   base::Lock event_lock_;

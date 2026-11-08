@@ -59,11 +59,7 @@ const ExplorerPolicy* WebContentsRoleData::GetExplorerPolicy(
     const content::WebContents* contents) {
   return ExplorerSurfaceData::GetExplorerPolicy(contents);
 }
-void WebContentsRoleData::SetExplorerContextMenuEnabled(
-    content::WebContents* contents,
-    bool enabled) {
-  ExplorerSurfaceData::SetExplorerContextMenuEnabled(contents, enabled);
-}
+
 bool WebContentsRoleData::IsExplorerContextMenuEnabled(
     const content::WebContents* contents) {
   return ExplorerSurfaceData::IsExplorerContextMenuEnabled(contents);

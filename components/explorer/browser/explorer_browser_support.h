@@ -12,7 +12,21 @@
 #include "content/public/browser/javascript_dialog_manager.h"
 #include "ui/base/window_open_disposition.h"
 
+namespace content {
+class BrowserContext;
+}
+namespace url {
+class Origin;
+}
+
 namespace tuffite {
+struct ExplorerPolicy;
+
+// Isolation domains are scoped to the BrowserContext, owner origin and grants.
+// The WebContents routing identity remains separate from this process policy.
+int64_t ResolveExplorerIsolationId(content::BrowserContext& context,
+                                   const url::Origin& owner,
+                                   const ExplorerPolicy& policy);
 
 // Maps the browser's final disposition to the stable Explorer event kind.
 // This must run at CreateCustomWebContents/AddNewContents time; the earlier

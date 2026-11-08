@@ -383,8 +383,8 @@ ContentClient lives beside MainDelegate in `app/content_client.*` and is compile
 privately into `app:app`. MainDelegate owns this process-level Chromium adapter;
 it registers application schemes and serves localized resources before the
 application service graph is available. It is shared across Chromium process
-roles and does not depend on application or profile services. Shared switches, languages, access helpers and utility IPC
-remain in common with explicit module targets. Application projections live in
-manifest/app_config.h under tuffite::app; resource snapshots live in
-asset/asset_configuration.h under tuffite::asset. See common/README.md for the
-module boundaries.
+roles and does not depend on application or profile services. Shared switches, languages, resource values and utility IPC remain in common
+with explicit module targets. Application projections live in
+`components/manifest/common/application_configuration.h` under `tuffite::app`;
+resource configuration and access rules also belong to the manifest component.
+See common/README.md for the module boundaries.

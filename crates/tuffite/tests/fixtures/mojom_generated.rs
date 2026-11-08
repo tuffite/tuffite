@@ -2401,10 +2401,11 @@ pub mod aux {
     pub type RoundTrip = super::AuxRoundTripRequest;
     impl super::AuxRoundTripRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Aux.RoundTrip",
-            0x6aa0_86be_7215_89f9,
-            0xddfa_86bc_b211_4566,
-        );
+                "playground.Aux.RoundTrip",
+                0x6aa0_86be_7215_89f9,
+                0xddfa_86bc_b211_4566,
+            )
+            .with_ordinal(0u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -2454,10 +2455,11 @@ pub mod aux {
     pub type ReadState = super::AuxReadStateRequest;
     impl super::AuxReadStateRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Aux.ReadState",
-            0x114a_b85e_38e3_986d,
-            0xe2c4_c159_cf6e_38dc,
-        );
+                "playground.Aux.ReadState",
+                0x114a_b85e_38e3_986d,
+                0xe2c4_c159_cf6e_38dc,
+            )
+            .with_ordinal(1u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -2504,10 +2506,11 @@ pub mod aux {
     pub type ProcessId = super::AuxProcessIdRequest;
     impl super::AuxProcessIdRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Aux.ProcessId",
-            0x1309_d795_517c_e447,
-            0xc418_0e34_f8de_d239,
-        );
+                "playground.Aux.ProcessId",
+                0x1309_d795_517c_e447,
+                0xc418_0e34_f8de_d239,
+            )
+            .with_ordinal(2u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -2564,10 +2567,11 @@ pub mod browserDiagnostics {
     pub type Identity = super::BrowserDiagnosticsIdentityRequest;
     impl super::BrowserDiagnosticsIdentityRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.BrowserDiagnostics.Identity",
-            0x58f4_c53e_02c8_f05d,
-            0x9ad8_9e2d_1099_976c,
-        );
+                "playground.BrowserDiagnostics.Identity",
+                0x58f4_c53e_02c8_f05d,
+                0x9ad8_9e2d_1099_976c,
+            )
+            .with_ordinal(0u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -2614,10 +2618,11 @@ pub mod browserDiagnostics {
     pub type Increment = super::BrowserDiagnosticsIncrementRequest;
     impl super::BrowserDiagnosticsIncrementRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.BrowserDiagnostics.Increment",
-            0x902e_376b_c585_b70d,
-            0xa8f9_759d_8049_db8e,
-        );
+                "playground.BrowserDiagnostics.Increment",
+                0x902e_376b_c585_b70d,
+                0xa8f9_759d_8049_db8e,
+            )
+            .with_ordinal(1u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -2679,10 +2684,11 @@ pub mod commands {
     pub type DoSomething = super::CommandsDoSomethingRequest;
     impl super::CommandsDoSomethingRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Commands.DoSomething",
-            0x83e8_37af_20d1_16fb,
-            0x65a0_5c3a_c7ee_7b1e,
-        );
+                "playground.Commands.DoSomething",
+                0x83e8_37af_20d1_16fb,
+                0x65a0_5c3a_c7ee_7b1e,
+            )
+            .with_ordinal(0u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -2729,10 +2735,11 @@ pub mod commands {
     pub type CheckUtilitySession = super::CommandsCheckUtilitySessionRequest;
     impl super::CommandsCheckUtilitySessionRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Commands.CheckUtilitySession",
-            0xc61a_a21d_2183_3df3,
-            0xff32_7e16_9194_e4d0,
-        );
+                "playground.Commands.CheckUtilitySession",
+                0xc61a_a21d_2183_3df3,
+                0xff32_7e16_9194_e4d0,
+            )
+            .with_ordinal(1u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -2779,10 +2786,11 @@ pub mod commands {
     pub type CheckJavascriptExtension = super::CommandsCheckJavascriptExtensionRequest;
     impl super::CommandsCheckJavascriptExtensionRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Commands.CheckJavascriptExtension",
-            0x0652_7c3a_9967_b4a2,
-            0x43d8_9727_7b68_2c0f,
-        );
+                "playground.Commands.CheckJavascriptExtension",
+                0x0652_7c3a_9967_b4a2,
+                0x43d8_9727_7b68_2c0f,
+            )
+            .with_ordinal(2u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -2829,10 +2837,11 @@ pub mod commands {
     pub type EchoMojom = super::CommandsEchoMojomRequest;
     impl super::CommandsEchoMojomRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Commands.EchoMojom",
-            0x1595_5978_00d6_d178,
-            0x2ffa_4399_d986_3635,
-        );
+                "playground.Commands.EchoMojom",
+                0x1595_5978_00d6_d178,
+                0x2ffa_4399_d986_3635,
+            )
+            .with_ordinal(3u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -2895,10 +2904,11 @@ pub mod diagnostics {
     pub type ProcessId = super::DiagnosticsProcessIdRequest;
     impl super::DiagnosticsProcessIdRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Diagnostics.ProcessId",
-            0xd81a_d5fc_08d6_14b0,
-            0xdcbe_258a_aed2_6b7d,
-        );
+                "playground.Diagnostics.ProcessId",
+                0xd81a_d5fc_08d6_14b0,
+                0xdcbe_258a_aed2_6b7d,
+            )
+            .with_ordinal(0u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -2960,10 +2970,11 @@ pub mod echo {
     pub type RoundTrip = super::EchoRoundTripRequest;
     impl super::EchoRoundTripRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Echo.RoundTrip",
-            0x58af_025b_7b66_ca5e,
-            0xddfa_86bc_b211_4566,
-        );
+                "playground.Echo.RoundTrip",
+                0x58af_025b_7b66_ca5e,
+                0xddfa_86bc_b211_4566,
+            )
+            .with_ordinal(0u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -3013,10 +3024,11 @@ pub mod echo {
     pub type Restricted = super::EchoRestrictedRequest;
     impl super::EchoRestrictedRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Echo.Restricted",
-            0x9329_762a_25f6_f9f9,
-            0x4439_2603_7b7c_f97a,
-        );
+                "playground.Echo.Restricted",
+                0x9329_762a_25f6_f9f9,
+                0x4439_2603_7b7c_f97a,
+            )
+            .with_ordinal(1u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -3076,10 +3088,11 @@ pub mod profiles {
     pub type List = super::ProfilesListRequest;
     impl super::ProfilesListRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Profiles.List",
-            0x6fef_7683_4bd4_15be,
-            0x9ad8_9e2d_1099_976c,
-        );
+                "playground.Profiles.List",
+                0x6fef_7683_4bd4_15be,
+                0x9ad8_9e2d_1099_976c,
+            )
+            .with_ordinal(0u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -3126,10 +3139,11 @@ pub mod profiles {
     pub type Create = super::ProfilesCreateRequest;
     impl super::ProfilesCreateRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Profiles.Create",
-            0xb691_e427_65a2_ab02,
-            0x24ab_bf55_09a2_6ced,
-        );
+                "playground.Profiles.Create",
+                0xb691_e427_65a2_ab02,
+                0x24ab_bf55_09a2_6ced,
+            )
+            .with_ordinal(1u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -3174,10 +3188,11 @@ pub mod profiles {
     pub type Prepare = super::ProfilesPrepareRequest;
     impl super::ProfilesPrepareRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Profiles.Prepare",
-            0x37cc_2b2e_a0c4_226e,
-            0x21f4_8f42_7f68_33a5,
-        );
+                "playground.Profiles.Prepare",
+                0x37cc_2b2e_a0c4_226e,
+                0x21f4_8f42_7f68_33a5,
+            )
+            .with_ordinal(2u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -3228,10 +3243,11 @@ pub mod profiles {
     pub type Attach = super::ProfilesAttachRequest;
     impl super::ProfilesAttachRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Profiles.Attach",
-            0x93d6_a32b_8242_9b9b,
-            0x8e17_797e_b4ce_ef74,
-        );
+                "playground.Profiles.Attach",
+                0x93d6_a32b_8242_9b9b,
+                0x8e17_797e_b4ce_ef74,
+            )
+            .with_ordinal(3u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -3278,10 +3294,11 @@ pub mod profiles {
     pub type ReleaseView = super::ProfilesReleaseViewRequest;
     impl super::ProfilesReleaseViewRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Profiles.ReleaseView",
-            0x635c_d6d2_c39d_37e7,
-            0x4324_574e_baf4_51d5,
-        );
+                "playground.Profiles.ReleaseView",
+                0x635c_d6d2_c39d_37e7,
+                0x4324_574e_baf4_51d5,
+            )
+            .with_ordinal(4u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -3327,10 +3344,11 @@ pub mod profiles {
     pub type Close = super::ProfilesCloseRequest;
     impl super::ProfilesCloseRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Profiles.Close",
-            0x0c4c_b572_c1ae_a249,
-            0x5404_6f99_3e6d_d968,
-        );
+                "playground.Profiles.Close",
+                0x0c4c_b572_c1ae_a249,
+                0x5404_6f99_3e6d_d968,
+            )
+            .with_ordinal(5u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -3375,10 +3393,11 @@ pub mod profiles {
     pub type ApplicationState = super::ProfilesApplicationStateRequest;
     impl super::ProfilesApplicationStateRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Profiles.ApplicationState",
-            0x216b_d68c_91e2_d7b1,
-            0x3593_5a08_b94a_d2b6,
-        );
+                "playground.Profiles.ApplicationState",
+                0x216b_d68c_91e2_d7b1,
+                0x3593_5a08_b94a_d2b6,
+            )
+            .with_ordinal(6u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -3425,10 +3444,11 @@ pub mod profiles {
     pub type CreateWindow = super::ProfilesCreateWindowRequest;
     impl super::ProfilesCreateWindowRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Profiles.CreateWindow",
-            0x71e7_29b5_b1af_ad66,
-            0x3b5d_acf6_c469_b9a8,
-        );
+                "playground.Profiles.CreateWindow",
+                0x71e7_29b5_b1af_ad66,
+                0x3b5d_acf6_c469_b9a8,
+            )
+            .with_ordinal(7u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {
@@ -3475,10 +3495,11 @@ pub mod profiles {
     pub type CloseWindow = super::ProfilesCloseWindowRequest;
     impl super::ProfilesCloseWindowRequest {
         pub const COMMAND: ::tuffite::CommandDescriptor = ::tuffite::CommandDescriptor::new(
-            "playground.Profiles.CloseWindow",
-            0x9949_081e_dfe9_825b,
-            0xf299_1096_defc_8c85,
-        );
+                "playground.Profiles.CloseWindow",
+                0x9949_081e_dfe9_825b,
+                0xf299_1096_defc_8c85,
+            )
+            .with_ordinal(8u32);
         pub fn __tuffite_decode(
             command: ::tuffite::Command<'_>,
         ) -> Result<Self, ::tuffite::CommandError> {

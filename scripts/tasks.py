@@ -114,10 +114,12 @@ def test(context, args):
         output = framework.chromium_output(args)
         for name in (
             "manifest_service_unittests",
-            "capability_pattern_unittests",
+            "access_unittests",
             "abi_unittests",
+            "configuration_unittests",
             "renderer_rpc_unittests",
             "explorer_browser_support_unittests",
+            "explorer_lifecycle_unittests",
             "utility_service_unittests",
             "remoting_service_unittests",
         ):
@@ -132,11 +134,15 @@ def test(context, args):
         web_assets(context, app)
         context.application(["package", "--manifest", str(app / "tuffite.json"),
                              "--destination", str(context.source / "dist"),
-                             "--name", "playground", "--force", "--no-strip"], distribution)
+                             "--name", "playground", "--format", "directory",
+                             "--force", "--no-strip"], distribution)
         command = ["python3", "playground/scripts/smoke.py", "--package", "dist/playground"]
         if args.suite == "explorer":
             command.append("--explorer-demo")
         if args.suite == "smoke":
+            context.command([*command, "--configuration"])
+            context.command([*command, "--explorer-lifecycle"])
+            context.command([*command, "--browser-behavior"])
             context.command([*command, "--framework-extensions"])
             context.command([*command, "--profiles"])
             context.command([*command, "--mojom"])

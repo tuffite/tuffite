@@ -927,8 +927,7 @@ export const mojomTypes = {
 export const mojomMethods = [
   [
     'aux.roundTrip',
-    '0x6aa086be721589f9',
-    '0xddfa86bcb2114566',
+    0,
     {
       'fields': [[
         'value',
@@ -1077,12 +1076,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Aux.RoundTrip'
+    'playground.wire.Aux'
   ],
   [
     'aux.readState',
-    '0x114ab85e38e3986d',
-    '0xe2c4c159cf6e38dc',
+    1,
     {
       'fields': [],
       'size': 8
@@ -1096,12 +1094,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Aux.ReadState'
+    'playground.wire.Aux'
   ],
   [
     'aux.processId',
-    '0x1309d795517ce447',
-    '0xc4180e34f8ded239',
+    2,
     {
       'fields': [],
       'size': 8
@@ -1115,12 +1112,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Aux.ProcessId'
+    'playground.wire.Aux'
   ],
   [
     'browserDiagnostics.identity',
-    '0x58f4c53e02c8f05d',
-    '0x9ad89e2d1099976c',
+    0,
     {
       'fields': [],
       'size': 8
@@ -1134,12 +1130,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.BrowserDiagnostics.Identity'
+    'playground.wire.BrowserDiagnostics'
   ],
   [
     'browserDiagnostics.increment',
-    '0x902e376bc585b70d',
-    '0xa8f9759d8049db8e',
+    1,
     {
       'fields': [],
       'size': 8
@@ -1153,12 +1148,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.BrowserDiagnostics.Increment'
+    'playground.wire.BrowserDiagnostics'
   ],
   [
     'commands.doSomething',
-    '0x83e837af20d116fb',
-    '0x65a05c3ac7ee7b1e',
+    0,
     {
       'fields': [[
         'message',
@@ -1177,12 +1171,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Commands.DoSomething'
+    'playground.wire.Commands'
   ],
   [
     'commands.checkUtilitySession',
-    '0xc61aa21d21833df3',
-    '0xff327e169194e4d0',
+    1,
     {
       'fields': [],
       'size': 8
@@ -1196,12 +1189,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Commands.CheckUtilitySession'
+    'playground.wire.Commands'
   ],
   [
     'commands.checkJavascriptExtension',
-    '0x06527c3a9967b4a2',
-    '0x43d897277b682c0f',
+    2,
     {
       'fields': [],
       'size': 8
@@ -1215,12 +1207,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Commands.CheckJavascriptExtension'
+    'playground.wire.Commands'
   ],
   [
     'commands.echoMojom',
-    '0x1595597800d6d178',
-    '0x2ffa4399d9863635',
+    3,
     {
       'fields': [[
         'value',
@@ -1369,12 +1360,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Commands.EchoMojom'
+    'playground.wire.Commands'
   ],
   [
     'diagnostics.processId',
-    '0xd81ad5fc08d614b0',
-    '0xdcbe258aaed26b7d',
+    0,
     {
       'fields': [],
       'size': 8
@@ -1388,12 +1378,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Diagnostics.ProcessId'
+    'playground.wire.Diagnostics'
   ],
   [
     'echo.roundTrip',
-    '0x58af025b7b66ca5e',
-    '0xddfa86bcb2114566',
+    0,
     {
       'fields': [[
         'value',
@@ -1542,12 +1531,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Echo.RoundTrip'
+    'playground.wire.Echo'
   ],
   [
     'echo.restricted',
-    '0x9329762a25f6f9f9',
-    '0x443926037b7cf97a',
+    1,
     {
       'fields': [[
         'value',
@@ -1696,12 +1684,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Echo.Restricted'
+    'playground.wire.Echo'
   ],
   [
     'profiles.list',
-    '0x6fef76834bd415be',
-    '0x9ad89e2d1099976c',
+    0,
     {
       'fields': [],
       'size': 8
@@ -1715,12 +1702,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Profiles.List'
+    'playground.wire.Profiles'
   ],
   [
     'profiles.create',
-    '0xb691e42765a2ab02',
-    '0x24abbf5509a26ced',
+    1,
     {
       'fields': [[
         'id',
@@ -1739,12 +1725,11 @@ export const mojomMethods = [
       'fields': [],
       'size': 8
     },
-    'playground.Profiles.Create'
+    'playground.wire.Profiles'
   ],
   [
     'profiles.prepare',
-    '0x37cc2b2ea0c4226e',
-    '0x21f48f427f6833a5',
+    2,
     {
       'fields': [[
         'id',
@@ -1768,12 +1753,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Profiles.Prepare'
+    'playground.wire.Profiles'
   ],
   [
     'profiles.attach',
-    '0x93d6a32b82429b9b',
-    '0x8e17797eb4ceef74',
+    3,
     {
       'fields': [[
         'windowId',
@@ -1797,12 +1781,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Profiles.Attach'
+    'playground.wire.Profiles'
   ],
   [
     'profiles.releaseView',
-    '0x635cd6d2c39d37e7',
-    '0x4324574ebaf451d5',
+    4,
     {
       'fields': [[
         'view',
@@ -1816,12 +1799,11 @@ export const mojomMethods = [
       'fields': [],
       'size': 8
     },
-    'playground.Profiles.ReleaseView'
+    'playground.wire.Profiles'
   ],
   [
     'profiles.close',
-    '0x0c4cb572c1aea249',
-    '0x54046f993e6dd968',
+    5,
     {
       'fields': [[
         'context',
@@ -1835,12 +1817,11 @@ export const mojomMethods = [
       'fields': [],
       'size': 8
     },
-    'playground.Profiles.Close'
+    'playground.wire.Profiles'
   ],
   [
     'profiles.applicationState',
-    '0x216bd68c91e2d7b1',
-    '0x35935a08b94ad2b6',
+    6,
     {
       'fields': [],
       'size': 8
@@ -1854,12 +1835,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Profiles.ApplicationState'
+    'playground.wire.Profiles'
   ],
   [
     'profiles.createWindow',
-    '0x71e729b5b1afad66',
-    '0x3b5dacf6c469b9a8',
+    7,
     {
       'fields': [],
       'size': 8
@@ -1873,12 +1853,11 @@ export const mojomMethods = [
       ]],
       'size': 16
     },
-    'playground.Profiles.CreateWindow'
+    'playground.wire.Profiles'
   ],
   [
     'profiles.closeWindow',
-    '0x9949081edfe9825b',
-    '0xf2991096defc8c85',
+    8,
     {
       'fields': [[
         'windowId',
@@ -1892,11 +1871,11 @@ export const mojomMethods = [
       'fields': [],
       'size': 8
     },
-    'playground.Profiles.CloseWindow'
+    'playground.wire.Profiles'
   ]
 ];
-import { createMojomCommandApi, invokeBinary } from '/tuffite.js';
-export function createPlaygroundApi(transport = invokeBinary) {
+import { createMojomCommandApi } from '/tuffite.js';
+export function createPlaygroundApi(transport) {
   return createMojomCommandApi(mojomMethods, 'playground', transport);
 }
 export const { aux, browserDiagnostics, commands, diagnostics, echo, profiles } = createPlaygroundApi();

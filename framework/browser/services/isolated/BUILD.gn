@@ -12,7 +12,7 @@ source_set("registry") {
     "//tuffite/components/isolated/common:configuration",
     "//url",
   ]
-  deps = [ "//tuffite/framework/common:access" ]
+  deps = [ "//tuffite/components/manifest/common:access" ]
 }
 source_set("isolated") {
   public = [
@@ -30,7 +30,7 @@ source_set("isolated") {
     "//components/keyed_service/core",
     "//content/public/browser",
     "//tuffite/components/isolated/browser",
-    "//tuffite/framework/app/services/asset:configuration",
+    "//tuffite/framework/common:resource",
     "//tuffite/framework/public/c_api:abi",
     "//url",
   ]

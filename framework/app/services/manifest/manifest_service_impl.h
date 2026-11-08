@@ -6,7 +6,7 @@
 #include <memory>
 #include <utility>
 
-#include "tuffite/framework/app/services/manifest/manifest_configuration.h"
+#include "tuffite/framework/app/services/manifest/effective_manifest.h"
 #include "tuffite/framework/app/services/manifest/manifest_service.h"
 
 namespace tuffite::app {
@@ -16,15 +16,13 @@ struct OriginRule;
 namespace tuffite {
 class ManifestServiceImpl final : public ManifestService {
  public:
-  explicit ManifestServiceImpl(app::EffectiveConfiguration configuration);
+  explicit ManifestServiceImpl(EffectiveManifest configuration);
   ~ManifestServiceImpl() override;
   app::AppInfo app_info() const override;
   const std::vector<app::AppWindow>& startup_windows() const override;
   app::NetworkLimits network_limits() const override;
   asset::AssetConfiguration assets() const override;
   const std::string& SerializeRuntimeConfiguration() const override;
-  std::string SerializeShellApiOrigins() const override;
-  std::string SerializeExplorerOrigins() const override;
   const std::map<std::string, isolated::WorldDefinition>&
   IsolatedWorldDefinitions() const override;
   std::optional<base::FilePath> ResolveBaseDirectory(
@@ -45,7 +43,7 @@ class ManifestServiceImpl final : public ManifestService {
   bool IsAllShellApiAllowed(const url::Origin& origin) const override;
   bool IsDevToolsAllowed(const url::Origin& origin) const override;
   bool IsDevToolsEnabled() const override;
-  ExplorerBehavior ExplorerDefaults(const url::Origin& origin) const override;
+  ExplorerPolicySettings ExplorerDefaults(const url::Origin& origin) const override;
   bool IsExplorerOriginAllowed(const url::Origin& origin) const override;
   bool IsShellApiCommandAllowed(const url::Origin& origin,
                                 std::string_view channel) const override;
@@ -65,14 +63,14 @@ class ManifestServiceImpl final : public ManifestService {
 
  private:
   using OriginRule = app::OriginRule;
-  const app::ManifestData& data() const { return configuration_.data(); }
+  const app::Manifest& data() const { return configuration_.manifest(); }
   OriginRule GrantsFor(const url::Origin& origin) const;
   bool IsFileSystemPathAllowed(const url::Origin&,
                                std::string_view base,
                                std::string_view relative,
                                bool write,
                                std::string_view method) const;
-  const app::EffectiveConfiguration configuration_;
+  const EffectiveManifest configuration_;
   mutable base::WeakPtrFactory<ManifestServiceImpl> weak_factory_{this};
 };
 }  // namespace tuffite

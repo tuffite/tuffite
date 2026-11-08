@@ -21,26 +21,18 @@ class RenderFrameHost;
 namespace tuffite {
 class RpcHandler;
 
-class DispatchHost final : public content::DocumentService<mojom::Dispatcher> {
+class DispatchHost final : public content::DocumentService<mojom::EventSource> {
  public:
   static void Create(RpcHandler* handler,
                      content::RenderFrameHost* frame,
-                     mojo::PendingReceiver<mojom::Dispatcher> receiver);
+                     mojo::PendingReceiver<mojom::EventSource> receiver);
 
-  void Dispatch(const std::string& channel,
-                const std::vector<uint8_t>& payload,
-                DispatchCallback callback) override;
-  void DispatchRequest(uint64_t request_id,
-                       const std::string& channel,
-                       const std::vector<uint8_t>& payload,
-                       DispatchRequestCallback callback) override;
-  void CancelRequest(uint64_t request_id) override;
   void BindClient(mojo::PendingRemote<mojom::DispatchClient> client) override;
 
  private:
   DispatchHost(RpcHandler& handler,
                content::RenderFrameHost& frame,
-               mojo::PendingReceiver<mojom::Dispatcher> receiver);
+               mojo::PendingReceiver<mojom::EventSource> receiver);
   ~DispatchHost() override;
 
   bool IsAuthorized() const;

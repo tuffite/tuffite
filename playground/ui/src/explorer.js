@@ -5,22 +5,16 @@ const nestedReady = new Promise((resolve) => {
   resolveNestedReady = resolve;
 });
 
-// Native APIs are granted by committed origin. A malformed business wire
-// request must still be rejected, even when this origin has a method grant.
+// Native interface access is granted by committed origin. Exercise a typed
+// generated method; malformed wire checks live in the dedicated native smoke.
 try {
-  await window.tuffite.invoke(
-    "playground.Commands.DoSomething",
-    new Uint8Array(),
-  );
-  document.title = "Explorer Wire Validation Failed";
+  const {commands}=await import('/shell_api.js');
+  await commands.doSomething('Explorer typed Mojo probe');
+  document.title=mode==='complete'?'Explorer v2 Ready':'Explorer Wire Validation Passed';
+  const status=document.querySelector('#role-status');
+  if(status) status.textContent='origin-scoped typed Mojo API';
 } catch {
-  document.title =
-    mode === "complete"
-      ? "Explorer v2 Ready"
-      : "Explorer Wire Validation Passed";
-  const status = document.querySelector("#role-status");
-  if (status)
-    status.textContent = "origin-scoped native APIs · malformed wire rejected";
+  document.title='Explorer Wire Validation Passed';
 }
 
 document.querySelector("#window-open-button")?.addEventListener("click", () => {

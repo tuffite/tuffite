@@ -1,7 +1,10 @@
 // Copyright 2026 The Tuffite Authors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+#include "tuffite/framework/app/services/manifest/manifest_loader.h"
+
 #include <algorithm>
+#include <utility>
 
 #include "base/files/file_enumerator.h"
 #include "base/files/file_util.h"
@@ -10,20 +13,74 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/values.h"
-#include "tuffite/framework/app/services/manifest/manifest_configuration.h"
-#include "tuffite/framework/app/services/manifest/manifest_configuration_data.h"
-#include "tuffite/framework/common/access.h"
+#include "net/base/url_util.h"
+#include "tuffite/components/manifest/common/access_rules.h"
+#include "tuffite/components/manifest/common/manifest.h"
 #include "url/origin.h"
 
-namespace tuffite::app {
-ManifestDefinition::ManifestDefinition(std::unique_ptr<ManifestData> data)
-    : data_(std::move(data)) {}
-ManifestDefinition::ManifestDefinition(ManifestDefinition&&) noexcept = default;
-ManifestDefinition& ManifestDefinition::operator=(
-    ManifestDefinition&&) noexcept = default;
-ManifestDefinition::~ManifestDefinition() = default;
+namespace tuffite {
+
+using app::IsolatedWorldDefinition;
+using app::Manifest;
+using app::OriginRule;
+using app::ShellApiGrant;
 
 namespace {
+
+bool ApplyDevelopmentUrl(app::Manifest& data,
+                         const GURL& url,
+                         std::string* error) {
+  if (!url.is_valid() || !url.SchemeIs("http") || !net::IsLocalhost(url) ||
+      url.has_username() || url.has_password() || url.has_ref()) {
+    if (error) {
+      *error = "--tuffite-dev-url must be a credential-free loopback HTTP URL";
+    }
+    return false;
+  }
+  if (data.windows_.empty()) {
+    if (error) {
+      *error = "application manifest has no startup window";
+    }
+    return false;
+  }
+  const std::string origin = url::Origin::Create(url).Serialize();
+  auto grant_origin = [&](std::vector<std::string>* patterns) {
+    if (std::ranges::find(*patterns, origin) == patterns->end()) {
+      patterns->push_back(origin);
+    }
+  };
+  data.windows_.front().url = url;
+  const auto packaged_origin = url::Origin::Create(data.entry_url_);
+  for (auto& capability : data.origin_rules_) {
+    if (std::ranges::any_of(capability.origins, [&](const auto& pattern) {
+          return access::MatchesOrigin(packaged_origin, pattern);
+        })) {
+      capability.origins.push_back(origin);
+      if (!capability.shell_api.empty()) {
+        grant_origin(&data.shell_api_origin_patterns_);
+      }
+      if (capability.create_explorer) {
+        grant_origin(&data.explorer_origin_patterns_);
+      }
+    }
+  }
+  for (auto& [name, world] : data.isolated_worlds_) {
+    if (std::ranges::any_of(world.origins, [&](const auto& pattern) {
+          return access::MatchesOrigin(packaged_origin, pattern);
+        })) {
+      world.origins.push_back(origin);
+    }
+  }
+  for (auto& [origins, csp] : data.assets_.csp_rules) {
+    if (std::ranges::any_of(origins, [&](const auto& pattern) {
+          return access::MatchesOrigin(packaged_origin, pattern);
+        })) {
+      origins.push_back(origin);
+    }
+  }
+  return true;
+}
+
 constexpr size_t kMaxManifestBytes = 1024 * 1024;
 constexpr size_t kMaxNetworkResponseBytes = 5 * 1024 * 1024;
 constexpr int kMaxNetworkTimeoutSeconds = 300;
@@ -212,12 +269,13 @@ bool ManifestLoader::ReadNetworkDisableHttp2(
 }
 
 // static
-std::optional<ManifestDefinition> ManifestLoader::Load(
+std::optional<EffectiveManifest> ManifestLoader::Load(
     const base::FilePath& package_root,
     std::string* error,
-    std::string_view runtime_configuration) {
-  auto fail =
-      [error](std::string message) -> std::optional<ManifestDefinition> {
+    std::string_view runtime_configuration,
+    const ManifestEnvironment& environment,
+    const ManifestOptions& options) {
+  auto fail = [error](std::string message) -> std::optional<EffectiveManifest> {
     if (error) {
       *error = std::move(message);
     }
@@ -261,7 +319,7 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
       return fail("unknown app field: " + std::string(key));
     }
   }
-  auto manifest = std::make_unique<ManifestData>();
+  auto manifest = std::make_unique<Manifest>();
   auto schemes = ParseApplicationSchemes(*app, error);
   if (!schemes) {
     return std::nullopt;
@@ -561,7 +619,8 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
   }
 
   // This registry is generated from the public IDL by the package builder,
-  // never supplied by renderer IPC. It binds a method name to its wire ID.
+  // never supplied by renderer IPC. It binds a method name to its native
+  // backend ID.
   if (const auto* ids = shell_api->FindDict("commandIds")) {
     for (const auto [name, value] : *ids) {
       const auto* text = value.GetIfString();
@@ -627,8 +686,8 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
         return fail("browser rule csp must be a nonempty header value");
       }
       capability.csp = csp->GetString();
-      manifest->assets_.csp_rules.push_back(
-          {capability.origins, capability.csp});
+      manifest->assets_.csp_rules.emplace_back(capability.origins,
+                                               capability.csp);
     }
     if (const auto* value = rule->Find("explorer")) {
       const auto* explorer = value->GetIfDict();
@@ -636,7 +695,7 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
         return fail("explorer grant must be an object");
       }
       for (const auto [key, flag] : *explorer) {
-        if (key == "behavior") {
+        if (key == "policy") {
           continue;
         }
         if (!flag.is_bool() ||
@@ -644,41 +703,65 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
           return fail("invalid explorer grant");
         }
       }
-      if (const auto* behavior_value = explorer->Find("behavior")) {
+      if (const auto* behavior_value = explorer->Find("policy")) {
         const auto* behavior = behavior_value->GetIfDict();
         if (!behavior) {
-          return fail("explorer.behavior must be an object");
+          return fail("explorer.policy must be an object");
         }
         for (const auto [name, configuration] : *behavior) {
-          auto action = ParseExplorerAction(name == "externalProtocol"
-                                                ? "external-protocol"
-                                            : name == "newWindow" ? "new-window"
-                                                                  : name);
-          if (name == "external-protocol" || name == "new-window") {
-            return fail("manifest behavior names must use camelCase");
+          if (name == "freeze" || name == "discard") {
+            ExplorerDelay delay;
+            if (configuration.is_string() &&
+                configuration.GetString() == "never") {
+              delay.mode = ExplorerDelay::Mode::kNever;
+            } else if (configuration.is_string() &&
+                       configuration.GetString() == "default") {
+              delay.mode = ExplorerDelay::Mode::kDefault;
+            } else if (configuration.is_int() && configuration.GetInt() >= 0 &&
+                       configuration.GetInt() <= kExplorerMaximumDelayMs) {
+              delay = {ExplorerDelay::Mode::kAfter, configuration.GetInt()};
+            } else {
+              return fail(
+                  "freeze/discard must be never, default or milliseconds in "
+                  "0..86400000");
+            }
+            (name == "freeze" ? capability.policy.freeze
+                              : capability.policy.discard) = delay;
+            continue;
+          }
+          auto action = ParseExplorerAction(
+              name == "externalProtocol" ? "external-protocol"
+              : name == "contextMenu"    ? "context-menu"
+              : name == "newWindow"      ? "new-window"
+                                         : name);
+          if (name == "external-protocol" || name == "new-window" ||
+              name == "context-menu") {
+            return fail("manifest policy names must use camelCase");
           }
           const auto* object = configuration.GetIfDict();
           const auto* mode = object ? object->FindString("mode") : nullptr;
           auto parsed_mode = mode ? ParseExplorerMode(*mode) : std::nullopt;
-          if (!action || !object || !parsed_mode) {
-            return fail("invalid explorer behavior");
+          if (!action || !object || !parsed_mode ||
+              (*action == ExplorerAction::kContextMenu &&
+               *parsed_mode == ExplorerMode::kDelegate)) {
+            return fail("invalid explorer policy");
           }
           for (const auto [key, ignored] : *object) {
             if (key != "mode" && key != "timeoutMs") {
-              return fail("unknown behavior parameter");
+              return fail("unknown policy parameter");
             }
           }
-          ExplorerBehaviorEntry entry{.mode = *parsed_mode};
+          ExplorerActionPolicy entry{.mode = *parsed_mode};
           if (const auto* timeout = object->Find("timeoutMs")) {
             if (!timeout->is_int() || timeout->GetInt() < 1 ||
                 timeout->GetInt() > 300000 ||
                 *parsed_mode != ExplorerMode::kDelegate ||
                 *action == ExplorerAction::kNavigation) {
-              return fail("invalid behavior timeoutMs");
+              return fail("invalid policy timeoutMs");
             }
             entry.timeout_ms = timeout->GetInt();
           }
-          capability.behavior.insert_or_assign(*action, entry);
+          capability.policy.actions.insert_or_assign(*action, entry);
         }
       }
       capability.create_explorer = explorer->FindBool("create").value_or(false);
@@ -807,6 +890,30 @@ std::optional<ManifestDefinition> ManifestLoader::Load(
       manifest->network_timeout_seconds_ = *seconds;
     }
   }
-  return ManifestDefinition(std::move(manifest));
+  app::OriginRule denial;
+  denial.devtools_allowed = false;
+  for (const auto& origin : options.security.devtools.denied_origins) {
+    std::string normalized;
+    if (!access::NormalizeOrigin(origin, &normalized)) {
+      if (error) {
+        *error =
+            "Browser::setup DevTools origins must be canonical origin patterns";
+      }
+      return std::nullopt;
+    }
+    if (!std::ranges::contains(denial.origins, normalized)) {
+      denial.origins.push_back(std::move(normalized));
+    }
+  }
+  if (!denial.origins.empty()) {
+    manifest->origin_rules_.push_back(std::move(denial));
+  }
+  // Apply the alias after all policy sources have been merged: denials inherit
+  // too.
+  if (environment.development_url &&
+      !ApplyDevelopmentUrl(*manifest, *environment.development_url, error)) {
+    return std::nullopt;
+  }
+  return EffectiveManifest(std::move(manifest));
 }
-}  // namespace tuffite::app
+}  // namespace tuffite

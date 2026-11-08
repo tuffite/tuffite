@@ -3,6 +3,8 @@
 #include "tuffite/framework/app/services/utility/utility_service.h"
 
 #include <map>
+#include <optional>
+#include <utility>
 
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
@@ -23,6 +25,7 @@ class FakeProcess final : public mojom::UtilityService {
   mojo::Receiver<mojom::UtilityService> receiver{this};
   std::map<uint64_t, InvokeCallback> pending;
   std::vector<uint8_t> startup_configuration;
+  std::optional<std::pair<uint64_t, uint64_t>> last_mojom;
   base::RepeatingClosure on_invoke;
   void WaitForRequests(size_t count) {
     if (pending.size() >= count) {
@@ -50,6 +53,14 @@ class FakeProcess final : public mojom::UtilityService {
     if (on_invoke) {
       on_invoke.Run();
     }
+  }
+  void InvokeMojom(uint64_t id,
+                   uint64_t command,
+                   uint64_t fingerprint,
+                   const std::vector<uint8_t>& parameters,
+                   InvokeMojomCallback reply) override {
+    last_mojom = std::make_pair(command, fingerprint);
+    Invoke(id, parameters, std::move(reply));
   }
   void Cancel(uint64_t id) override {
     auto node = pending.extract(id);
@@ -103,6 +114,23 @@ class UtilityServiceTest : public testing::Test {
     service.reset();
   }
 };
+TEST_F(UtilityServiceTest,
+       TypedInvocationPreservesZeroCommandIdWithoutEnvelope) {
+  base::test::TestFuture<int32_t, std::vector<uint8_t>> reply;
+  const std::vector<uint8_t> parameters{8, 0, 0, 0, 0, 0, 0, 0};
+  service->InvokeUtilityMojom(owner, 17, "demo", 0, 23, parameters,
+                              reply.GetCallback());
+  launcher->process.WaitForRequests(1);
+  ASSERT_TRUE(launcher->process.last_mojom);
+  EXPECT_EQ(*launcher->process.last_mojom,
+            std::make_pair(uint64_t{0}, uint64_t{23}));
+  auto pending =
+      launcher->process.pending.extract(launcher->process.pending.begin());
+  std::move(pending.mapped()).Run(TUFFITE_STATUS_OK, parameters);
+  ASSERT_TRUE(reply.Wait());
+  EXPECT_EQ(reply.Get<0>(), TUFFITE_STATUS_OK);
+  EXPECT_EQ(reply.Get<1>(), parameters);
+}
 TEST_F(UtilityServiceTest, ServiceStartupConfigurationIsIndependentOfRequests) {
   service->InvokeUtilityService(owner, 1, "demo", {1, 2}, base::DoNothing());
   launcher->process.WaitForRequests(1);

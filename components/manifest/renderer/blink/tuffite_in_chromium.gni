@@ -1,0 +1,10 @@
+# Copyright 2026 The Tuffite Authors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import("//tuffite/tuffite_in_chromium.gni")
+tuffite_manifest_document_blink_sources = [
+  "//tuffite/components/manifest/renderer/blink/document_configuration_reader.cc",
+  "//tuffite/components/manifest/renderer/blink/document_configuration_reader.h",
+]
+tuffite_manifest_document_blink_deps =
+    [ "//tuffite/components/manifest/common:mojom_blink" ]

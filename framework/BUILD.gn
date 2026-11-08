@@ -1,6 +1,7 @@
 # Copyright 2026 The Tuffite Authors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+import("//build/config/compiler/compiler.gni")
 import("//tools/grit/repack.gni")
 import("//tuffite/tuffite_in_chromium.gni")
 
@@ -20,12 +21,8 @@ repack("pak") {
     "$root_gen_dir/third_party/blink/public/resources/blink_resources.pak",
     "$root_gen_dir/third_party/blink/public/resources/blink_scaled_resources_100_percent.pak",
     "$root_gen_dir/third_party/blink/public/resources/inspector_overlay_resources.pak",
-    "$root_gen_dir/third_party/blink/public/strings/blink_strings_en-US.pak",
     "$root_gen_dir/ui/resources/ui_lottie_resources.pak",
     "$root_gen_dir/ui/resources/ui_resources_100_percent.pak",
-    "$root_gen_dir/ui/strings/app_locale_settings_en-US.pak",
-    "$root_gen_dir/ui/strings/ax_strings_en-US.pak",
-    "$root_gen_dir/ui/strings/ui_strings_en-US.pak",
   ]
   deps = [
     "//content:content_resources",
@@ -36,18 +33,25 @@ repack("pak") {
     "//third_party/blink/public:devtools_inspector_resources",
     "//third_party/blink/public:resources",
     "//third_party/blink/public:scaled_resources_100_percent",
-    "//third_party/blink/public/strings",
     "//ui/resources",
     "//ui/resources:ui_lottie_resources_grd",
-    "//ui/strings",
   ]
   output = "$root_out_dir/tuffite.pak"
 }
 
-copy("locale_pak") {
-  sources = [ "$root_out_dir/tuffite.pak" ]
-  outputs = [ "$root_out_dir/tuffite_locales/en-US.pak" ]
-  deps = [ ":pak" ]
+# Localized strings must not duplicate the common resource payload.
+repack("locale_pak") {
+  sources = [
+    "$root_gen_dir/third_party/blink/public/strings/blink_strings_en-US.pak",
+    "$root_gen_dir/ui/strings/app_locale_settings_en-US.pak",
+    "$root_gen_dir/ui/strings/ax_strings_en-US.pak",
+    "$root_gen_dir/ui/strings/ui_strings_en-US.pak",
+  ]
+  deps = [
+    "//third_party/blink/public/strings",
+    "//ui/strings",
+  ]
+  output = "$root_out_dir/tuffite_locales/en-US.pak"
 }
 
 # Runtime loaded by the application-named bootstrap. Explicit component builds
@@ -56,6 +60,12 @@ copy("locale_pak") {
 shared_library("framework") {
   output_name = "tuffite"
   deps = [ ":core" ]
+  if (is_official_build && use_thin_lto) {
+    # Chromium's default ThinLTO link uses O0. Enable its production O2 link
+    # optimization for the monolithic runtime, as Chrome does for its main DLL.
+    configs -= [ "//build/config/compiler:thinlto_optimize_default" ]
+    configs += [ "//build/config/compiler:thinlto_optimize_max" ]
+  }
 }
 
 # Runtime files packaged into the Tuffite Framework Distribution. Keeping this
@@ -105,10 +115,12 @@ if (is_win) {
 group("unittests") {
   testonly = true
   deps = [
+    "//tuffite/components/manifest/test:access_unittests",
     "//tuffite/framework/app/services/manifest:manifest_service_unittests",
-    "//tuffite/framework/common:access_unittests",
     "//tuffite/framework/test:abi_unittests",
+    "//tuffite/framework/test:configuration_unittests",
     "//tuffite/framework/test:explorer_browser_support_unittests",
+    "//tuffite/framework/test:explorer_lifecycle_unittests",
     "//tuffite/framework/test:remoting_service_unittests",
     "//tuffite/framework/test:renderer_rpc_unittests",
     "//tuffite/framework/test:utility_service_unittests",

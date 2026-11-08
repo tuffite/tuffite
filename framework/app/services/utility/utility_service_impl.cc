@@ -43,6 +43,7 @@ struct PendingInvocation {
   uint64_t request_id;
   std::vector<uint8_t> request;
   UtilityResponseCallback callback;
+  std::optional<std::pair<uint64_t, uint64_t>> method;
 };
 
 struct ActiveInvocation {
@@ -191,9 +192,11 @@ class UtilityServiceHost {
   UtilityServiceHost(const UtilityServiceHost&) = delete;
   UtilityServiceHost& operator=(const UtilityServiceHost&) = delete;
 
-  void Invoke(uint64_t request_id,
-              std::vector<uint8_t> request,
-              UtilityResponseCallback callback) {
+  void Invoke(
+      uint64_t request_id,
+      std::vector<uint8_t> request,
+      UtilityResponseCallback callback,
+      std::optional<std::pair<uint64_t, uint64_t>> method = std::nullopt) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     const base::TimeTicks now = base::TimeTicks::Now();
     if (!circuit_until_.is_null()) {
@@ -216,8 +219,8 @@ class UtilityServiceHost {
       return;
     }
     idle_timer_.Stop();
-    pending_.push_back(
-        PendingInvocation{request_id, std::move(request), std::move(callback)});
+    pending_.push_back(PendingInvocation{request_id, std::move(request),
+                                         std::move(callback), method});
     EnsureRunning();
   }
 
@@ -561,9 +564,16 @@ class UtilityServiceHost {
                                   weak_factory_.GetWeakPtr(), request_id));
       active_.emplace(request_id, ActiveInvocation{std::move(pending.callback),
                                                    std::move(timer)});
-      remote_->Invoke(request_id, std::move(pending.request),
-                      base::BindOnce(&UtilityServiceHost::OnInvoked,
-                                     weak_factory_.GetWeakPtr(), request_id));
+      auto completion = base::BindOnce(&UtilityServiceHost::OnInvoked,
+                                       weak_factory_.GetWeakPtr(), request_id);
+      if (pending.method) {
+        remote_->InvokeMojom(request_id, pending.method->first,
+                             pending.method->second, std::move(pending.request),
+                             std::move(completion));
+      } else {
+        remote_->Invoke(request_id, std::move(pending.request),
+                        std::move(completion));
+      }
     }
     if (pending_.empty() && active_.empty()) {
       MaybeStopIdleProcess();
@@ -797,6 +807,26 @@ class UtilityServiceImpl final : public UtilityService {
                           weak_factory_.GetWeakPtr(), std::move(key),
                           std::move(callback)));
   }
+  void InvokeUtilityMojom(const base::UnguessableToken& owner,
+                          uint64_t request_id,
+                          std::string name,
+                          uint64_t command,
+                          uint64_t fingerprint,
+                          std::vector<uint8_t> request,
+                          UtilityResponseCallback callback) override {
+    RequestKey key{owner, name, request_id};
+    if (request_ids_.contains(key) || next_internal_request_id_ == 0) {
+      std::move(callback).Run(TUFFITE_STATUS_INVALID_ARGUMENT, {});
+      return;
+    }
+    const uint64_t internal_id = next_internal_request_id_++;
+    request_ids_.emplace(key, internal_id);
+    Invoke(internal_id, std::move(name), std::move(request),
+           base::BindOnce(&UtilityServiceImpl::CompleteInvocation,
+                          weak_factory_.GetWeakPtr(), std::move(key),
+                          std::move(callback)),
+           std::make_pair(command, fingerprint));
+  }
   void CancelUtilityService(const base::UnguessableToken& owner,
                             std::string name,
                             uint64_t request_id) override {
@@ -887,10 +917,12 @@ class UtilityServiceImpl final : public UtilityService {
     }
   }
 
-  void Invoke(uint64_t request_id,
-              std::string name,
-              std::vector<uint8_t> request,
-              UtilityResponseCallback callback) {
+  void Invoke(
+      uint64_t request_id,
+      std::string name,
+      std::vector<uint8_t> request,
+      UtilityResponseCallback callback,
+      std::optional<std::pair<uint64_t, uint64_t>> method = std::nullopt) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     if (stopped_) {
       std::move(callback).Run(TUFFITE_STATUS_INVALID_STATE, {});
@@ -905,7 +937,8 @@ class UtilityServiceImpl final : public UtilityService {
       entry->second = std::make_unique<UtilityServiceHost>(
           name, *launcher_, resolver_, canceller_, std::vector<uint8_t>{});
     }
-    entry->second->Invoke(request_id, std::move(request), std::move(callback));
+    entry->second->Invoke(request_id, std::move(request), std::move(callback),
+                          method);
   }
 
   void Cancel(std::string_view name, uint64_t request_id) {
